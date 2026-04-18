@@ -18,7 +18,7 @@ Each concern is handled by a focused component with a clear boundary. Kudo is th
 
 - **[tsui](https://github.com/edger-dev/tsui)** — Generic GUI framework for moco apps. Provides web and desktop interfaces, driven by data rather than custom UI code.
 
-- **[kinora](https://github.com/edger-dev/kinora)** — Agent-first knowledge system. Tasks, docs, and communications are stored as atomic semantic units (kinos) with provenance tracking, managed in Git. Both humans and agents are first-class authors.
+- **kinora** — Agent-first knowledge system. Tasks, docs, and communications are stored as atomic semantic units (kinos) with provenance tracking, managed in Git as `.kinora/` within each project. Both humans and agents are first-class authors.
 
 - **[hub](https://github.com/edger-dev/hub)** — Agent and developer gateway. Maintains long-lived connections to project coordinators running in sandboxed containers, routes messages between them, and exposes agent state to external users.
 

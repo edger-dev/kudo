@@ -13,6 +13,7 @@ result-*
 
 # direnv
 .direnv/
+.envrc.local
 
 # bacon diagnostics export
 .bacon-claude-diagnostics
