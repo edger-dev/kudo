@@ -7,6 +7,7 @@
 - [RFC-0001: Moco Data Model](./rfcs/rfc-0001_moco-data-model.md)
 - [RFC-0002: Moco-Tsui App Boundary](./rfcs/rfc-0002_moco-tsui-app-boundary.md)
 - [RFC-0003: Kinora Bootstrap](./rfcs/rfc-0003_kinora-bootstrap.md)
+- [RFC-0004: Kinora-Backed Crate APIs](./rfcs/rfc-0004_kinora-backed-crate-apis.md)
 
 # References
 
