@@ -8,6 +8,7 @@
 - [RFC-0002: Moco-Tsui App Boundary](./rfcs/rfc-0002_moco-tsui-app-boundary.md)
 - [RFC-0003: Kinora Bootstrap](./rfcs/rfc-0003_kinora-bootstrap.md)
 - [RFC-0004: Kinora-Backed Crate APIs](./rfcs/rfc-0004_kinora-backed-crate-apis.md)
+- [RFC-0005: Storage Layering and the Kura Media Archive](./rfcs/rfc-0005_storage-layering-kura.md)
 
 # References
 
