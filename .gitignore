@@ -17,3 +17,6 @@ result-*
 
 # bacon diagnostics export
 .bacon-claude-diagnostics
+
+# jig skills symlinked into place by the nix devShell
+.claude/skills/

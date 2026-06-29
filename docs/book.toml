@@ -10,7 +10,3 @@ build-dir = "dist"
 [output.html]
 fold.enable = true
 fold.level = 0
-additional-css = ["src/beans-sidebar.css"]
-
-[preprocessor.beans]
-command = "mdbook-beans"

@@ -11,6 +11,7 @@
       }
       {
         rust = { };
-        docs = { beans = true; };
+        docs = { };
+        kinora = { };
       };
 }
