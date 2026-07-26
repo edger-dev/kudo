@@ -1,0 +1,304 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+//! Phase 3 — the job tools, driven against a real substrate.
+//!
+//! A real hub, a real node, a real registry spawning real children. What is
+//! proven here is the whole agent-facing path: encode the engine's request in
+//! the shim, route it through the hub, run it, and read the output back.
+//!
+//! implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use hub::{HubListener, ServedHub};
+use hub_protocol::identity::{LinkLabel, NodeId};
+use hub_protocol::{Connector, ConnectorKind};
+use moco_job::JobRegistry;
+use moco_job::wire::{KillRequest, StartRequest, TailRequest};
+use node::Connectors;
+use node::reconnect::{Backoff, DialOutcome};
+
+use kudo_node::JobConnector;
+use kudo_shim::hub::HubClient;
+use kudo_shim::jobs::{self, DEFAULT_JOB_CONNECTOR};
+use kudo_shim::route::Target;
+
+/// A hub with one node offering the job substrate.
+async fn mesh() -> (String, Arc<JobRegistry>) {
+    let hub_state: ServedHub = ServedHub::new();
+    let listener = HubListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().to_string();
+    tokio::spawn({
+        let hub_state = hub_state.clone();
+        async move { listener.serve(hub_state).await }
+    });
+
+    let registry = Arc::new(JobRegistry::ungoverned().expect("registry"));
+    let mut connectors = Connectors::new();
+    connectors.register(Box::new(JobConnector::new(
+        DEFAULT_JOB_CONNECTOR,
+        registry.clone(),
+    )));
+    let connectors = Arc::new(connectors);
+
+    let cfg = node::NodeConfig::new(
+        NodeId("alpha".to_string()),
+        LinkLabel::stable(),
+        Some(node::HubEndpoint(format!("tcp://{addr}"))),
+        vec![Connector {
+            id: DEFAULT_JOB_CONNECTOR.to_string(),
+            kind: ConnectorKind::ProcessManager,
+        }],
+        "test".to_string(),
+    )
+    .expect("node config");
+
+    tokio::spawn({
+        let cfg = cfg.clone();
+        async move {
+            node::reconnect::run_with(
+                &cfg,
+                connectors,
+                &Backoff {
+                    initial: Duration::from_millis(20),
+                    max: Duration::from_millis(100),
+                },
+                || {
+                    let hub = cfg.hub.clone();
+                    async move { node::tcp::dial(&hub).await.expect("valid address") }
+                },
+                tokio::time::sleep,
+                |_: DialOutcome| true,
+            )
+            .await;
+        }
+    });
+
+    (addr, registry)
+}
+
+async fn connected(addr: &str) -> HubClient {
+    let client = HubClient::dial(addr).await.expect("dial");
+    for _ in 0..100 {
+        if client.topology().await.map(|t| t.nodes.len()).unwrap_or(0) == 1 {
+            return client;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the node never registered");
+}
+
+fn alpha() -> Target {
+    Target::node("alpha")
+}
+
+/// Start a job through the shim, then read back exactly what it wrote.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_job_starts_and_its_output_reads_back() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["echo".into(), "from-the-shim".into()],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+        },
+    )
+    .await
+    .expect("start");
+
+    // Poll rather than block: nothing on this surface waits on a job, so a job
+    // that never ends can never wedge the lane.
+    let mut seen = String::new();
+    for _ in 0..100 {
+        let tail = jobs::tail(
+            &client,
+            alpha(),
+            DEFAULT_JOB_CONNECTOR,
+            TailRequest {
+                id: started.id.clone(),
+                offset: 0,
+            },
+        )
+        .await
+        .expect("tail");
+        seen = String::from_utf8_lossy(&tail.bytes).into_owned();
+        if seen.contains("from-the-shim") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        seen.contains("from-the-shim"),
+        "the job's own output must come back, got: {seen}"
+    );
+}
+
+/// `next_offset` really resumes: a second read returns only what is new.
+#[tokio::test(flavor = "multi_thread")]
+async fn tailing_from_next_offset_returns_only_new_output() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["echo".into(), "first".into()],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+        },
+    )
+    .await
+    .expect("start");
+
+    let mut first = jobs::tail(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        TailRequest {
+            id: started.id.clone(),
+            offset: 0,
+        },
+    )
+    .await
+    .expect("tail");
+    for _ in 0..100 {
+        if !first.bytes.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        first = jobs::tail(
+            &client,
+            alpha(),
+            DEFAULT_JOB_CONNECTOR,
+            TailRequest {
+                id: started.id.clone(),
+                offset: 0,
+            },
+        )
+        .await
+        .expect("tail");
+    }
+    assert!(!first.bytes.is_empty(), "expected some output first");
+
+    let second = jobs::tail(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        TailRequest {
+            id: started.id.clone(),
+            offset: first.next_offset,
+        },
+    )
+    .await
+    .expect("tail again");
+
+    assert!(
+        second.bytes.is_empty(),
+        "resuming from next_offset must not re-deliver what was already read, got {:?}",
+        String::from_utf8_lossy(&second.bytes)
+    );
+}
+
+/// A started job shows up in the listing — including one this session did not
+/// start, since jobs outlive the session that created them.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_started_job_appears_in_the_listing() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["echo".into(), "listed".into()],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+        },
+    )
+    .await
+    .expect("start");
+
+    let listing = jobs::list(&client, alpha(), DEFAULT_JOB_CONNECTOR)
+        .await
+        .expect("list");
+    assert!(
+        listing.jobs.iter().any(|j| j.id == started.id),
+        "the job just started must be listed"
+    );
+
+    let rendered = jobs::render_jobs(&listing);
+    assert!(rendered.contains(&started.id), "got:\n{rendered}");
+}
+
+/// A long-running job can be stopped, and its record survives the stop.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_job_can_be_killed_and_still_be_listed() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["sleep".into(), "30".into()],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+        },
+    )
+    .await
+    .expect("start");
+
+    jobs::kill(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        KillRequest {
+            id: started.id.clone(),
+        },
+    )
+    .await
+    .expect("kill");
+
+    let listing = jobs::list(&client, alpha(), DEFAULT_JOB_CONNECTOR)
+        .await
+        .expect("list");
+    assert!(
+        listing.jobs.iter().any(|j| j.id == started.id),
+        "a killed job must still be listed — its fate is part of the history"
+    );
+}
+
+/// The engine's refusal reaches the caller intact, still naming the binary.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unstartable_program_reports_the_engine_s_own_message() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    let err = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["definitely-not-a-real-program-xyz".into()],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+        },
+    )
+    .await
+    .expect_err("an unstartable program must fail");
+
+    let message = err.to_string();
+    assert!(
+        message.contains("definitely-not-a-real-program-xyz"),
+        "the engine's own message must survive the trip, got: {message}"
+    );
+}

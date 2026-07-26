@@ -15,6 +15,7 @@
 
 pub mod error;
 pub mod hub;
+pub mod jobs;
 pub mod mesh;
 pub mod route;
 pub mod server;

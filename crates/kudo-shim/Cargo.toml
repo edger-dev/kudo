@@ -16,7 +16,13 @@ tokio = { workspace = true }
 rmcp = { workspace = true }
 serde = { workspace = true }
 
+# The engine's wire types. Encoding happens here and decoding happens in the
+# engine, so only bytes cross the hub — which is what keeps moco's facet 0.43
+# and hub's 0.50 from ever meeting.
+moco-job = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true }
 hub = { workspace = true }
 node = { workspace = true }
+kudo-node = { path = "../kudo-node" }
