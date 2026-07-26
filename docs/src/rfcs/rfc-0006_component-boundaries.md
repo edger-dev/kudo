@@ -26,7 +26,13 @@ across repos at all. It is now fixed: a cross-repo citation carries the spec's
 **stable id**, qualified by the owning component, while a reference within one
 repo keeps citing the name.
 
-Five contracts are carved from this RFC into kudo's `specs` root, which this
+It also fixes the *other* cross-repo edge — a **crate** dependency between
+components, of which there were none until now: a git dependency pinned to an
+explicit revision, never a path dependency. Doing so surfaced that the components
+sit on three different `facet` versions, which is survivable only because a
+component boundary carries opaque bytes rather than typed values.
+
+Six contracts are carved from this RFC into kudo's `specs` root, which this
 activates for the first time. RFCs remain the narrative; a kino exists for
 whatever code in another repo must point at.
 
@@ -177,6 +183,56 @@ Abbreviated ids were rejected: git can disambiguate a short hash against one
 object store, but there is no single index across ledgers to disambiguate
 against.
 
+### Cross-component crate dependencies
+
+Citation binds a contract to its implementation. A **crate** dependency is the
+other cross-repo edge, and until now there were none: `kinora`, `kura`, `tsui`,
+`hub` and `moco` all use in-repo path dependencies plus crates.io, so the agent
+shim's need for `hub-protocol` is the first, and whatever it does becomes the
+pattern.
+
+**Decided: a git dependency pinned to an explicit revision.**
+
+```toml
+hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "<sha>" }
+```
+
+Reproducible from any clone regardless of layout — which matters more than it
+first appears, because layout is *already* not uniform: the components exist in
+more than one checkout tree plus git worktrees, so "the sibling directory" names
+different code depending on where you stand. A pinned revision also makes
+adopting another component's new version a deliberate, reviewed commit in the
+consumer, which is the right friction for a boundary everything else binds.
+Local iteration uses an uncommitted `[patch]` override, so the committed manifest
+always describes the reproducible build.
+
+A **path dependency** was rejected for hard-coding a sibling layout that is
+already untrue, and for pinning no version at all — two clones could silently
+build different code. **Publishing to crates.io** is correct eventually and
+premature now: `hub-protocol` is `0.0.0` on pre-release dependencies and moved
+through five milestones in a week, so every change would force a republish before
+a consumer could build.
+
+**The version skew this exposes.** The components sit on divergent versions of
+the same shared crates:
+
+| component | `facet` | serializer |
+|---|---|---|
+| `moco` | 0.43.2 | `facet-styx` 1.0.1 |
+| `kinora` | 0.46.0 | `facet-styx` 3.0.2 |
+| `hub` | 0.50.0-rc.5 | `facet-json` 0.50.0-rc.5 |
+
+Kudo, as the integration point, is the first thing to depend on more than one, so
+it is the first place two versions of one framework land in a single build graph.
+It compiles, and it is safe — but **only because a component boundary carries
+opaque bytes rather than typed values**. `hub-connector-owns-its-payload` is
+doing load-bearing work here that it was not designed for: because a `RoutedCall`
+payload is `Vec<u8>`, no `Facet`-derived type ever has to cross a version line.
+
+The consequence is a rule worth stating plainly: **components exchange bytes,
+never typed values**, until the versions converge. Converging them is separate
+work across three repos and is deliberately deferred; nothing needs it yet.
+
 ### Kudo's two homes for intent
 
 RFCs and kinos are not competitors; they do different jobs:
@@ -191,7 +247,7 @@ part of an RFC that code in another repo must cite gets a spec kino in kudo's
 `specs` root, so it has an id.** Not every RFC paragraph needs a kino — only what
 something else has to reference.
 
-Kudo's `specs` root is now created, with the five contracts carved from this RFC:
+Kudo's `specs` root is now created, with the contracts carved from this RFC:
 
 | spec | stable id |
 |---|---|
@@ -200,6 +256,7 @@ Kudo's `specs` root is now created, with the five contracts carved from this RFC
 | `a-face-holds-no-logic-a-second-face-needs` | `a9a94ad3464ebf50c30bffcfe64d4596384d5d122c5dfb3fb992b1aa73cd7eba` |
 | `declaration-and-realization-may-differ-by-repo` | `b4210ae68e4a367318cab12a00dd60c43833df491073582b724da2b42950ad4e` |
 | `cross-repo-refs-cite-stable-ids` | `45a102c5172c480c69af8aba4f61863f67266f96a183d92f2c9c95544049a658` |
+| `cross-component-crate-deps-are-pinned-git` | `8b09e3e9bdc7712b5e53412964fd2d4668e095e2a13e3d2b74c77e1bac3c11de` |
 
 Cited from another repo, the first of these reads:
 
@@ -235,10 +292,13 @@ two-answers drift this RFC exists to prevent.
    and carved as `cross-repo-refs-cite-stable-ids`.
 2. ~~Create kudo's `specs` root and carve the citable contracts~~ — **done**: five
    specs, listed above.
-3. Apply the form to the case that motivated it: hub's `node` packaging cites
-   moco's `job-durability-both-kill-vectors` when the `KillMode=process` unit
-   lands.
-4. Revisit whether `kinora resolve` should follow a cross-repo reference, which
+3. ~~Choose the cross-component crate dependency mechanism~~ — **done**: a git
+   dependency pinned to a revision, carved as
+   `cross-component-crate-deps-are-pinned-git`.
+4. Apply the citation form to the case that motivated it: hub's `node` packaging
+   cites moco's `job-durability-both-kill-vectors` when the `KillMode=process`
+   unit lands.
+5. Revisit whether `kinora resolve` should follow a cross-repo reference, which
    needs a component→repo map that does not exist yet.
 
 ## Open Questions
@@ -259,7 +319,12 @@ two-answers drift this RFC exists to prevent.
    `node` binary. Does packaging permanently belong to the transport repo because
    that is where the daemon is, or does moco eventually ship its own daemon and
    take it back?
-3. **Does a face ever legitimately hold state?** Resolved in the carved spec —
+3. **When do the shared crate versions converge?** `facet` is at three versions
+   across the components and `facet-styx` at two. Nothing needs convergence while
+   boundaries carry bytes, but the day a component genuinely wants to share a
+   typed value with another, this is the blocker — and it will be discovered at
+   the worst moment unless it is scheduled first.
+4. **Does a face ever legitimately hold state?** Resolved in the carved spec —
    the test is "would a second face need it", not "does it hold state", so a
    console's client-side rollups are fine. Left open here as the harder case:
    what happens the first time two faces want the *same* derived view, and the

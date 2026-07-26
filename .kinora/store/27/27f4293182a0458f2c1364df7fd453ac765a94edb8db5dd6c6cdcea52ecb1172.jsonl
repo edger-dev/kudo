@@ -1,0 +1,3 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"8b09e3e9bdc7712b5e53412964fd2d4668e095e2a13e3d2b74c77e1bac3c11de","hash":"8b09e3e9bdc7712b5e53412964fd2d4668e095e2a13e3d2b74c77e1bac3c11de","parents":[],"ts":"2026-07-26T07:04:55.027303801Z","author":"YJ Park","provenance":"rfc-0006","metadata":{"name":"cross-component-crate-deps-are-pinned-git","spec::section":"boundaries","status::active":"true"}}
+{"event_kind":"assign","kind":"kin::assign","id":"8b09e3e9bdc7712b5e53412964fd2d4668e095e2a13e3d2b74c77e1bac3c11de","hash":"8b09e3e9bdc7712b5e53412964fd2d4668e095e2a13e3d2b74c77e1bac3c11de","parents":[],"ts":"2026-07-26T07:04:55.027303801Z","author":"YJ Park","provenance":"rfc-0006","metadata":{"kin::target_root":"specs"}}
