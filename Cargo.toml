@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = []
+members = ["crates/kudo-shim"]
 
 [workspace.package]
 version = "0.1.0"
@@ -21,3 +21,24 @@ expect_used = "warn"            # rule: jig::rust::no-unwrap-in-lib
 todo = "warn"                   # rule: jig::rust::no-todo-committed
 unimplemented = "warn"          # rule: jig::rust::no-todo-committed
 dbg_macro = "warn"              # rule: jig::rust::no-todo-committed
+
+[workspace.dependencies]
+
+# Cross-component crate dependencies are pinned git revisions, never path deps.
+# spec: cross-component-crate-deps-are-pinned-git
+# (kudo:8b09e3e9bdc7712b5e53412964fd2d4668e095e2a13e3d2b74c77e1bac3c11de)
+#
+# Local iteration across kudo and hub uses an *uncommitted* override, so what
+# everyone else builds is this revision:
+#   [patch."https://github.com/edger-dev/hub"]
+#   hub-protocol = { path = "../hub/crates/hub-protocol" }
+hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "dbc40efec43ebc385d92c608144610dfadbd7145" }
+
+# Kept on hub's line: hub-protocol's types are facet-derived, so the shim must
+# encode against the same major. See RFC-0006 on the facet version skew.
+facet = "0.50.0-rc.5"
+facet-json = "0.50.0-rc.5"
+vox = "0.10.0-rc.5"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time", "io-std"] }
+rmcp = { version = "3.0.0-beta.2", features = ["server", "transport-io"] }
+serde = { version = "1", features = ["derive"] }
