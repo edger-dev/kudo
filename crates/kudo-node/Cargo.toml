@@ -1,0 +1,24 @@
+[package]
+name = "kudo-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+# A composition root: it depends on a transport *and* an engine, which is legal
+# precisely because nothing depends on it. Binding them anywhere else would
+# create an upward edge.
+# spec: repos-are-engine-transport-or-face
+# (kudo:7ea24d8f08c2e3e9c4502030a86fd9d5f9e36c1067d7e2d034d2796177e719ec)
+[dependencies]
+hub-protocol = { workspace = true }
+node = { workspace = true }
+moco-job = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+hub = { workspace = true }
+vox = { workspace = true }

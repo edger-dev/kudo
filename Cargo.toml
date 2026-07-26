@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/kudo-shim"]
+members = ["crates/kudo-node", "crates/kudo-shim"]
 
 [workspace.package]
 version = "0.1.0"
@@ -34,9 +34,9 @@ dbg_macro = "warn"              # rule: jig::rust::no-todo-committed
 #   hub-protocol = { path = "../hub/crates/hub-protocol" }
 hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "dbc40efec43ebc385d92c608144610dfadbd7145" }
 
-# Dev-only, and on the same pinned revision: the routing tests run a *real* hub
-# and a *real* node rather than a mock of the far side, so what they prove is
-# that the shim talks to the thing that actually exists.
+# `node` is a real dependency of the composition root (kudo-node assembles a
+# daemon out of it) and a dev-dependency of the shim's routing tests, which run
+# a real hub and a real node rather than a mock of the far side.
 hub = { git = "https://github.com/edger-dev/hub", rev = "dbc40efec43ebc385d92c608144610dfadbd7145" }
 node = { git = "https://github.com/edger-dev/hub", rev = "dbc40efec43ebc385d92c608144610dfadbd7145" }
 
@@ -47,4 +47,9 @@ facet-json = "0.50.0-rc.5"
 vox = "0.10.0-rc.5"
 tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time", "io-std"] }
 rmcp = { version = "3.0.0-beta.2", features = ["server", "transport-io"] }
+
+# The engine the composition root hosts. A second component dependency, and the
+# first time two facet versions meet in one build graph — safe only because the
+# boundary between them is bytes. See RFC-0006.
+moco-job = { git = "https://github.com/edger-dev/moco", rev = "9891f82bc1d1112e842d5299a7485a233f4298bf" }
 serde = { version = "1", features = ["derive"] }
