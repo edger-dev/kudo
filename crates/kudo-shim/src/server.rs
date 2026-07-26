@@ -14,8 +14,8 @@
 use std::sync::Arc;
 
 use moco_job::wire::{
-    ClearRequest, EnsureRequest, KillRequest, RestartRequest, StartNamedRequest, StartRequest,
-    TailRequest,
+    ClearRequest, EnsureRequest, KillRequest, MachineRequest, RestartRequest, StartNamedRequest,
+    StartRequest, TailRequest,
 };
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, ProtocolVersion, ServerCapabilities, ServerInfo};
@@ -361,6 +361,33 @@ impl ShimServer {
             )
             .await
             .map(|r| jobs::render_tail(&r)),
+        )
+    }
+
+    #[tool(
+        name = "job_read",
+        description = "Read a job's findings through its machine view — the structured sidecar \
+                       it declares, if it declares one. **Prefer this over job_tail**: it is a \
+                       few hundred bytes of answer instead of the whole terminal stream. The \
+                       reply says which channel it came from, and falls back to scrollback for \
+                       a job that declares no machine view."
+    )]
+    async fn job_read(
+        &self,
+        Parameters(args): Parameters<TailArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        reply(
+            jobs::machine(
+                &self.hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                MachineRequest {
+                    id: args.id,
+                    offset: args.offset.unwrap_or(0),
+                },
+            )
+            .await
+            .map(|r| jobs::render_machine(&r)),
         )
     }
 

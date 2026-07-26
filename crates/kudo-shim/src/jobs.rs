@@ -16,8 +16,8 @@
 use hub_protocol::routing::RoutedCall;
 use moco_job::wire::{
     ClearReply, ClearRequest, EnsureReply, EnsureRequest, KillReply, KillRequest, ListReply,
-    RestartRequest, StartNamedRequest, StartReply, StartRequest, TailReply, TailRequest,
-    WireCaller,
+    MachineReply, MachineRequest, RestartRequest, StartNamedRequest, StartReply, StartRequest,
+    TailReply, TailRequest, WireCaller,
 };
 
 use crate::error::ShimError;
@@ -173,6 +173,49 @@ pub async fn clear(
     let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
     let bytes = route(hub, target, connector, "clear", payload).await?;
     moco_job::wire::decode::<ClearReply>(&bytes).map_err(decode_failed)
+}
+
+/// Read a job through its machine lens.
+pub async fn machine(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: MachineRequest,
+) -> Result<MachineReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "machine", payload).await?;
+    moco_job::wire::decode::<MachineReply>(&bytes).map_err(decode_failed)
+}
+
+/// Render a machine-lens read, saying which channel it came from.
+///
+/// The source label is not decoration: scrollback and a declared view need
+/// reading differently, and a caller that cannot tell them apart will try to
+/// parse the wrong one.
+pub fn render_machine(reply: &MachineReply) -> String {
+    let source = match reply.source {
+        moco_job::LensSource::Machine => {
+            if reply.format.is_empty() {
+                "machine view".to_string()
+            } else {
+                format!("machine view ({})", reply.format)
+            }
+        }
+        moco_job::LensSource::Scrollback => {
+            "scrollback — this job declares no machine view".to_string()
+        }
+    };
+    let body = String::from_utf8_lossy(&reply.bytes);
+    if body.is_empty() {
+        return format!(
+            "source: {source}\nnext_offset: {}\n---\n(nothing yet)",
+            reply.next_offset
+        );
+    }
+    format!(
+        "source: {source}\nnext_offset: {}\n---\n{body}",
+        reply.next_offset
+    )
 }
 
 /// Render a job listing compactly.
