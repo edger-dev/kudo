@@ -26,6 +26,15 @@ pub enum ShimError {
     HubHandshake { addr: String, detail: String },
     /// The hub answered, but with a failure.
     Hub(String),
+    /// The call did not answer inside its budget.
+    ///
+    /// **This is not a cancellation.** The shim stopped waiting; the far side
+    /// may still be running and may still finish. Reporting it as a plain
+    /// failure is how a caller ends up starting the same work twice.
+    TimedOut {
+        what: String,
+        after: std::time::Duration,
+    },
     /// A routed call failed, and this says **which side** failed.
     ///
     /// Flattening the two into one string would be simpler and would erase the
@@ -65,6 +74,14 @@ impl fmt::Display for ShimError {
                 "connected to {addr} but could not open a consumer lane: {detail}"
             ),
             ShimError::Hub(detail) => write!(f, "the hub refused the request: {detail}"),
+            ShimError::TimedOut { what, after } => write!(
+                f,
+                "{what} did not answer within {:.0}s. This is a timeout, not a \
+                 cancellation — the work may still be running, and may still \
+                 finish. Check what is actually there (job_list) before starting \
+                 it again, or allow more time.",
+                after.as_secs_f64()
+            ),
             // Name the side in words, not just in a variant: whoever reads this
             // has to decide between "my view is stale" and "it said no".
             ShimError::Route {

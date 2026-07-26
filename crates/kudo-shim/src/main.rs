@@ -13,7 +13,7 @@ use std::sync::Arc;
 use rmcp::ServiceExt;
 use rmcp::transport::io::stdio;
 
-use kudo_shim::{HUB_ADDR_ENV, HubClient, ShimServer, hub_addr_from_env};
+use kudo_shim::{HUB_ADDR_ENV, HubClient, ShimServer, call_timeout_from_env, hub_addr_from_env};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,7 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // degraded mode: with no node-local path, a shim that started anyway would
     // answer every tool call with the same failure while looking healthy.
     let hub = match HubClient::dial(&addr).await {
-        Ok(hub) => Arc::new(hub),
+        Ok(hub) => Arc::new(match call_timeout_from_env() {
+            Some(timeout) => hub.with_timeout(timeout),
+            None => hub,
+        }),
         Err(e) => {
             eprintln!("{e}");
             std::process::exit(1);

@@ -21,7 +21,7 @@ pub mod route;
 pub mod server;
 
 pub use error::ShimError;
-pub use hub::HubClient;
+pub use hub::{DEFAULT_CALL_TIMEOUT, HubClient};
 pub use mesh::render_mesh;
 pub use route::{RouteFailure, Target};
 pub use server::ShimServer;
@@ -29,10 +29,28 @@ pub use server::ShimServer;
 /// The environment variable naming the hub to dial.
 pub const HUB_ADDR_ENV: &str = "KUDO_HUB_ADDR";
 
+/// The environment variable overriding how long a call waits.
+pub const CALL_TIMEOUT_ENV: &str = "KUDO_CALL_TIMEOUT_MS";
+
 /// The hub address this shim should use.
 ///
 /// One prefix namespaces everything the platform injects, so the variable can
 /// never be confused with something the surrounding tooling already sets.
 pub fn hub_addr_from_env() -> Option<String> {
     std::env::var(HUB_ADDR_ENV).ok()
+}
+
+/// How long a call should wait, if the environment says.
+///
+/// Raising this is the sanctioned response to a legitimately slow answer. The
+/// alternative — retrying a timeout — is what runs non-idempotent work twice.
+/// A value that cannot be parsed is ignored in favour of the default rather
+/// than failing startup: a bad number here should not cost a session.
+pub fn call_timeout_from_env() -> Option<std::time::Duration> {
+    std::env::var(CALL_TIMEOUT_ENV)
+        .ok()?
+        .parse::<u64>()
+        .ok()
+        .filter(|ms| *ms > 0)
+        .map(std::time::Duration::from_millis)
 }
