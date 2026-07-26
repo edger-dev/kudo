@@ -21,9 +21,14 @@ axis leaves ambiguous.
 
 It then addresses the consequence the split creates: a contract may be
 **declared** in one repo and **realized** in another, so the `// implements:`
-citation becomes the only thing binding them. Today that citation cannot be
-written across repos at all, which is the concrete gap this RFC opens for
-resolution.
+citation becomes the only thing binding them — a form that could not be written
+across repos at all. It is now fixed: a cross-repo citation carries the spec's
+**stable id**, qualified by the owning component, while a reference within one
+repo keeps citing the name.
+
+Five contracts are carved from this RFC into kudo's `specs` root, which this
+activates for the first time. RFCs remain the narrative; a kino exists for
+whatever code in another repo must point at.
 
 ## Motivation
 
@@ -143,23 +148,34 @@ Today a citation is a bare name resolved within one ledger:
 // implements: argv-not-shell
 ```
 
-The namespacing convention already exists elsewhere in the ledger — rule kinos
-are named `jig::rust::no-unwrap-in-lib` — so the natural extension is to qualify
-a cross-repo citation with its component:
+**Decided: a cross-repo citation carries the stable id**, qualified by the owning
+component:
 
 ```rust
-// implements: moco::registry-is-node-state-on-disk
+// implements: moco:a8f6cfd51b1c823d4f9331e01962f7c2b88976587cff32120f3ce98a803c24c7
 ```
 
-with an unqualified name continuing to mean "in this repo's ledger". That is
-cheap, readable, and greppable.
+- The **id is authoritative** — it is what any tool resolves.
+- The **component prefix is a locator**, not part of identity: ids are
+  content-addressed and globally unique, so the prefix only says which ledger to
+  look in.
+- A trailing `(spec-name)` is permitted for readability and is **never**
+  authoritative; it may drift without breaking the link.
 
-It also sits in tension with kinora's own model, which says to reference a kino
-by **stable id, never by title** — precisely so a rename does not break the link.
-Within a repo that tension is tolerable because a rename and its citations are
-fixed in one commit. Across repos they cannot be, which is exactly when the
-stable id earns its keep. Resolving this is an open question below rather than a
-decision here.
+A reference **within** one repo keeps citing the name unqualified
+(`// implements: argv-not-shell`).
+
+The asymmetry is deliberate. Inside a repo, a rename and every citation of it are
+fixed **atomically in one commit**, so a name is safe and much more readable.
+Across repos no such commit exists — the citing repo may be at any revision, or
+not checked out at all — so a name would break **silently** and stay broken until
+someone happened to try resolving it. This is exactly the case kinora's own
+model ("reference by stable id, never by title") exists for, and it is why the
+readability cost is worth paying here and not in-repo.
+
+Abbreviated ids were rejected: git can disambiguate a short hash against one
+object store, but there is no single index across ledgers to disambiguate
+against.
 
 ### Kudo's two homes for intent
 
@@ -170,11 +186,32 @@ RFCs and kinos are not competitors; they do different jobs:
 - **A spec kino is the citable contract** — one atomic decision, a stable id,
   something code elsewhere can point at.
 
-The proposal: **RFCs remain the record for cross-repo decisions; additionally,
-any part of an RFC that code in another repo must cite gets a spec kino in kudo's
+**Decided: RFCs remain the record for cross-repo decisions; additionally, any
+part of an RFC that code in another repo must cite gets a spec kino in kudo's
 `specs` root, so it has an id.** Not every RFC paragraph needs a kino — only what
-something else has to reference. This activates the roots kudo already declares,
-without turning prose into a ledger.
+something else has to reference.
+
+Kudo's `specs` root is now created, with the five contracts carved from this RFC:
+
+| spec | stable id |
+|---|---|
+| `component-layering-has-no-upward-edges` | `d51a6329ddfc69986e2fa7ee5835e51d30c8c62c324d47e3d5c85a43ffa29801` |
+| `repos-are-engine-transport-or-face` | `7ea24d8f08c2e3e9c4502030a86fd9d5f9e36c1067d7e2d034d2796177e719ec` |
+| `a-face-holds-no-logic-a-second-face-needs` | `a9a94ad3464ebf50c30bffcfe64d4596384d5d122c5dfb3fb992b1aa73cd7eba` |
+| `declaration-and-realization-may-differ-by-repo` | `b4210ae68e4a367318cab12a00dd60c43833df491073582b724da2b42950ad4e` |
+| `cross-repo-refs-cite-stable-ids` | `45a102c5172c480c69af8aba4f61863f67266f96a183d92f2c9c95544049a658` |
+
+Cited from another repo, the first of these reads:
+
+```rust
+// implements: kudo:d51a6329ddfc69986e2fa7ee5835e51d30c8c62c324d47e3d5c85a43ffa29801
+```
+
+Principles 5–7 below are deliberately **not** carved: they are guidance for
+choosing, not contracts anything cites. Nor are the contracts already owned by a
+component restated here — `hub-connector-owns-its-payload` stays hub's, and
+`argv-not-shell` stays moco's. Restating them in kudo would produce exactly the
+two-answers drift this RFC exists to prevent.
 
 ## Design Principles
 
@@ -194,32 +231,28 @@ without turning prose into a ledger.
 
 ## Sequencing
 
-1. Adopt the qualified citation form (`component::spec-name`) — convention only,
-   no tooling change, and it makes symptom 2 expressible immediately.
-2. Create kudo's `specs` root and carve the citable contracts from this RFC
-   (principles 1–4 are the candidates; the rest are guidance, not contracts).
-3. Resolve the name-vs-id question below before the first cross-repo citation is
-   relied upon for anything mechanical.
+1. ~~Adopt the citation form~~ — **done**: `component:stable-id`, decided above
+   and carved as `cross-repo-refs-cite-stable-ids`.
+2. ~~Create kudo's `specs` root and carve the citable contracts~~ — **done**: five
+   specs, listed above.
+3. Apply the form to the case that motivated it: hub's `node` packaging cites
+   moco's `job-durability-both-kill-vectors` when the `KillMode=process` unit
+   lands.
 4. Revisit whether `kinora resolve` should follow a cross-repo reference, which
    needs a component→repo map that does not exist yet.
 
 ## Open Questions
 
-1. **Name or stable id in a cross-repo citation?** A name is readable and
-   greppable; an id survives renames, which is the whole reason kinora's model
-   prefers it, and cross-repo renames cannot be fixed atomically. A hybrid
-   (`moco::registry-is-node-state-on-disk@a8f6cfd5`) is possible but verbose and
-   would drift on every re-version.
-2. **Should `kinora resolve` follow cross-repo references?** That requires a
+1. **Should `kinora resolve` follow cross-repo references?** That requires a
    registry mapping a component namespace to a repo URL, and a policy for
    resolving against a checkout that may be absent or at a different revision.
-3. **Where does packaging live?** The `KillMode=process` unit for moco's job
+2. **Where does packaging live?** The `KillMode=process` unit for moco's job
    substrate is realizable only where a daemon is packaged, which today is hub's
    `node` binary. Does packaging permanently belong to the transport repo because
    that is where the daemon is, or does moco eventually ship its own daemon and
    take it back?
-4. **Does a face ever legitimately hold state?** The rule says a face is a thin
-   adapter, and the process-manager brief is explicit that the MCP shim holds
-   none. Client-side aggregation in the console (rollups, sparkline rings)
-   is state that exists in no engine — is that a violation, or the boundary
-   working as intended because no *second* face needs it?
+3. **Does a face ever legitimately hold state?** Resolved in the carved spec —
+   the test is "would a second face need it", not "does it hold state", so a
+   console's client-side rollups are fine. Left open here as the harder case:
+   what happens the first time two faces want the *same* derived view, and the
+   move down into the engine means an engine gaining presentation concerns?
