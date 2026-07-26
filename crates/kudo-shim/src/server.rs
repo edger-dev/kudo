@@ -13,7 +13,10 @@
 
 use std::sync::Arc;
 
-use moco_job::wire::{KillRequest, StartRequest, TailRequest};
+use moco_job::wire::{
+    ClearRequest, EnsureRequest, KillRequest, RestartRequest, StartNamedRequest, StartRequest,
+    TailRequest,
+};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, ProtocolVersion, ServerCapabilities, ServerInfo};
 use rmcp::schemars;
@@ -38,7 +41,27 @@ pub struct NodeArgs {
     pub connector: Option<String>,
 }
 
-/// Start a job.
+/// Start a job this workspace declares.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct StartNamedArgs {
+    pub node: String,
+    pub link: Option<String>,
+    pub connector: Option<String>,
+    /// The name the workspace's manifest declares it under.
+    pub name: String,
+}
+
+/// Restart a declared job.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct RestartArgs {
+    pub node: String,
+    pub link: Option<String>,
+    pub connector: Option<String>,
+    /// The job id, from job_list.
+    pub id: String,
+}
+
+/// Start a job ad-hoc.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
 pub struct StartArgs {
     pub node: String,
@@ -167,11 +190,118 @@ impl ShimServer {
 
     #[tool(
         name = "job_start",
-        description = "Start a command as a job on a node and get its id back immediately. The \
-                       job keeps running after this call returns and after this session ends. \
-                       Read its output with job_tail; stop it with job_kill."
+        description = "Start a job this workspace declares in its manifest, by name. Prefer \
+                       this over job_start_adhoc: a declaration is reproducible, is reviewed in \
+                       version control, and carries its own lifetime, restart policy and port. \
+                       The manifest is re-read on every start, so an edit takes effect \
+                       immediately."
     )]
     async fn job_start(
+        &self,
+        Parameters(args): Parameters<StartNamedArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        reply(
+            jobs::start_named(
+                &self.hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                StartNamedRequest {
+                    name: args.name,
+                    caller: jobs::session_caller(),
+                },
+            )
+            .await
+            .map(|r| format!("started job {}", r.id)),
+        )
+    }
+
+    #[tool(
+        name = "job_restart",
+        description = "Stop a declared job and start it again from its *current* declaration. \
+                       The manifest is re-read and re-authorized, so an edit takes effect and \
+                       a newly-disallowed command is refused. Ad-hoc jobs cannot be restarted \
+                       — there is no declaration to re-read."
+    )]
+    async fn job_restart(
+        &self,
+        Parameters(args): Parameters<RestartArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        reply(
+            jobs::restart(
+                &self.hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                RestartRequest {
+                    id: args.id,
+                    caller: jobs::session_caller(),
+                },
+            )
+            .await
+            .map(|r| format!("restarted as job {}", r.id)),
+        )
+    }
+
+    #[tool(
+        name = "job_ensure",
+        description = "Start this workspace's session-autostart jobs that are not already \
+                       running. Idempotent and safe to re-run: it starts what is missing and \
+                       never stops or restarts anything. Run it once at the start of a session."
+    )]
+    async fn job_ensure(
+        &self,
+        Parameters(args): Parameters<NodeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        reply(
+            jobs::ensure(
+                &self.hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                EnsureRequest {
+                    caller: jobs::session_caller(),
+                },
+            )
+            .await
+            .map(|r| {
+                if r.started.is_empty() {
+                    "everything declared for this session is already running".to_string()
+                } else {
+                    format!("started: {}", r.started.join(", "))
+                }
+            }),
+        )
+    }
+
+    #[tool(
+        name = "job_clear",
+        description = "Forget this workspace's finished jobs. Only finished ones — a running \
+                       job is left strictly alone, so this can never stop anything. Their \
+                       output goes with them, so read anything you still need first."
+    )]
+    async fn job_clear(
+        &self,
+        Parameters(args): Parameters<NodeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        reply(
+            jobs::clear(
+                &self.hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                ClearRequest {
+                    caller: jobs::session_caller(),
+                },
+            )
+            .await
+            .map(|r| format!("cleared {} finished job(s)", r.removed)),
+        )
+    }
+
+    #[tool(
+        name = "job_start_adhoc",
+        description = "Start an arbitrary command as a job, without a declaration. Use \
+                       job_start instead when the workspace declares what you want — this is \
+                       for one-off work. Ad-hoc jobs cannot be restarted."
+    )]
+    async fn job_start_adhoc(
         &self,
         Parameters(args): Parameters<StartArgs>,
     ) -> Result<CallToolResult, ErrorData> {

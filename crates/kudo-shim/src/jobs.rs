@@ -15,7 +15,9 @@
 
 use hub_protocol::routing::RoutedCall;
 use moco_job::wire::{
-    KillReply, KillRequest, ListReply, StartReply, StartRequest, TailReply, TailRequest, WireCaller,
+    ClearReply, ClearRequest, EnsureReply, EnsureRequest, KillReply, KillRequest, ListReply,
+    RestartRequest, StartNamedRequest, StartReply, StartRequest, TailReply, TailRequest,
+    WireCaller,
 };
 
 use crate::error::ShimError;
@@ -125,6 +127,54 @@ pub async fn kill(
     moco_job::wire::decode::<KillReply>(&bytes).map_err(decode_failed)
 }
 
+/// Start the job this workspace declares under `name`.
+pub async fn start_named(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: StartNamedRequest,
+) -> Result<StartReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "start_named", payload).await?;
+    moco_job::wire::decode::<StartReply>(&bytes).map_err(decode_failed)
+}
+
+/// Stop a declared job and start it from its current declaration.
+pub async fn restart(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: RestartRequest,
+) -> Result<StartReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "restart", payload).await?;
+    moco_job::wire::decode::<StartReply>(&bytes).map_err(decode_failed)
+}
+
+/// Start this workspace's `session` entries that are not already running.
+pub async fn ensure(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: EnsureRequest,
+) -> Result<EnsureReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "ensure", payload).await?;
+    moco_job::wire::decode::<EnsureReply>(&bytes).map_err(decode_failed)
+}
+
+/// Remove this workspace's terminal entries.
+pub async fn clear(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: ClearRequest,
+) -> Result<ClearReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "clear", payload).await?;
+    moco_job::wire::decode::<ClearReply>(&bytes).map_err(decode_failed)
+}
+
 /// Render a job listing compactly.
 ///
 /// Shows each job's **owner**, because reads are node-global: a listing includes
@@ -138,7 +188,23 @@ pub fn render_jobs(reply: &ListReply) -> String {
     reply
         .jobs
         .iter()
-        .map(|j| format!("{}  {:?}  [{}]", j.id, j.status, j.scope))
+        .map(|j| {
+            let mut line = format!("{}  {:?}", j.id, j.status);
+            if !j.name.is_empty() {
+                line.push_str(&format!("  {}", j.name));
+            }
+            if j.port != 0 {
+                line.push_str(&format!("  :{}", j.port));
+            }
+            if j.restarts > 0 {
+                line.push_str(&format!("  ({} restarts)", j.restarts));
+            }
+            if j.external {
+                line.push_str("  [adopted]");
+            }
+            line.push_str(&format!("  [{}]", j.scope));
+            line
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
