@@ -106,6 +106,9 @@ async fn a_job_starts_and_its_output_reads_back() {
             argv: vec!["echo".into(), "from-the-shim".into()],
             cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
         },
     )
     .await
@@ -152,6 +155,9 @@ async fn tailing_from_next_offset_returns_only_new_output() {
             argv: vec!["echo".into(), "first".into()],
             cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
         },
     )
     .await
@@ -221,6 +227,9 @@ async fn a_started_job_appears_in_the_listing() {
             argv: vec!["echo".into(), "listed".into()],
             cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
         },
     )
     .await
@@ -252,6 +261,9 @@ async fn a_job_can_be_killed_and_still_be_listed() {
             argv: vec!["sleep".into(), "30".into()],
             cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
         },
     )
     .await
@@ -263,6 +275,9 @@ async fn a_job_can_be_killed_and_still_be_listed() {
         DEFAULT_JOB_CONNECTOR,
         KillRequest {
             id: started.id.clone(),
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
         },
     )
     .await
@@ -291,6 +306,9 @@ async fn an_unstartable_program_reports_the_engine_s_own_message() {
             argv: vec!["definitely-not-a-real-program-xyz".into()],
             cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
         },
     )
     .await
@@ -301,4 +319,87 @@ async fn an_unstartable_program_reports_the_engine_s_own_message() {
         message.contains("definitely-not-a-real-program-xyz"),
         "the engine's own message must survive the trip, got: {message}"
     );
+}
+
+/// **A foreign workspace's job cannot be written**, and the engine's refusal
+/// reaches the caller unwidened.
+///
+/// This was deferred through all of v1 because the engine had no workspace
+/// concept to refuse on. It does now, so the shim's half is finally testable:
+/// the shim reports where it is, the engine decides what that means, and the
+/// answer comes back naming both workspaces.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_foreign_workspace_job_cannot_be_killed_through_the_shim() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    // Two distinct workspaces, neither of them the other.
+    let theirs = std::env::temp_dir().join(format!("kudo-theirs-{}", std::process::id()));
+    let mine = std::env::temp_dir().join(format!("kudo-mine-{}", std::process::id()));
+    for dir in [&theirs, &mine] {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir.join(".git")).expect("make a repo");
+    }
+
+    // Started as if by a session in `theirs`.
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["sleep".into(), "30".into()],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: theirs.to_string_lossy().into_owned(),
+            },
+        },
+    )
+    .await
+    .expect("start");
+
+    // And a session in `mine` tries to stop it.
+    let err = jobs::kill(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        KillRequest {
+            id: started.id.clone(),
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: mine.to_string_lossy().into_owned(),
+            },
+        },
+    )
+    .await
+    .expect_err("a foreign workspace must be refused");
+
+    let message = err.to_string();
+    // Unwidened: the engine's own wording, naming both sides, not a generic
+    // "permission denied" invented by the face.
+    assert!(
+        message.contains("owned by workspace"),
+        "the engine's own refusal must survive the trip, got: {message}"
+    );
+    assert!(
+        message.contains(&theirs.canonicalize().unwrap().display().to_string()),
+        "must name the owning workspace, got: {message}"
+    );
+
+    // The job really was not stopped: the owning session can still stop it.
+    jobs::kill(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        KillRequest {
+            id: started.id,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: theirs.to_string_lossy().into_owned(),
+            },
+        },
+    )
+    .await
+    .expect("the owning workspace may stop its own job");
+
+    let _ = std::fs::remove_dir_all(&theirs);
+    let _ = std::fs::remove_dir_all(&mine);
 }

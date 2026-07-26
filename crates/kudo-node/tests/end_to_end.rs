@@ -96,6 +96,7 @@ async fn a_job_runs_through_the_whole_mesh() {
         argv: vec!["echo".into(), "through-the-mesh".into()],
         cwd: std::env::temp_dir().to_string_lossy().into_owned(),
         deadline_ms: 0,
+        caller: moco_job::wire::WireCaller::Console,
     })
     .expect("encode start");
 

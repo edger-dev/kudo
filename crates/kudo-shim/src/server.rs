@@ -201,6 +201,7 @@ impl ShimServer {
                     argv: args.argv,
                     cwd,
                     deadline_ms: args.timeout_ms.unwrap_or(0),
+                    caller: jobs::session_caller(),
                 },
             )
             .await
@@ -247,7 +248,10 @@ impl ShimServer {
                 &self.hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
-                KillRequest { id: args.id },
+                KillRequest {
+                    id: args.id,
+                    caller: jobs::session_caller(),
+                },
             )
             .await
             .map(|r| format!("kill requested for job {}", r.id)),

@@ -15,7 +15,7 @@
 
 use hub_protocol::routing::RoutedCall;
 use moco_job::wire::{
-    KillReply, KillRequest, ListReply, StartReply, StartRequest, TailReply, TailRequest,
+    KillReply, KillRequest, ListReply, StartReply, StartRequest, TailReply, TailRequest, WireCaller,
 };
 
 use crate::error::ShimError;
@@ -28,6 +28,26 @@ use crate::route::Target;
 /// caller can always override, whereas inferring which connector "is" the job
 /// one would be a rule that has to live somewhere and be right everywhere.
 pub const DEFAULT_JOB_CONNECTOR: &str = "jobs-0";
+
+/// Who this shim is, for the engine's write scoping.
+///
+/// Always a **session**, identified by the directory the shim was launched in —
+/// which is the session's project directory, inherited for free. There is
+/// deliberately no way for this function to return `Console`: global write
+/// authority belongs to the human console, and an agent face that could claim it
+/// would make the whole scoping rule advisory.
+///
+/// The shim sends *where it is*. Turning that into a workspace is the engine's
+/// rule, and a second face would need the same one, so it does not live here.
+///
+/// implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
+pub fn session_caller() -> WireCaller {
+    WireCaller::Session {
+        cwd: std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    }
+}
 
 fn encode_failed(detail: String) -> ShimError {
     ShimError::Hub(format!("could not encode the request: {detail}"))
@@ -106,6 +126,11 @@ pub async fn kill(
 }
 
 /// Render a job listing compactly.
+///
+/// Shows each job's **owner**, because reads are node-global: a listing includes
+/// other workspaces' jobs, and which ones are writable depends on that. The
+/// owner is shown rather than reduced to "yours"/"theirs" — deciding that would
+/// mean resolving a directory to a workspace here, which is the engine's rule.
 pub fn render_jobs(reply: &ListReply) -> String {
     if reply.jobs.is_empty() {
         return "no jobs on this node".to_string();
@@ -113,7 +138,7 @@ pub fn render_jobs(reply: &ListReply) -> String {
     reply
         .jobs
         .iter()
-        .map(|j| format!("{}  {:?}", j.id, j.status))
+        .map(|j| format!("{}  {:?}  [{}]", j.id, j.status, j.scope))
         .collect::<Vec<_>>()
         .join("\n")
 }
