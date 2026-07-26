@@ -1,0 +1,3 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"e5b8d5926fdbaa8b237322ee11c93b731151a9f330b459499b611690a6787d23","hash":"e5b8d5926fdbaa8b237322ee11c93b731151a9f330b459499b611690a6787d23","parents":[],"ts":"2026-07-26T06:54:25.944144023Z","author":"YJ Park","provenance":"kara","metadata":{"name":"agent-shim-build","status::resolved":"false","task::milestone":"umbrella"}}
+{"event_kind":"assign","kind":"kin::assign","id":"e5b8d5926fdbaa8b237322ee11c93b731151a9f330b459499b611690a6787d23","hash":"e5b8d5926fdbaa8b237322ee11c93b731151a9f330b459499b611690a6787d23","parents":[],"ts":"2026-07-26T06:54:25.944144023Z","author":"YJ Park","provenance":"kara","metadata":{"kin::target_root":"tasks"}}

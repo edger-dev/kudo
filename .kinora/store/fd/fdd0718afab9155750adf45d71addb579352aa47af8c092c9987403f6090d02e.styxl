@@ -1,0 +1,2 @@
+{kind root, id 6d23df43ba7d7d0d7b62f4a5caeb2044ea307f9c9bba1348b98564d98cbe5d8f, parents (), ts 2026-07-26T06:54:25.971375484Z, author "YJ Park", provenance commit}
+{id e5b8d5926fdbaa8b237322ee11c93b731151a9f330b459499b611690a6787d23, version e5b8d5926fdbaa8b237322ee11c93b731151a9f330b459499b611690a6787d23, kind markdown, metadata {name agent-shim-build, status::resolved false, task::milestone umbrella}, note "", pin false, head_ts 2026-07-26T06:54:25.944144023Z, parents ()}

@@ -246,6 +246,14 @@ two-answers drift this RFC exists to prevent.
 1. **Should `kinora resolve` follow cross-repo references?** That requires a
    registry mapping a component namespace to a repo URL, and a policy for
    resolving against a checkout that may be absent or at a different revision.
+
+   First use sharpened this. The `component:id` form turns out to be needed in
+   **two** places, not one: in code comments as designed, and in **kino bodies**,
+   where a spec in one ledger cites a contract in another. Inside a ledger a body
+   uses `kino://<id>`, which renders as a link; there is no cross-ledger
+   equivalent, so a `moco:<id>` in a body is inert text today. Verifying such a
+   reference is currently a shell loop over `kinora -C <repo> resolve <id>`, which
+   works but is not something a reader gets for free.
 2. **Where does packaging live?** The `KillMode=process` unit for moco's job
    substrate is realizable only where a daemon is packaged, which today is hub's
    `node` binary. Does packaging permanently belong to the transport repo because
