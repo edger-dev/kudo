@@ -10,9 +10,12 @@
 //! implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
 
 use hub_protocol::discovery::TopologySnapshot;
+use hub_protocol::errors::RouteError;
+use hub_protocol::routing::{RoutedCall, RoutedReply};
 use hub_protocol::service::ConsumerApiClient;
 
 use crate::error::ShimError;
+use crate::route::{RouteFailure, Target};
 
 /// A live consumer connection to one hub.
 ///
@@ -81,5 +84,45 @@ impl HubClient {
             .topology()
             .await
             .map_err(|e| ShimError::Hub(e.to_string()))
+    }
+
+    /// Route one call to a connector on the selected node/link.
+    ///
+    /// The payload is **opaque here** — its meaning is a private agreement
+    /// between the connector and its callers, and neither the hub nor this shim
+    /// decodes it
+    /// (`hub:d78fb95fddc31aa42bc927da1eaed44292529b3671d1ef9ef58ec8cd0858e51c`).
+    /// That is also what keeps a component-version mismatch harmless: bytes
+    /// cross the boundary, never `Facet`-derived types.
+    ///
+    /// A failure keeps **which side failed**, because that is the only part a
+    /// caller can act on
+    /// (`hub:45af8b01ab1929e94682ed82013a4aad0b48af81c61b3dea89d7b8323cf94752`).
+    pub async fn route(&self, target: Target, call: RoutedCall) -> Result<RoutedReply, ShimError> {
+        let connector = call.connector.clone();
+        let method = call.method.clone();
+
+        self.client
+            .route(target.selector(), call)
+            .await
+            .map_err(|e| {
+                // vox wraps a domain error; anything else is transport-level and
+                // is reported as a hub-side failure to deliver, which is what it
+                // is from the caller's point of view.
+                let (side, detail) = match &e {
+                    vox::VoxError::User(route_error) => match route_error.as_ref() {
+                        RouteError::Hub(hub) => (RouteFailure::Hub, format!("{hub:?}")),
+                        RouteError::Node(node) => (RouteFailure::Node, format!("{node:?}")),
+                    },
+                    other => (RouteFailure::Hub, format!("{other:?}")),
+                };
+                ShimError::Route {
+                    side,
+                    node: target.node.clone(),
+                    connector,
+                    method,
+                    detail,
+                }
+            })
     }
 }

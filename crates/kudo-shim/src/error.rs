@@ -6,6 +6,8 @@
 
 use std::fmt;
 
+use crate::route::RouteFailure;
+
 /// A failure reaching or talking to the mesh.
 #[derive(Debug)]
 pub enum ShimError {
@@ -24,6 +26,28 @@ pub enum ShimError {
     HubHandshake { addr: String, detail: String },
     /// The hub answered, but with a failure.
     Hub(String),
+    /// A routed call failed, and this says **which side** failed.
+    ///
+    /// Flattening the two into one string would be simpler and would erase the
+    /// only thing a caller can act on: a hub failure usually means a stale view
+    /// of the mesh, a node failure means the connector refused.
+    Route {
+        side: RouteFailure,
+        node: String,
+        connector: String,
+        method: String,
+        detail: String,
+    },
+}
+
+impl ShimError {
+    /// Which side a routed call failed on, if this was a routing failure.
+    pub fn failure(&self) -> Option<RouteFailure> {
+        match self {
+            ShimError::Route { side, .. } => Some(*side),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for ShimError {
@@ -41,6 +65,31 @@ impl fmt::Display for ShimError {
                 "connected to {addr} but could not open a consumer lane: {detail}"
             ),
             ShimError::Hub(detail) => write!(f, "the hub refused the request: {detail}"),
+            // Name the side in words, not just in a variant: whoever reads this
+            // has to decide between "my view is stale" and "it said no".
+            ShimError::Route {
+                side: RouteFailure::Hub,
+                node,
+                detail,
+                ..
+            } => write!(
+                f,
+                "the hub could not deliver the call to node '{node}': {detail}. \
+                 This is a delivery failure, not a refusal — the node may be \
+                 gone or renamed, so check what is connected before retrying."
+            ),
+            ShimError::Route {
+                side: RouteFailure::Node,
+                node,
+                connector,
+                method,
+                detail,
+            } => write!(
+                f,
+                "node '{node}' received the call but connector '{connector}' \
+                 refused '{method}': {detail}. This reached the far side and was \
+                 rejected — retrying unchanged will fail the same way."
+            ),
         }
     }
 }

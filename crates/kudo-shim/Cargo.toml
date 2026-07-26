@@ -18,3 +18,5 @@ serde = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+hub = { workspace = true }
+node = { workspace = true }

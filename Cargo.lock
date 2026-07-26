@@ -604,6 +604,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 
 [[package]]
+name = "hub"
+version = "0.0.0"
+source = "git+https://github.com/edger-dev/hub?rev=dbc40efec43ebc385d92c608144610dfadbd7145#dbc40efec43ebc385d92c608144610dfadbd7145"
+dependencies = [
+ "hub-protocol",
+ "tokio",
+ "vox",
+]
+
+[[package]]
 name = "hub-protocol"
 version = "0.0.0"
 source = "git+https://github.com/edger-dev/hub?rev=dbc40efec43ebc385d92c608144610dfadbd7145#dbc40efec43ebc385d92c608144610dfadbd7145"
@@ -710,7 +720,9 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "facet-json",
+ "hub",
  "hub-protocol",
+ "node",
  "rmcp",
  "serde",
  "tokio",
@@ -794,6 +806,18 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+]
+
+[[package]]
+name = "node"
+version = "0.0.0"
+source = "git+https://github.com/edger-dev/hub?rev=dbc40efec43ebc385d92c608144610dfadbd7145#dbc40efec43ebc385d92c608144610dfadbd7145"
+dependencies = [
+ "facet",
+ "facet-json",
+ "hub-protocol",
+ "tokio",
+ "vox",
 ]
 
 [[package]]

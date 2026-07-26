@@ -16,11 +16,13 @@
 pub mod error;
 pub mod hub;
 pub mod mesh;
+pub mod route;
 pub mod server;
 
 pub use error::ShimError;
 pub use hub::HubClient;
 pub use mesh::render_mesh;
+pub use route::{RouteFailure, Target};
 pub use server::ShimServer;
 
 /// The environment variable naming the hub to dial.
