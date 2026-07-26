@@ -257,8 +257,21 @@ pub fn render_jobs(reply: &ListReply) -> String {
 /// The bytes are shown lossily **at this last step only** — the engine carried
 /// them verbatim, and this is the point where they become something to read.
 pub fn render_tail(reply: &TailReply) -> String {
+    // A gap is surfaced, never swallowed. Scrollback is bounded, so a reader
+    // that fell behind has genuinely lost output — and one that is told can go
+    // and look at the machine view instead, while one that is not will simply
+    // believe it saw everything.
+    let gap = if reply.skipped > 0 {
+        format!(
+            "\n({} earlier bytes were dropped — this job out-ran its scrollback; \
+             its machine view, if it declares one, does not have this problem)",
+            reply.skipped
+        )
+    } else {
+        String::new()
+    };
     format!(
-        "status: {:?}\nnext_offset: {}\n---\n{}",
+        "status: {:?}\nnext_offset: {}{gap}\n---\n{}",
         reply.status,
         reply.next_offset,
         String::from_utf8_lossy(&reply.bytes)
