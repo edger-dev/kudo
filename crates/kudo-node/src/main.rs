@@ -66,6 +66,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         registry.dir().display()
     );
 
+    // **Drive the supervisor.** The engine deliberately spawns no threads — it
+    // links no runtime — so the interval is the daemon's to own, and this is
+    // the daemon. The tick rate doubles as the rate limit on a service that
+    // crashes immediately, which is a backoff nobody had to design.
+    let supervising = tokio::spawn({
+        let registry = registry.clone();
+        async move {
+            let mut ticker = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                ticker.tick().await;
+                // Blocking work off the async threads: settling a job reads
+                // files and reaps children.
+                let registry = registry.clone();
+                let _ = tokio::task::spawn_blocking(move || registry.supervise()).await;
+            }
+        }
+    });
+
     node::reconnect::run_with(
         &config,
         connectors,
@@ -94,5 +112,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await;
 
+    supervising.abort();
     Ok(())
 }
