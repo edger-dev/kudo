@@ -15,9 +15,9 @@ not exist.
 
 This RFC fixes the boundary model on **two axes**. *Layering* extends RFC-0005's
 "no upward edges" across the whole component set. *Kind* sorts every repo into
-**engine**, **transport**, or **face**, with one testable rule — **a face may
-contain no logic a second face would need** — that decides the cases the layering
-axis leaves ambiguous.
+**engine**, **transport**, **face**, **environment**, or **composition root**,
+with one testable rule — **a face may contain no logic a second face would
+need** — that decides the cases the layering axis leaves ambiguous.
 
 It then addresses the consequence the split creates: a contract may be
 **declared** in one repo and **realized** in another, so the `// implements:`
@@ -95,13 +95,14 @@ Both are already contracted:
 Layering answers "may A call B". It does **not** answer "which repo does this
 file go in" when several are permitted — which is most of the time.
 
-### Axis B — kind: engine, transport, face
+### Axis B — kind: engine, transport, face, composition root
 
 | kind | holds | links | repos |
 |---|---|---|---|
 | **engine** | the capability itself — state, policy, lifecycle | no transport, no UI framework, no protocol SDK | `moco`, `kinora`, `kura` |
 | **transport** | routing, reachability, topology | no domain semantics | `hub` |
 | **face** | a thin per-consumer adapter — MCP shim, console, CLI | the engine it presents | `kudo` |
+| **composition root** | the assembly of a runnable artifact out of components | **any** component | `kudo` (daemon binaries) |
 
 **The rule that makes "thin" testable:**
 
@@ -118,6 +119,15 @@ changing.
 A corollary worth stating because it has already paid: **host a capability on the
 daemon that exists.** A second per-node daemon duplicates transport, liveness, and
 deployment for nothing. If you are writing one, ask what the first is missing.
+
+**A composition root may depend on anything, and nothing may depend on it.**
+That second half is what stops it being a loophole: as a leaf of the dependency
+graph it can bind a transport *and* an engine together without creating the
+upward edge that binding them anywhere else would. This kind was **not** in the
+first draft of this RFC — it was forced by building the job connector and
+finding that neither obvious placement was legal. Every system has one; naming
+it stops it being smuggled into a component that then acquires dependencies it
+should not have.
 
 **Where Tsui sits.** Tsui is *not* a face under this taxonomy, and RFC-0002 is
 right that it is "a desktop environment, not a widget toolkit". It is a fourth
@@ -258,6 +268,12 @@ Kudo's `specs` root is now created, with the contracts carved from this RFC:
 | `cross-repo-refs-cite-stable-ids` | `45a102c5172c480c69af8aba4f61863f67266f96a183d92f2c9c95544049a658` |
 | `cross-component-crate-deps-are-pinned-git` | `8b09e3e9bdc7712b5e53412964fd2d4668e095e2a13e3d2b74c77e1bac3c11de` |
 
+The taxonomy spec has since been re-versioned to add a fourth kind — the
+**composition root** — after building the job connector proved there was nowhere
+legal to assemble a transport and an engine together. That was a gap in this
+RFC rather than a problem with the design: once named, it closes without
+weakening either layering rule.
+
 Cited from another repo, the first of these reads:
 
 ```rust
@@ -314,11 +330,14 @@ two-answers drift this RFC exists to prevent.
    equivalent, so a `moco:<id>` in a body is inert text today. Verifying such a
    reference is currently a shell loop over `kinora -C <repo> resolve <id>`, which
    works but is not something a reader gets for free.
-2. **Where does packaging live?** The `KillMode=process` unit for moco's job
-   substrate is realizable only where a daemon is packaged, which today is hub's
-   `node` binary. Does packaging permanently belong to the transport repo because
-   that is where the daemon is, or does moco eventually ship its own daemon and
-   take it back?
+2. ~~**Where does packaging live?**~~ **Answered by building it.** Neither
+   candidate was legal: an adapter in moco binds the engine to the daemon's
+   internal `Connector` trait, and a job connector in hub's `node` binary is the
+   transport depending on the engine. Packaging belongs to a **composition
+   root** — a fourth kind, which may depend on anything precisely because
+   nothing depends on it. `kudo-node` is that root, and it is where the
+   `KillMode=process` unit now belongs. The taxonomy spec was re-versioned to
+   name the kind.
 3. **When do the shared crate versions converge?** `facet` is at three versions
    across the components and `facet-styx` at two. Nothing needs convergence while
    boundaries carry bytes, but the day a component genuinely wants to share a
