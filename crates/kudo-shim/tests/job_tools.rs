@@ -403,3 +403,108 @@ async fn a_foreign_workspace_job_cannot_be_killed_through_the_shim() {
     let _ = std::fs::remove_dir_all(&theirs);
     let _ = std::fs::remove_dir_all(&mine);
 }
+
+/// Resource readings reach an agent over the hub, and the render answers the
+/// question that was asked rather than dumping the series.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_jobs_resource_use_is_readable_over_the_mesh() {
+    let (addr, registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["sleep".into(), "30".into()],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
+        },
+    )
+    .await
+    .expect("start");
+
+    // Stand in for the daemon's tick, which this harness does not run.
+    registry.sample_all();
+
+    let stats = jobs::stats(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::StatsRequest {
+            id: started.id.clone(),
+        },
+    )
+    .await
+    .expect("stats");
+
+    let latest = stats.samples.last().expect("a sample after sampling");
+    assert!(latest.rss_bytes > 0, "a live process occupies memory");
+
+    let rendered = jobs::render_stats(&stats);
+    assert!(rendered.contains("memory:"), "got:\n{rendered}");
+    assert!(rendered.contains("peak"), "got:\n{rendered}");
+
+    let _ = jobs::kill(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        KillRequest {
+            id: started.id,
+            caller: moco_job::wire::WireCaller::Console,
+        },
+    )
+    .await;
+}
+
+/// A breach reads as **a fact about the reading**, and says outright that
+/// nothing acts on it.
+///
+/// The wording is the contract here: an agent told only "over its cpu ceiling"
+/// may reasonably infer the supervisor is about to stop the job, and kill it
+/// first to be tidy — which would be the enforcement this design refuses,
+/// arrived at by inference.
+#[test]
+fn a_reported_breach_says_plainly_that_nothing_will_act_on_it() {
+    let rendered = jobs::render_stats(&moco_job::wire::StatsReply {
+        samples: vec![moco_job::Sample {
+            at_unix_ms: 1,
+            cpu_pct: 800,
+            rss_bytes: 64 * 1024 * 1024,
+        }],
+        limits: moco_job::Limits {
+            cpu_pct: 100,
+            mem_mb: 0,
+        },
+        breach: moco_job::Breach {
+            cpu: true,
+            memory: false,
+        },
+    });
+
+    assert!(rendered.contains("cpu ceiling"), "got:\n{rendered}");
+    assert!(rendered.contains("advisory"), "got:\n{rendered}");
+    assert!(
+        rendered.contains("nothing will"),
+        "the reply must foreclose the inference that a stop is coming, got:\n{rendered}"
+    );
+}
+
+/// A job that has not been sampled reports that, rather than an idle-looking
+/// zero.
+#[test]
+fn no_samples_is_said_out_loud_and_not_shown_as_idle() {
+    let rendered = jobs::render_stats(&moco_job::wire::StatsReply {
+        samples: vec![],
+        limits: moco_job::Limits::default(),
+        breach: moco_job::Breach {
+            cpu: false,
+            memory: false,
+        },
+    });
+    assert!(rendered.contains("no samples yet"), "got:\n{rendered}");
+    assert!(!rendered.contains("0%"), "got:\n{rendered}");
+}

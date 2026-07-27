@@ -51,5 +51,5 @@ rmcp = { version = "3.0.0-beta.2", features = ["server", "transport-io"] }
 # The engine the composition root hosts. A second component dependency, and the
 # first time two facet versions meet in one build graph — safe only because the
 # boundary between them is bytes. See RFC-0006.
-moco-job = { git = "https://github.com/edger-dev/moco", rev = "a33d5da040c86279d20aba0982a3ad2e9f07d043" }
+moco-job = { git = "https://github.com/edger-dev/moco", rev = "3434aaa040675b9a6f504e8c8d34468a27bbb3fb" }
 serde = { version = "1", features = ["derive"] }

@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use moco_job::wire::{
     ClearRequest, EnsureRequest, KillRequest, MachineRequest, RestartRequest, StartNamedRequest,
-    StartRequest, TailRequest,
+    StartRequest, StatsRequest, TailRequest,
 };
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, ProtocolVersion, ServerCapabilities, ServerInfo};
@@ -388,6 +388,28 @@ impl ShimServer {
             )
             .await
             .map(|r| jobs::render_machine(&r)),
+        )
+    }
+
+    #[tool(
+        name = "job_stats",
+        description = "What a job is consuming — CPU and memory, now and at peak over the last \
+                       minute. Use this to find what is loading a machine. Limits a job declares \
+                       are advisory: a breach is reported here and nothing acts on it."
+    )]
+    async fn job_stats(
+        &self,
+        Parameters(args): Parameters<KillArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        reply(
+            jobs::stats(
+                &self.hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                StatsRequest { id: args.id },
+            )
+            .await
+            .map(|r| jobs::render_stats(&r)),
         )
     }
 

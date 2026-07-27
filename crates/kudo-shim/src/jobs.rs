@@ -17,7 +17,7 @@ use hub_protocol::routing::RoutedCall;
 use moco_job::wire::{
     ClearReply, ClearRequest, EnsureReply, EnsureRequest, KillReply, KillRequest, ListReply,
     MachineReply, MachineRequest, RestartRequest, StartNamedRequest, StartReply, StartRequest,
-    TailReply, TailRequest, WireCaller,
+    StatsReply, StatsRequest, TailReply, TailRequest, WireCaller,
 };
 
 use crate::error::ShimError;
@@ -185,6 +185,80 @@ pub async fn machine(
     let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
     let bytes = route(hub, target, connector, "machine", payload).await?;
     moco_job::wire::decode::<MachineReply>(&bytes).map_err(decode_failed)
+}
+
+/// Ask what a job has been consuming.
+pub async fn stats(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: StatsRequest,
+) -> Result<StatsReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "stats", payload).await?;
+    moco_job::wire::decode::<StatsReply>(&bytes).map_err(decode_failed)
+}
+
+/// Render a job's resource history for an agent.
+///
+/// Summarised rather than dumped: sixty raw samples is a wall of numbers that
+/// costs tokens to receive and answers nothing directly. What a caller actually
+/// asks is *is this the thing eating the machine* — so the answer leads with
+/// current and peak, and the series is left on the engine for anything that
+/// really wants it.
+///
+/// A breach is stated as **a fact about the reading, not a threat**, because
+/// nothing acts on it. Saying so explicitly stops a caller from inferring that
+/// the job is about to be stopped and pre-emptively killing it themselves.
+pub fn render_stats(reply: &StatsReply) -> String {
+    let Some(latest) = reply.samples.last() else {
+        return "no samples yet — the job is not running, or has not been \
+                sampled since it started"
+            .to_string();
+    };
+
+    let peak_cpu = reply.samples.iter().map(|s| s.cpu_pct).max().unwrap_or(0);
+    let peak_rss = reply.samples.iter().map(|s| s.rss_bytes).max().unwrap_or(0);
+
+    let mut out = format!(
+        "cpu: {}% now, {peak_cpu}% peak\nmemory: {} now, {} peak\nover the last {} sample(s)",
+        latest.cpu_pct,
+        mib(latest.rss_bytes),
+        mib(peak_rss),
+        reply.samples.len(),
+    );
+
+    if !reply.limits.is_unset() {
+        out.push_str("\ndeclared ceilings:");
+        if reply.limits.cpu_pct > 0 {
+            out.push_str(&format!(" cpu {}%", reply.limits.cpu_pct));
+        }
+        if reply.limits.mem_mb > 0 {
+            out.push_str(&format!(" memory {} MiB", reply.limits.mem_mb));
+        }
+    }
+
+    if reply.breach.any() {
+        let what = match (reply.breach.cpu, reply.breach.memory) {
+            (true, true) => "cpu and memory",
+            (true, false) => "cpu",
+            _ => "memory",
+        };
+        out.push_str(&format!(
+            "\n\nover its declared {what} ceiling. This is advisory: nothing \
+             throttles or stops the job because of it, and nothing will."
+        ));
+    }
+
+    out
+}
+
+fn mib(bytes: u64) -> String {
+    if bytes < 1024 * 1024 {
+        format!("{} KiB", bytes / 1024)
+    } else {
+        format!("{} MiB", bytes / (1024 * 1024))
+    }
 }
 
 /// Render a machine-lens read, saying which channel it came from.
