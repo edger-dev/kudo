@@ -14,8 +14,8 @@
 use std::sync::Arc;
 
 use moco_job::wire::{
-    ClearRequest, EnsureRequest, KillRequest, MachineRequest, RestartRequest, StartNamedRequest,
-    StartRequest, StatsRequest, TailRequest,
+    ClearRequest, EnsureRequest, KillRequest, MachineRequest, RestartRequest, ScreenRequest,
+    StartNamedRequest, StartRequest, StatsRequest, TailRequest,
 };
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, ProtocolVersion, ServerCapabilities, ServerInfo};
@@ -388,6 +388,29 @@ impl ShimServer {
             )
             .await
             .map(|r| jobs::render_machine(&r)),
+        )
+    }
+
+    #[tool(
+        name = "job_screen",
+        description = "What this job's terminal looks like right now — the visible screen, not \
+                       its history. Use this for anything that redraws (progress bars, TUIs, \
+                       test runners): job_tail would give you every superseded frame, this \
+                       gives you the current one."
+    )]
+    async fn job_screen(
+        &self,
+        Parameters(args): Parameters<KillArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        reply(
+            jobs::screen(
+                &self.hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                ScreenRequest { id: args.id },
+            )
+            .await
+            .map(|r| jobs::render_screen(&r)),
         )
     }
 

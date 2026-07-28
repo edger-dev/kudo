@@ -16,8 +16,8 @@
 use hub_protocol::routing::RoutedCall;
 use moco_job::wire::{
     ClearReply, ClearRequest, EnsureReply, EnsureRequest, KillReply, KillRequest, ListReply,
-    MachineReply, MachineRequest, RestartRequest, StartNamedRequest, StartReply, StartRequest,
-    StatsReply, StatsRequest, TailReply, TailRequest, WireCaller,
+    MachineReply, MachineRequest, RestartRequest, ScreenReply, ScreenRequest, StartNamedRequest,
+    StartReply, StartRequest, StatsReply, StatsRequest, TailReply, TailRequest, WireCaller,
 };
 
 use crate::error::ShimError;
@@ -185,6 +185,45 @@ pub async fn machine(
     let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
     let bytes = route(hub, target, connector, "machine", payload).await?;
     moco_job::wire::decode::<MachineReply>(&bytes).map_err(decode_failed)
+}
+
+/// Ask for a job's current screen.
+pub async fn screen(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: ScreenRequest,
+) -> Result<ScreenReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "screen", payload).await?;
+    moco_job::wire::decode::<ScreenReply>(&bytes).map_err(decode_failed)
+}
+
+/// Render a screen read, saying whether it was observed or reconstructed.
+///
+/// The distinction is not pedantry: a reconstructed screen is blind to anything
+/// drawn before the capture's oldest retained byte, so a caller that cannot tell
+/// them apart may conclude a banner or a header is gone when it is merely
+/// unrecoverable from what was kept.
+pub fn render_screen(reply: &ScreenReply) -> String {
+    let source = match reply.source {
+        moco_job::ScreenSource::Live => "live".to_string(),
+        moco_job::ScreenSource::Replayed => {
+            "reconstructed from the retained scrollback — this job has no live \
+             terminal, so anything drawn before the oldest kept byte is missing"
+                .to_string()
+        }
+    };
+    if reply.text.trim().is_empty() {
+        return format!(
+            "source: {source}\ngrid: {}x{}\n---\n(the screen is blank)",
+            reply.cols, reply.rows
+        );
+    }
+    format!(
+        "source: {source}\ngrid: {}x{}\n---\n{}",
+        reply.cols, reply.rows, reply.text
+    )
 }
 
 /// Ask what a job has been consuming.

@@ -508,3 +508,67 @@ fn no_samples_is_said_out_loud_and_not_shown_as_idle() {
     assert!(rendered.contains("no samples yet"), "got:\n{rendered}");
     assert!(!rendered.contains("0%"), "got:\n{rendered}");
 }
+
+/// The screen lens over the mesh: a redrawing job reads back as its current
+/// frame, not every frame it ever drew.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_redrawing_job_reads_back_as_one_screen_over_the_mesh() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec![
+                "sh".into(),
+                "-c".into(),
+                "printf 'step 1/3\rstep 2/3\rstep 3/3'; sleep 5".into(),
+            ],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            },
+        },
+    )
+    .await
+    .expect("start");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let view = jobs::screen(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::ScreenRequest {
+            id: started.id.clone(),
+        },
+    )
+    .await
+    .expect("screen");
+
+    // An ad-hoc start has no declared human view, so this is a logs job and its
+    // screen is reconstructed — which is exactly what must be reported.
+    assert_eq!(view.source, moco_job::ScreenSource::Replayed);
+    assert!(view.text.contains("step 3/3"), "got:\n{}", view.text);
+    assert!(!view.text.contains("step 1/3"), "got:\n{}", view.text);
+
+    let rendered = jobs::render_screen(&view);
+    assert!(
+        rendered.contains("reconstructed"),
+        "a reconstructed screen must say so, got:\n{rendered}"
+    );
+
+    let _ = jobs::kill(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        KillRequest {
+            id: started.id,
+            caller: moco_job::wire::WireCaller::Console,
+        },
+    )
+    .await;
+}
