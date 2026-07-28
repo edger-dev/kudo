@@ -34,3 +34,33 @@ fn no_mod_rs_files() {
          `foo/mod.rs`. Offending files: {hits:#?}"
     );
 }
+
+/// **The daemon must die alone.**
+///
+/// systemd's default `KillMode=control-group` signals every process in the
+/// cgroup, which is every job this daemon supervises — so restarting the
+/// supervisor would take down the servers and builds it exists to keep alive,
+/// and "a job outlives any one client" would be false exactly when it matters.
+///
+/// Asserted here because the unit file is the kind of thing that gets tidied
+/// back to a default by someone who does not know what it is load-bearing for.
+///
+/// implements: the-daemon-dies-alone
+#[test]
+#[allow(clippy::expect_used, reason = "a failure here is a broken harness")]
+fn the_systemd_unit_does_not_kill_the_jobs_with_the_daemon() {
+    let unit = include_str!("../packaging/kudo-node.service");
+
+    let kill_mode: Vec<&str> = unit
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("KillMode="))
+        .collect();
+
+    assert_eq!(
+        kill_mode,
+        vec!["KillMode=process"],
+        "the unit must set KillMode=process exactly once — the default signals \
+         every supervised job along with the daemon"
+    );
+}

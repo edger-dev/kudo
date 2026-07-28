@@ -1,0 +1,48 @@
+# The kudo node daemon, as a system service.
+#
+# implements: the-daemon-dies-alone
+
+[Unit]
+Description=kudo node — human-agent job supervisor
+Documentation=https://github.com/yjpark/kudo
+# The hub is dialed with unlimited retries and boot autostart does not wait for
+# it, so this is an ordering preference rather than a dependency.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/kudo-node
+Restart=always
+RestartSec=1s
+
+# **The line this unit exists for.** systemd's default, `KillMode=control-group`,
+# signals every process in the cgroup on stop — which is every job this daemon
+# supervises. Restarting the supervisor would then take down the servers, builds
+# and watchers it exists to keep alive, and the property the whole substrate is
+# built on ("a job outlives any one client") would be false precisely when it
+# matters most.
+#
+# `process` signals only the daemon. Its jobs keep running, and the daemon takes
+# them back over on restart through the ordinary adoption path — the pid and its
+# start time are on disk, so re-adoption identifies the same process rather than
+# a recycled pid.
+#
+# Do not "tidy" this to the default. An architecture test asserts it is here.
+KillMode=process
+
+# Jobs are re-adopted rather than restarted, so a slow stop is the daemon
+# failing to exit, not jobs draining. Keep it short.
+TimeoutStopSec=10s
+
+# Where the registry, the durable records and the node manifest live. Boot
+# autostart reads `moco-processes.styx` from this directory.
+Environment=MOCO_DIR=/var/lib/kudo-node
+StateDirectory=kudo-node
+
+# The daemon supervises arbitrary user processes, so sandboxing it would sandbox
+# them too. Confinement belongs to the node's rule-set, which decides what may
+# run at all, rather than to a unit file that cannot see the difference.
+
+[Install]
+WantedBy=multi-user.target

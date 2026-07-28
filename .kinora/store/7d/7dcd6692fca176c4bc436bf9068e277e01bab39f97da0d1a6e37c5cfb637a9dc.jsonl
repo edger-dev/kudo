@@ -1,0 +1,3 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"assign","kind":"kin::assign","id":"6352cab73c542937f78e7a4d97a816d9fc86d34768c8fe8f8a5237a9df247a44","hash":"6352cab73c542937f78e7a4d97a816d9fc86d34768c8fe8f8a5237a9df247a44","parents":[],"ts":"2026-07-28T14:21:15.194863373Z","author":"YJ Park","provenance":"authored","metadata":{"kin::target_root":"specs"}}
+{"event_kind":"store","kind":"markdown","id":"6352cab73c542937f78e7a4d97a816d9fc86d34768c8fe8f8a5237a9df247a44","hash":"6352cab73c542937f78e7a4d97a816d9fc86d34768c8fe8f8a5237a9df247a44","parents":[],"ts":"2026-07-28T14:21:15.194863373Z","author":"YJ Park","provenance":"authored","metadata":{"doc::kind":"spec","name":"the-daemon-dies-alone"}}
