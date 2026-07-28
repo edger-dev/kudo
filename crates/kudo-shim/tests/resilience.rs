@@ -170,6 +170,19 @@ async fn a_timeout_says_the_work_may_still_be_running() {
     let registry = Arc::new(JobRegistry::ungoverned().expect("registry"));
     let _node = spawn_node(&addr, registry.clone());
 
+    // **Wait for the node to register first.** Without this the 1ms call can
+    // land before the node exists to the hub, and the reply is `UnknownNode` —
+    // a delivery failure, not a timeout. That is a different message with a
+    // different meaning, and asserting on it under load made this test flaky
+    // for a reason that had nothing to do with timeouts.
+    let ready = HubClient::dial(&addr).await.expect("dial");
+    for _ in 0..100 {
+        if ready.topology().await.map(|t| t.nodes.len()).unwrap_or(0) == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
     // A budget so small that any real round trip exceeds it.
     let client = HubClient::dial(&addr)
         .await

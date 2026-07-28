@@ -51,6 +51,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // outlive any one client, which is the property the whole substrate exists
     // to provide — so nothing here tears them down.
     let registry = Arc::new(JobRegistry::ungoverned()?);
+    // **Boot autostart, before anything else runs.** What the node declares
+    // for boot comes up whether or not a hub is ever reachable — these are the
+    // machine's own services, and making them wait on a transport would tie a
+    // local concern to a remote one.
+    //
+    // A failure here is reported and not fatal: a manifest problem must not
+    // cost the node its supervisor, since the supervisor is what a person needs
+    // in order to fix the manifest.
+    match registry.boot() {
+        Ok(started) if !started.is_empty() => {
+            println!("boot: started {} node job(s)", started.len());
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("boot: {e}"),
+    }
+
     let mut connectors = Connectors::new();
     connectors.register(Box::new(JobConnector::new(
         connector_id.clone(),

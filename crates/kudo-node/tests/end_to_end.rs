@@ -236,3 +236,43 @@ async fn an_engine_refusal_survives_the_round_trip() {
     node_task.abort();
     serving.abort();
 }
+
+/// **Boot autostart does not wait on the hub.** These are the machine's own
+/// services; making them depend on a transport being reachable would tie a
+/// local concern to a remote one, so a node with no hub in sight still brings
+/// up what it declares.
+///
+/// implements: boot-autostart-reads-the-node-manifest
+#[test]
+#[allow(clippy::expect_used, reason = "a failure here is a broken harness")]
+fn a_node_brings_up_its_declared_jobs_without_any_hub() {
+    let dir = std::env::temp_dir().join(format!("kudo-node-boot-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create");
+    let dir = dir.canonicalize().expect("canonicalize");
+
+    std::fs::write(
+        dir.join(moco_job::MANIFEST_FILE),
+        format!(
+            r#"proc ({{name node-service, argv (sleep 30), cwd "{}", autostart @Boot}})"#,
+            dir.display()
+        ),
+    )
+    .expect("node manifest");
+
+    let registry = JobRegistry::ungoverned()
+        .expect("registry")
+        .with_dir(&dir)
+        .expect("with_dir");
+
+    let started = registry.boot().expect("boot");
+    assert_eq!(started.len(), 1, "the node's own declaration came up");
+    assert_eq!(
+        registry.scope_of(&started[0]),
+        Some(moco_job::Scope::System),
+        "a node job belongs to the node"
+    );
+
+    let _ = registry.kill(&started[0], &moco_job::Caller::Console);
+    let _ = std::fs::remove_dir_all(&dir);
+}
