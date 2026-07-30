@@ -552,8 +552,9 @@ async fn a_redrawing_job_reads_back_as_one_screen_over_the_mesh() {
     // An ad-hoc start has no declared human view, so this is a logs job and its
     // screen is reconstructed — which is exactly what must be reported.
     assert_eq!(view.source, moco_job::ScreenSource::Replayed);
-    assert!(view.text.contains("step 3/3"), "got:\n{}", view.text);
-    assert!(!view.text.contains("step 1/3"), "got:\n{}", view.text);
+    let text = String::from_utf8_lossy(&view.bytes);
+    assert!(text.contains("step 3/3"), "got:\n{text}");
+    assert!(!text.contains("step 1/3"), "got:\n{text}");
 
     let rendered = jobs::render_screen(&view);
     assert!(

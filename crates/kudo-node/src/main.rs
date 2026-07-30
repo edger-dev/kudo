@@ -72,7 +72,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .filter(|path| path.exists());
 
-    let registry = JobRegistry::ungoverned()?;
+    // **A stable state directory, or none of the durability is real.** The
+    // engine's default is a per-process directory — right for a library, and
+    // wrong for a daemon: a supervisor that gets a fresh directory on every
+    // start re-adopts nothing, boots nothing, and forgets every port it ever
+    // allocated. Which directory a deployment uses is a deployment fact, so it
+    // is decided here.
+    let state = std::env::var("MOCO_DIR")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(|| {
+            std::env::var("XDG_STATE_HOME")
+                .map(|d| PathBuf::from(d).join("kudo-node"))
+                .ok()
+        })
+        .or_else(|| {
+            std::env::var("HOME")
+                .map(|d| PathBuf::from(d).join(".local/state/kudo-node"))
+                .ok()
+        })
+        .unwrap_or_else(|| PathBuf::from("/var/lib/kudo-node"));
+    std::fs::create_dir_all(&state)?;
+
+    let registry = JobRegistry::ungoverned()?.with_dir(&state)?;
     let registry = match &holder {
         Some(path) => registry.with_pty_holder(path),
         None => {

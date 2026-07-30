@@ -214,15 +214,16 @@ pub fn render_screen(reply: &ScreenReply) -> String {
                 .to_string()
         }
     };
-    if reply.text.trim().is_empty() {
+    let text = String::from_utf8_lossy(&reply.bytes);
+    if text.trim().is_empty() {
         return format!(
             "source: {source}\ngrid: {}x{}\n---\n(the screen is blank)",
             reply.cols, reply.rows
         );
     }
     format!(
-        "source: {source}\ngrid: {}x{}\n---\n{}",
-        reply.cols, reply.rows, reply.text
+        "source: {source}\ngrid: {}x{}\n---\n{text}",
+        reply.cols, reply.rows
     )
 }
 

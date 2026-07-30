@@ -86,3 +86,24 @@ fn the_systemd_unit_points_at_the_pty_holder() {
          their terminal on every restart"
     );
 }
+
+/// The unit gives the daemon a **stable** state directory.
+///
+/// The engine's default is a per-process directory — correct for a library and
+/// ruinous for a daemon: a supervisor handed a fresh directory on every start
+/// re-adopts nothing, boots nothing, and forgets every port it ever allocated.
+/// Every durability feature in the system is silently inert without this, and
+/// nothing fails loudly to say so.
+///
+/// implements: the-daemon-dies-alone
+#[test]
+#[allow(clippy::expect_used, reason = "a failure here is a broken harness")]
+fn the_systemd_unit_gives_the_daemon_a_stable_state_directory() {
+    let unit = include_str!("../packaging/kudo-node.service");
+    assert!(
+        unit.lines()
+            .map(str::trim)
+            .any(|l| l.starts_with("Environment=MOCO_DIR=")),
+        "without a stable state directory every durability feature is inert"
+    );
+}
