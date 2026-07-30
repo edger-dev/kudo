@@ -35,6 +35,12 @@ KillMode=process
 # failing to exit, not jobs draining. Keep it short.
 TimeoutStopSec=10s
 
+# `moco-pty-holder` must be installed beside kudo-node, or named here. A
+# terminal job runs *as* the holder, so this is what lets such a job keep its
+# terminal across a restart of this unit. Absent, terminal jobs still run — they
+# just lose their live terminal when the daemon goes, as they did before.
+Environment=KUDO_PTY_HOLDER=/usr/local/bin/moco-pty-holder
+
 # Where the registry, the durable records and the node manifest live. Boot
 # autostart reads `moco-processes.styx` from this directory.
 Environment=MOCO_DIR=/var/lib/kudo-node

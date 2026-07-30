@@ -64,3 +64,25 @@ fn the_systemd_unit_does_not_kill_the_jobs_with_the_daemon() {
          every supervised job along with the daemon"
     );
 }
+
+/// The unit names the PTY holder, and names it somewhere the daemon can find.
+///
+/// A terminal job runs *as* the holder, so this line is what lets such a job
+/// keep its terminal across a restart of the unit. Its absence is not fatal —
+/// the engine treats durability as opt-in — which is exactly why it needs a
+/// test: a silently missing holder looks like nothing at all until someone
+/// restarts the daemon and loses a terminal they were watching.
+///
+/// implements: the-daemon-dies-alone
+#[test]
+#[allow(clippy::expect_used, reason = "a failure here is a broken harness")]
+fn the_systemd_unit_points_at_the_pty_holder() {
+    let unit = include_str!("../packaging/kudo-node.service");
+    assert!(
+        unit.lines()
+            .map(str::trim)
+            .any(|l| l.starts_with("Environment=KUDO_PTY_HOLDER=")),
+        "the unit must name the holder binary, or terminal jobs quietly lose \
+         their terminal on every restart"
+    );
+}

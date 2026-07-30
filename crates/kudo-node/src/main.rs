@@ -8,6 +8,7 @@
 //! Reads `NODE_ID`, `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]), and
 //! `KUDO_JOB_CONNECTOR` (default `jobs-0`).
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,7 +51,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The registry is created here and lives as long as the daemon. Jobs
     // outlive any one client, which is the property the whole substrate exists
     // to provide — so nothing here tears them down.
-    let registry = Arc::new(JobRegistry::ungoverned()?);
+    // **Where the per-job PTY holder lives.** A terminal job spawned through it
+    // keeps its terminal across a restart of *this* process, which is the whole
+    // reason the holder exists — and the reason to resolve it here rather than
+    // in the engine: which binary is installed where is a deployment fact, and
+    // deployment facts belong to the composition root.
+    //
+    // Default: beside this executable, which is true both for a packaged
+    // install and for `cargo run` out of a target directory. Durability is
+    // opt-in in the engine, so getting this wrong degrades to the previous
+    // behaviour rather than failing to start.
+    let holder = std::env::var("KUDO_PTY_HOLDER")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()?
+                .parent()
+                .map(|dir| dir.join("moco-pty-holder"))
+        })
+        .filter(|path| path.exists());
+
+    let registry = JobRegistry::ungoverned()?;
+    let registry = match &holder {
+        Some(path) => registry.with_pty_holder(path),
+        None => {
+            eprintln!(
+                "no moco-pty-holder found — terminal jobs will run without one, \
+                 so their live terminal will not survive a restart of this daemon"
+            );
+            registry
+        }
+    };
+    let registry = Arc::new(registry);
     // **Boot autostart, before anything else runs.** What the node declares
     // for boot comes up whether or not a hub is ever reachable — these are the
     // machine's own services, and making them wait on a transport would tie a
