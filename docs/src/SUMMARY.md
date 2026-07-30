@@ -2,6 +2,14 @@
 
 - [Introduction](./introduction.md)
 
+# The Process Manager
+
+- [Overview](./process-manager/overview.md)
+- [The manifest](./process-manager/manifest.md)
+- [The three lenses](./process-manager/lenses.md)
+- [Agent tools](./process-manager/tools.md)
+- [Deployment](./process-manager/deployment.md)
+
 # RFCs
 
 - [RFC-0001: Moco Data Model](./rfcs/rfc-0001_moco-data-model.md)
