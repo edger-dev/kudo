@@ -13,6 +13,7 @@
 //!
 //! implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
 
+pub mod cli;
 pub mod error;
 pub mod hook;
 pub mod hub;

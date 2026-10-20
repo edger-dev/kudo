@@ -131,6 +131,11 @@ impl ContextStore {
         Ok(view.next_ready(ctx, now).is_some())
     }
 
+    /// How many items are ready to pull.
+    pub fn ready_count(&self, ctx: &ContextId, _now: Now) -> Result<usize, Error> {
+        Err(Error::UnknownContext(ctx.0.clone()))
+    }
+
     /// Claim the oldest ready item for `lease`, with a deadline `ttl` seconds
     /// from `now`. `None` when nothing is ready.
     pub fn pull(

@@ -215,3 +215,15 @@ fn a_lease_knows_the_claim_it_holds_until_it_is_settled_or_expires() {
         .unwrap();
     assert_eq!(store.held_by(&ctx, "lease-a", T0 + 3).unwrap(), None);
 }
+
+#[test]
+fn the_ready_count_drops_as_items_are_claimed_and_submitted() {
+    let (store, ctx) = store_with_context();
+    store.enqueue(&ctx, "a", T0).unwrap();
+    store.enqueue(&ctx, "b", T0).unwrap();
+    assert_eq!(store.ready_count(&ctx, T0).unwrap(), 2);
+    let claim = store.pull(&ctx, "lease-a", T0, TTL).unwrap().unwrap();
+    assert_eq!(store.ready_count(&ctx, T0).unwrap(), 1);
+    store.submit(&claim.id, &sub("h\n", "l"), T0 + 1).unwrap();
+    assert_eq!(store.ready_count(&ctx, T0 + 1).unwrap(), 1);
+}
