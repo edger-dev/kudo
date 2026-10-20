@@ -145,3 +145,13 @@ fn the_home_module_keeps_the_three_load_bearing_lines() {
         );
     }
 }
+
+/// The module puts the package's binaries on the user's PATH, so
+/// `kudo-shim worker <context>` works in any pane on a node.
+#[test]
+fn the_home_module_installs_the_cli() {
+    assert!(
+        home_module().contains("home.packages = [ cfg.package ]"),
+        "packaging/home-module.nix must install the package for the user"
+    );
+}
