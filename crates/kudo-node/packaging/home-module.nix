@@ -39,6 +39,9 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # kudo-shim (worker, context, hooks) on PATH for any pane on this node.
+    home.packages = [ cfg.package ];
+
     systemd.user.services.kudo-node = {
       # No network ordering: a user manager has no network-online.target, and
       # the daemon reverse-dials the hub forever, so it needs none.
