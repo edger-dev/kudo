@@ -12,3 +12,4 @@ workspace = true
 # and the shim (which answers the hooks).
 [dependencies]
 kudo-context = { path = "../kudo-context" }
+serde_json = { workspace = true }

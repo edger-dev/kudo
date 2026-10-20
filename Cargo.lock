@@ -2513,6 +2513,7 @@ name = "kudo-worker"
 version = "0.1.0"
 dependencies = [
  "kudo-context",
+ "serde_json",
 ]
 
 [[package]]
