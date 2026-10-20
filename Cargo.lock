@@ -895,11 +895,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kudo-context"
+version = "0.1.0"
+
+[[package]]
 name = "kudo-node"
 version = "0.1.0"
 dependencies = [
  "hub",
  "hub-protocol",
+ "kudo-context",
+ "kudo-worker",
  "moco-job",
  "node",
  "tokio",
@@ -914,7 +920,9 @@ dependencies = [
  "facet-json",
  "hub",
  "hub-protocol",
+ "kudo-context",
  "kudo-node",
+ "kudo-worker",
  "moco-job",
  "node",
  "rmcp",
@@ -922,6 +930,10 @@ dependencies = [
  "tokio",
  "vox",
 ]
+
+[[package]]
+name = "kudo-worker"
+version = "0.1.0"
 
 [[package]]
 name = "libc"

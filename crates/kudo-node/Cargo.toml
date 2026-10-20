@@ -13,6 +13,8 @@ workspace = true
 # spec: repos-are-engine-transport-or-face
 # (kudo:7ea24d8f08c2e3e9c4502030a86fd9d5f9e36c1067d7e2d034d2796177e719ec)
 [dependencies]
+kudo-context = { path = "../kudo-context" }
+kudo-worker = { path = "../kudo-worker" }
 hub-protocol = { workspace = true }
 node = { workspace = true }
 moco-job = { workspace = true }

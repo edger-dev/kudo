@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/kudo-node", "crates/kudo-shim"]
+members = ["crates/kudo-context", "crates/kudo-node", "crates/kudo-shim", "crates/kudo-worker"]
 
 [workspace.package]
 version = "0.1.0"

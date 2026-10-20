@@ -1,0 +1,13 @@
+[package]
+name = "kudo-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+# What turns the ordinary agent CLI into a worker: the launcher's settings file
+# and MCP config, and the hook decisions. Linked by the node (which launches)
+# and the shim (which answers the hooks). No dependencies yet.
+[dependencies]

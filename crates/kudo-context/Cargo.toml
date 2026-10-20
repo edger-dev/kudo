@@ -1,0 +1,14 @@
+[package]
+name = "kudo-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+# An engine: a library linked into every composition root that needs it (the
+# shim, the node, the console), so a pull or a submit reaches the store with no
+# node and no hub on the path. No dependencies yet — phase 2 gives it the
+# context kino, phase 3 the object store.
+[dependencies]
