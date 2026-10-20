@@ -223,3 +223,13 @@ fn after_a_submit_pull_says_to_end_the_turn_and_the_stop_hands_over_the_next() {
     let out = json(&hook::run("stop", &event("Stop", ""), &s, T0 + 3));
     assert!(out["reason"].as_str().unwrap().contains("second"), "{out}");
 }
+
+#[test]
+fn the_inbox_tool_files_a_line_under_the_bound_context() {
+    let (s, store) = setup();
+    let reply = worker_tools::inbox(&s, "the head template is too long", None, T0).unwrap();
+    assert!(reply.contains("filed"), "{reply}");
+    let entries = store.inbox(&s.context).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].lease, s.lease);
+}

@@ -82,3 +82,12 @@ pub struct Submission {
     /// The log entry: what was established, with its evidence.
     pub log: String,
 }
+
+/// A rough edge filed from inside the work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxEntry {
+    pub line: String,
+    pub body: Option<String>,
+    /// The lease (session) that filed it.
+    pub lease: String,
+}

@@ -633,7 +633,7 @@ mod tests {
             .into_iter()
             .map(|t| t.name.to_string())
             .collect();
-        for tool in ["context_read", "pull", "submit", "release"] {
+        for tool in ["context_read", "pull", "submit", "release", "inbox"] {
             assert!(
                 names.iter().any(|n| n == tool),
                 "{tool} missing from {names:?}"

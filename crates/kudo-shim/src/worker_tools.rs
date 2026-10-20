@@ -76,3 +76,13 @@ pub fn release(setup: &WorkerSetup, claim: &str, now: Now) -> Result<String, Str
         .map_err(|e| e.to_string())?;
     Ok(format!("Released claim {claim}; its item is ready again."))
 }
+
+/// File a rough edge in the context's inbox: one line, optionally a body.
+pub fn inbox(
+    _setup: &WorkerSetup,
+    _line: &str,
+    _body: Option<&str>,
+    _now: Now,
+) -> Result<String, String> {
+    Err("not built yet".into())
+}

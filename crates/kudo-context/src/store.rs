@@ -26,7 +26,9 @@ use kinora::paths::kinora_root;
 use kinora::resolve::Resolver;
 use kinora::store::ContentStore;
 
-use crate::{Claim, ClaimId, ContextId, Error, Head, Item, ItemId, Now, Submission, SubmissionId};
+use crate::{
+    Claim, ClaimId, ContextId, Error, Head, InboxEntry, Item, ItemId, Now, Submission, SubmissionId,
+};
 
 const KIND: &str = "kudo::kind";
 const CONTEXT: &str = "kudo::context";
@@ -278,6 +280,24 @@ impl ContextStore {
             lease: lease.to_owned(),
             deadline: deadline_of(claim),
         }))
+    }
+
+    /// File a rough edge under the context: one line, an optional body, and
+    /// the lease that filed it.
+    pub fn file_inbox(
+        &self,
+        ctx: &ContextId,
+        _lease: &str,
+        _line: &str,
+        _body: Option<&str>,
+        _now: Now,
+    ) -> Result<String, Error> {
+        Err(Error::UnknownContext(ctx.0.clone()))
+    }
+
+    /// The context's inbox, oldest first.
+    pub fn inbox(&self, ctx: &ContextId) -> Result<Vec<InboxEntry>, Error> {
+        Err(Error::UnknownContext(ctx.0.clone()))
     }
 
     /// The context's log: its submissions' entries, oldest first.
