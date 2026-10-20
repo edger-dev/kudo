@@ -14,11 +14,13 @@
 //! implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
 
 pub mod error;
+pub mod hook;
 pub mod hub;
 pub mod jobs;
 pub mod mesh;
 pub mod route;
 pub mod server;
+pub mod worker_tools;
 
 pub use error::ShimError;
 pub use hub::{DEFAULT_CALL_TIMEOUT, HubClient};

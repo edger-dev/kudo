@@ -186,7 +186,7 @@ fn a_human_prompt_ends_the_lease_even_with_a_claim_open() {
     let w = f.worker(10);
     let _ = block_reason(w.stop(T0).unwrap());
 
-    w.user_prompt(T0 + 1).unwrap();
+    w.user_prompt("hold on, let me look", T0 + 1).unwrap();
     assert_eq!(w.stop(T0 + 2).unwrap(), Stop::Allow(LeaseEnd::Takeover));
     assert_eq!(
         f.store.held_by(&f.ctx, LEASE, T0 + 2).unwrap(),
@@ -198,11 +198,20 @@ fn a_human_prompt_ends_the_lease_even_with_a_claim_open() {
 #[test]
 fn an_ended_lease_stays_ended_for_a_fresh_worker_on_the_same_lease() {
     let f = Fixture::new();
-    f.worker(10).user_prompt(T0).unwrap();
+    f.worker(10).user_prompt("mine now", T0).unwrap();
     f.store.enqueue(&f.ctx, "arrives later", T0 + 1).unwrap();
     // Hooks run as separate processes: the record must outlive the Worker.
     assert_eq!(
         f.worker(10).stop(T0 + 2).unwrap(),
         Stop::Allow(LeaseEnd::Takeover)
     );
+}
+
+#[test]
+fn the_launchers_kickoff_prompt_is_not_a_takeover() {
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "first", T0).unwrap();
+    let w = f.worker(10);
+    w.user_prompt(kudo_worker::KICKOFF, T0).unwrap();
+    let _ = block_reason(w.stop(T0 + 1).unwrap());
 }

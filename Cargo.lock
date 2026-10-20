@@ -2503,6 +2503,7 @@ dependencies = [
  "node",
  "rmcp",
  "serde",
+ "serde_json",
  "tokio",
  "vox",
 ]

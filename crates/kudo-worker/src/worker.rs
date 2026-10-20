@@ -98,7 +98,7 @@ impl<'a> Worker<'a> {
 
     /// UserPromptSubmit: a human took over; the lease ends, and an open claim
     /// is released.
-    pub fn user_prompt(&self, now: Now) -> Result<(), Error> {
+    pub fn user_prompt(&self, _prompt: &str, now: Now) -> Result<(), Error> {
         self.end_releasing(LeaseEnd::Takeover, now)
     }
 

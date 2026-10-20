@@ -14,9 +14,11 @@
 //!
 //! task: 4aef99814b668f7cbb8900eee43e35b67fdb6dbcd18ba196858f6226874cc0e2@715de6400c53b648fca5c4b6005b5b0be2327af9d505061c29fd17377f6f565a
 
+pub mod env;
 pub mod lease;
 pub mod worker;
 
+pub use env::{DEFAULT_CLAIM_TTL, DEFAULT_MAX_TURNS, KICKOFF, WorkerSetup};
 pub use lease::LeaseRecord;
 pub use lease::{LeaseBook, LeaseEnd};
 pub use worker::{Stop, Worker, WorkerConfig};
