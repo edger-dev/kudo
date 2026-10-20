@@ -246,13 +246,31 @@ impl ContextStore {
     }
 
     /// The live claim `lease` holds under the context, if any.
-    pub fn held_by(
-        &self,
-        ctx: &ContextId,
-        _lease: &str,
-        _now: Now,
-    ) -> Result<Option<Claim>, Error> {
-        Err(Error::UnknownContext(ctx.0.clone()))
+    pub fn held_by(&self, ctx: &ContextId, lease: &str, now: Now) -> Result<Option<Claim>, Error> {
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let held = view
+            .by_id
+            .values()
+            .filter_map(|events| claim_birth(events))
+            .filter(|e| field(e, CONTEXT) == ctx.0 && field(e, LEASE) == lease)
+            .find(|e| view.live_claim(&ClaimId(e.id.clone()), now).is_ok());
+        let Some(claim) = held else {
+            return Ok(None);
+        };
+        let item = view
+            .by_id
+            .get(field(claim, ITEM))
+            .and_then(|events| birth(events))
+            .ok_or_else(|| Error::Kinora(format!("claim {} names a missing item", claim.id)))?;
+        Ok(Some(Claim {
+            id: ClaimId(claim.id.clone()),
+            context: ctx.clone(),
+            item: self.item_of(item)?,
+            attempt: field(claim, ATTEMPT).parse().unwrap_or(1),
+            lease: lease.to_owned(),
+            deadline: deadline_of(claim),
+        }))
     }
 
     /// The context's log: its submissions' entries, oldest first.

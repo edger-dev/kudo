@@ -17,5 +17,6 @@
 pub mod lease;
 pub mod worker;
 
+pub use lease::LeaseRecord;
 pub use lease::{LeaseBook, LeaseEnd};
 pub use worker::{Stop, Worker, WorkerConfig};
