@@ -252,6 +252,13 @@ impl ContextStore {
             .collect()
     }
 
+    /// Whether `lease` holds the claim. Two pulls racing for the same attempt
+    /// both write it — the same id, two births; the birth with the smallest
+    /// lease wins, and the loser must back off.
+    pub(crate) fn confirm(&self, _claim: &ClaimId, _lease: &str) -> Result<bool, Error> {
+        Ok(true)
+    }
+
     fn settle(
         &self,
         ctx: &ContextId,
@@ -500,4 +507,50 @@ fn ts(now: Now) -> String {
 
 fn kin(e: impl std::fmt::Display) -> Error {
     Error::Kinora(e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "tests")]
+
+    use super::*;
+
+    const T0: Now = 1_792_500_000;
+
+    /// A racing pull wrote the same attempt with another lease. Exactly one of
+    /// the two leases holds the claim, and it is the same one for every reader.
+    #[test]
+    fn of_two_racing_claims_on_one_attempt_exactly_one_holds() {
+        let dir = std::env::temp_dir().join(format!("kudo-context-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ContextStore::init(&dir).unwrap();
+        let ctx = store.create_context("race", "h\n", T0).unwrap();
+        let item = store.enqueue(&ctx, "contended", T0).unwrap();
+        let claim = store.pull(&ctx, "lease-b", T0, 600).unwrap().unwrap();
+
+        // The other writer's birth of the same claim, with a smaller lease.
+        let content = format!("kudo claim\nitem: {}\nattempt: 1\n", item.0);
+        let deadline = (T0 + 600).to_string();
+        store
+            .put(
+                "text",
+                content.into_bytes(),
+                meta([
+                    (KIND, "claim"),
+                    (CONTEXT, &ctx.0),
+                    (ITEM, &item.0),
+                    (ATTEMPT, "1"),
+                    (LEASE, "lease-a"),
+                    (DEADLINE, &deadline),
+                ]),
+                None,
+                T0,
+            )
+            .unwrap();
+
+        assert!(store.confirm(&claim.id, "lease-a").unwrap());
+        assert!(!store.confirm(&claim.id, "lease-b").unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
