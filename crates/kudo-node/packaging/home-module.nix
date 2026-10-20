@@ -40,10 +40,9 @@ in
 
   config = lib.mkIf cfg.enable {
     systemd.user.services.kudo-node = {
-      Unit = {
-        Description = "kudo-node — the job supervisor for this machine";
-        After = [ "network-online.target" ];
-      };
+      # No network ordering: a user manager has no network-online.target, and
+      # the daemon reverse-dials the hub forever, so it needs none.
+      Unit.Description = "kudo-node — the job supervisor for this machine";
       Service = {
         ExecStart = "${cfg.package}/bin/kudo-node";
         Restart = "always";
