@@ -107,3 +107,41 @@ fn the_systemd_unit_gives_the_daemon_a_stable_state_directory() {
         "without a stable state directory every durability feature is inert"
     );
 }
+
+/// The home-manager module that deploys the daemon as a user service.
+///
+/// Read at run time rather than with `include_str!`, so a missing module is a
+/// red test, not a build failure.
+fn home_module() -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("packaging/home-module.nix");
+    std::fs::read_to_string(&path).unwrap_or_default()
+}
+
+/// The home-manager module carries the same three load-bearing lines as the
+/// unit file: it is the same deployment written a second way, and the module
+/// is what actually runs on the nodes.
+///
+/// implements: the-daemon-dies-alone
+#[test]
+fn the_home_module_keeps_the_three_load_bearing_lines() {
+    let module = home_module();
+    for (needle, why) in [
+        (
+            r#"KillMode = "process""#,
+            "the default kill mode takes every supervised job down with the daemon",
+        ),
+        (
+            "KUDO_PTY_HOLDER=",
+            "without the holder, terminal jobs lose their terminal on restart",
+        ),
+        (
+            "MOCO_DIR=",
+            "without a stable state directory every durability feature is inert",
+        ),
+    ] {
+        assert!(
+            module.contains(needle),
+            "packaging/home-module.nix must contain `{needle}`: {why}"
+        );
+    }
+}
