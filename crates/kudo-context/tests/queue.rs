@@ -36,7 +36,10 @@ fn store_with_context() -> (ContextStore, ContextId) {
 }
 
 fn sub(head: &str, log: &str) -> Submission {
-    Submission { head: head.into(), log: log.into() }
+    Submission {
+        head: head.into(),
+        log: log.into(),
+    }
 }
 
 #[test]
@@ -65,19 +68,31 @@ fn items_are_pulled_oldest_first_and_submits_supersede_the_head() {
     assert_eq!(first.item.seq, 1);
     assert_eq!(first.attempt, 1);
     assert_eq!(first.deadline, T0 + TTL);
-    store.submit(&first.id, &sub("head after 1\n", "read it"), T0 + 1).unwrap();
+    store
+        .submit(&first.id, &sub("head after 1\n", "read it"), T0 + 1)
+        .unwrap();
 
     let second = store.pull(&ctx, "lease-a", T0 + 2, TTL).unwrap().unwrap();
     assert_eq!(second.item.ask, "write the test");
-    store.submit(&second.id, &sub("head after 2\n", "wrote it"), T0 + 3).unwrap();
+    store
+        .submit(&second.id, &sub("head after 2\n", "wrote it"), T0 + 3)
+        .unwrap();
 
     assert!(!store.has_ready(&ctx, T0 + 4).unwrap());
     assert_eq!(store.head(&ctx).unwrap().body, "head after 2\n");
-    let bodies: Vec<String> =
-        store.head_history(&ctx).unwrap().into_iter().map(|h| h.body).collect();
+    let bodies: Vec<String> = store
+        .head_history(&ctx)
+        .unwrap()
+        .into_iter()
+        .map(|h| h.body)
+        .collect();
     assert_eq!(
         bodies,
-        vec!["# first kudo\nstate: active — new\n", "head after 1\n", "head after 2\n"]
+        vec![
+            "# first kudo\nstate: active — new\n",
+            "head after 1\n",
+            "head after 2\n"
+        ]
     );
     assert_eq!(store.log(&ctx).unwrap(), vec!["read it", "wrote it"]);
 }
@@ -107,7 +122,10 @@ fn an_expired_claim_is_pulled_again_as_the_next_attempt() {
     let first = store.pull(&ctx, "lease-a", T0, TTL).unwrap().unwrap();
 
     assert!(store.has_ready(&ctx, T0 + TTL + 1).unwrap());
-    let retry = store.pull(&ctx, "lease-b", T0 + TTL + 1, TTL).unwrap().unwrap();
+    let retry = store
+        .pull(&ctx, "lease-b", T0 + TTL + 1, TTL)
+        .unwrap()
+        .unwrap();
     assert_eq!(retry.item, first.item);
     assert_eq!(retry.attempt, 2);
     assert_eq!(retry.lease, "lease-b");
@@ -134,12 +152,17 @@ fn a_settled_claim_cannot_be_submitted_or_released_again() {
     let (store, ctx) = store_with_context();
     store.enqueue(&ctx, "once", T0).unwrap();
     let claim = store.pull(&ctx, "lease-a", T0, TTL).unwrap().unwrap();
-    store.submit(&claim.id, &sub("done\n", "did it"), T0 + 1).unwrap();
+    store
+        .submit(&claim.id, &sub("done\n", "did it"), T0 + 1)
+        .unwrap();
 
     let twice = store.submit(&claim.id, &sub("again\n", "again"), T0 + 2);
     assert!(matches!(twice, Err(Error::ClaimSettled(_))), "{twice:?}");
     let release = store.release(&claim.id, T0 + 2);
-    assert!(matches!(release, Err(Error::ClaimSettled(_))), "{release:?}");
+    assert!(
+        matches!(release, Err(Error::ClaimSettled(_))),
+        "{release:?}"
+    );
 }
 
 #[test]
@@ -162,5 +185,13 @@ fn queues_of_two_contexts_do_not_mix() {
     let b = store.create_context("other", "other head\n", T0).unwrap();
     store.enqueue(&a, "for a", T0).unwrap();
     assert_eq!(store.pull(&b, "lease-b", T0, TTL).unwrap(), None);
-    assert_eq!(store.pull(&a, "lease-a", T0, TTL).unwrap().unwrap().item.ask, "for a");
+    assert_eq!(
+        store
+            .pull(&a, "lease-a", T0, TTL)
+            .unwrap()
+            .unwrap()
+            .item
+            .ask,
+        "for a"
+    );
 }
