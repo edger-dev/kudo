@@ -11,7 +11,7 @@ reading and writing; the author only makes decisions. Raw intent arrives as `not
 
 ## Steps
 
-1. **Pick.** List inbox notes that no kino cites with metadata `designs=<note id>` (read the
+1. **Pick.** List inbox notes that no kino cites with metadata `kudo::designs=<note id>` (read the
    `inbox` root under `.kinora/roots/`, or `kinora render`). Offer the newest few as choices, one
    line each. If the session was started with a note name, skip this.
 2. **Frame.** `kinora resolve <note>`, then only the kinos it names or plainly touches (a spec, a
@@ -25,7 +25,7 @@ reading and writing; the author only makes decisions. Raw intent arrives as `not
    rounds; whatever is still undecided becomes an `open` line in the result.
 5. **Record.** Draft the change: a new version of the affected spec or plan
    (`kinora store <kind> --id <identity> --parents <head hash> ...`), or a decision note in
-   `inbox`. Every stored kino from this step carries `-m designs=<note id>`. Show a summary of at
+   `inbox`. Every stored kino from this step carries `-m kudo::designs=<note id>` (kinora requires a prefix on extension keys). Show a summary of at
    most ten lines and ask: store / adjust / drop.
 6. **Store.** Only on "store": `kinora store` each piece, `kinora commit`, then
    `git commit -m "design: <note name> → <choice in a few words>"` and push. Reply with the stored
