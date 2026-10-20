@@ -98,7 +98,10 @@ impl<'a> Worker<'a> {
 
     /// UserPromptSubmit: a human took over; the lease ends, and an open claim
     /// is released.
-    pub fn user_prompt(&self, _prompt: &str, now: Now) -> Result<(), Error> {
+    pub fn user_prompt(&self, prompt: &str, now: Now) -> Result<(), Error> {
+        if prompt.trim() == crate::KICKOFF {
+            return Ok(()); // the launcher's own first prompt
+        }
         self.end_releasing(LeaseEnd::Takeover, now)
     }
 

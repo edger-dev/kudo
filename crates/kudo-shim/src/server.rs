@@ -28,6 +28,17 @@ use crate::hub::HubClient;
 use crate::jobs::{self, DEFAULT_JOB_CONNECTOR};
 use crate::mesh::render_mesh;
 use crate::route::Target;
+use crate::worker_tools;
+use kudo_context::Now;
+use kudo_worker::WorkerSetup;
+
+/// Seconds since the Unix epoch.
+fn now() -> Now {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
 
 /// Which node (and optionally which link) a call is addressed to.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
@@ -101,6 +112,26 @@ pub struct KillArgs {
     pub id: String,
 }
 
+/// Submit the work for a claim.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct SubmitArgs {
+    /// The claim id, from `pull` or the item you were handed.
+    pub claim: String,
+    /// The **full** new head, as you leave it: where it stands (verdict
+    /// first), the next action and who takes it, what is established with its
+    /// evidence, and what is still open. It replaces the old head whole.
+    pub head: String,
+    /// The log entry: what you established, with evidence, and what you ruled out.
+    pub log: String,
+}
+
+/// Give a claim back.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct ReleaseArgs {
+    /// The claim id.
+    pub claim: String,
+}
+
 fn target(node: &str, link: &Option<String>) -> Target {
     match link {
         Some(link) => Target::link(node, link),
@@ -131,13 +162,83 @@ fn reply(result: Result<String, crate::ShimError>) -> Result<CallToolResult, Err
 #[derive(Clone)]
 pub struct ShimServer {
     hub: Arc<HubClient>,
+    /// Set when this session is a worker (the launcher's environment says so).
+    worker: Option<WorkerSetup>,
 }
 
 #[tool_router]
 impl ShimServer {
     /// Build a server over an already-dialed hub connection.
     pub fn new(hub: Arc<HubClient>) -> Self {
-        Self { hub }
+        Self { hub, worker: None }
+    }
+
+    /// The same server, answering the worker tools for `setup`.
+    pub fn with_worker(mut self, setup: Option<WorkerSetup>) -> Self {
+        self.worker = setup;
+        self
+    }
+
+    fn worker_call(
+        &self,
+        f: impl FnOnce(&WorkerSetup, Now) -> Result<String, String>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let result = match &self.worker {
+            Some(setup) => f(setup, now()),
+            None => Err(
+                "this session is not a kudo worker: it was not started under a \
+                         context (KUDO_CONTEXT is unset)"
+                    .to_string(),
+            ),
+        };
+        Ok(match result {
+            Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        })
+    }
+
+    #[tool(
+        name = "context_read",
+        description = "Read the head of the context this worker is bound to: where the work \
+                       stands, the next action, what is established and what is open."
+    )]
+    async fn context_read(&self) -> Result<CallToolResult, ErrorData> {
+        self.worker_call(|s, _| worker_tools::context_read(s))
+    }
+
+    #[tool(
+        name = "pull",
+        description = "Claim the next item queued under this worker's context. Returns the \
+                       ask and a claim id; work it, then `submit` with that id. Says so when \
+                       nothing is ready."
+    )]
+    async fn pull(&self) -> Result<CallToolResult, ErrorData> {
+        self.worker_call(worker_tools::pull)
+    }
+
+    #[tool(
+        name = "submit",
+        description = "Hand back the work for a claim: the full new head of the context and a \
+                       log entry citing your evidence. The head is superseded, never edited; \
+                       the claim is settled."
+    )]
+    async fn submit(
+        &self,
+        Parameters(args): Parameters<SubmitArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.worker_call(|s, now| worker_tools::submit(s, &args.claim, &args.head, &args.log, now))
+    }
+
+    #[tool(
+        name = "release",
+        description = "Give a claim back unfinished; its item becomes ready again for the next \
+                       pull. Use this rather than leaving a claim to expire."
+    )]
+    async fn release(
+        &self,
+        Parameters(args): Parameters<ReleaseArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.worker_call(|s, now| worker_tools::release(s, &args.claim, now))
     }
 
     /// The hub this server proxies to.
@@ -491,6 +592,22 @@ mod tests {
     /// A compile-time assertion that the macro produced a real MCP server:
     /// without this, a change to the attribute could silently leave the tools
     /// unrouted and nothing would fail until a client connected.
+    /// A worker session sees the worker tools beside the job tools.
+    #[test]
+    fn the_worker_tools_are_routed() {
+        let names: Vec<String> = ShimServer::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        for tool in ["context_read", "pull", "submit", "release"] {
+            assert!(
+                names.iter().any(|n| n == tool),
+                "{tool} missing from {names:?}"
+            );
+        }
+    }
+
     #[test]
     fn the_macro_generates_a_server_handler() {
         fn assert_handler<T: rmcp::ServerHandler>() {}

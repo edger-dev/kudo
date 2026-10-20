@@ -13,10 +13,22 @@ use std::sync::Arc;
 use rmcp::ServiceExt;
 use rmcp::transport::io::stdio;
 
+use kudo_worker::WorkerSetup;
+
 use kudo_shim::{HUB_ADDR_ENV, HubClient, ShimServer, call_timeout_from_env, hub_addr_from_env};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // `kudo-shim hook <event>`: the CLI's hooks. Answered from the context
+    // store before anything dials the hub — a worker's loop must survive the
+    // hub and the node restarting.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("hook") {
+        std::process::exit(run_hook(
+            args.get(2).map(String::as_str).unwrap_or_default(),
+        ));
+    }
+
     // Diagnostics go to stderr: stdout *is* the MCP transport, so a stray line
     // there corrupts the protocol rather than informing anyone.
     let Some(addr) = hub_addr_from_env() else {
@@ -43,7 +55,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let (stdin, stdout) = stdio();
-    let service = ShimServer::new(hub).serve((stdin, stdout)).await?;
+    let service = ShimServer::new(hub)
+        .with_worker(WorkerSetup::from_env())
+        .serve((stdin, stdout))
+        .await?;
     service.waiting().await?;
     Ok(())
+}
+
+/// Run one hook: the event JSON on stdin, the decision on stdout.
+fn run_hook(event: &str) -> i32 {
+    use std::io::{Read, Write};
+
+    let Some(setup) = WorkerSetup::from_env() else {
+        // Not a worker session: a hook installed here has nothing to decide.
+        return 0;
+    };
+    let mut stdin = String::new();
+    if let Err(e) = std::io::stdin().read_to_string(&mut stdin) {
+        eprintln!("kudo-shim hook: reading the event: {e}");
+        return 1;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0);
+    let reply = kudo_shim::hook::run(event, &stdin, &setup, now);
+    if !reply.stdout.is_empty() {
+        let mut out = std::io::stdout();
+        let _ = out
+            .write_all(reply.stdout.as_bytes())
+            .and_then(|()| out.flush());
+    }
+    reply.code
 }

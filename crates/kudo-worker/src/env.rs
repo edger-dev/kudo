@@ -39,8 +39,18 @@ pub struct WorkerSetup {
 impl WorkerSetup {
     /// Read a setup through `lookup` (e.g. `std::env::var(k).ok()`); `None`
     /// when the session is not a worker.
-    pub fn from_lookup(_lookup: impl Fn(&str) -> Option<String>) -> Option<Self> {
-        None
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Option<Self> {
+        Some(Self {
+            store_dir: PathBuf::from(lookup(STORE_ENV)?),
+            context: ContextId(lookup(CONTEXT_ENV)?),
+            lease: lookup(LEASE_ENV)?,
+            claim_ttl: lookup(CLAIM_TTL_ENV)
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_CLAIM_TTL),
+            max_turns: lookup(MAX_TURNS_ENV)
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_MAX_TURNS),
+        })
     }
 
     /// Read a setup from this process's environment.
@@ -50,6 +60,30 @@ impl WorkerSetup {
 
     /// The variables to set on the agent CLI's process.
     pub fn to_env(&self) -> Vec<(String, String)> {
-        Vec::new()
+        [
+            (STORE_ENV, self.store_dir.display().to_string()),
+            (CONTEXT_ENV, self.context.0.clone()),
+            (LEASE_ENV, self.lease.clone()),
+            (CLAIM_TTL_ENV, self.claim_ttl.to_string()),
+            (MAX_TURNS_ENV, self.max_turns.to_string()),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect()
+    }
+
+    /// The lease records' directory, beside the store.
+    pub fn leases_dir(&self) -> PathBuf {
+        self.store_dir.join("leases")
+    }
+
+    /// The worker config this setup describes.
+    pub fn config(&self) -> crate::WorkerConfig {
+        crate::WorkerConfig {
+            context: self.context.clone(),
+            lease: self.lease.clone(),
+            claim_ttl: self.claim_ttl,
+            max_turns: self.max_turns,
+        }
     }
 }
