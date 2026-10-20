@@ -9,5 +9,6 @@ workspace = true
 
 # What turns the ordinary agent CLI into a worker: the launcher's settings file
 # and MCP config, and the hook decisions. Linked by the node (which launches)
-# and the shim (which answers the hooks). No dependencies yet.
+# and the shim (which answers the hooks).
 [dependencies]
+kudo-context = { path = "../kudo-context" }

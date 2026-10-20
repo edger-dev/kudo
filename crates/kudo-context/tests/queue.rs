@@ -195,3 +195,23 @@ fn queues_of_two_contexts_do_not_mix() {
         "for a"
     );
 }
+
+#[test]
+fn a_lease_knows_the_claim_it_holds_until_it_is_settled_or_expires() {
+    let (store, ctx) = store_with_context();
+    store.enqueue(&ctx, "held", T0).unwrap();
+    assert_eq!(store.held_by(&ctx, "lease-a", T0).unwrap(), None);
+
+    let claim = store.pull(&ctx, "lease-a", T0, TTL).unwrap().unwrap();
+    assert_eq!(
+        store.held_by(&ctx, "lease-a", T0 + 1).unwrap(),
+        Some(claim.clone())
+    );
+    assert_eq!(store.held_by(&ctx, "lease-b", T0 + 1).unwrap(), None);
+    assert_eq!(store.held_by(&ctx, "lease-a", T0 + TTL + 1).unwrap(), None);
+
+    store
+        .submit(&claim.id, &sub("h\n", "done"), T0 + 2)
+        .unwrap();
+    assert_eq!(store.held_by(&ctx, "lease-a", T0 + 3).unwrap(), None);
+}

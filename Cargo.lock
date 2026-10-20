@@ -2510,6 +2510,9 @@ dependencies = [
 [[package]]
 name = "kudo-worker"
 version = "0.1.0"
+dependencies = [
+ "kudo-context",
+]
 
 [[package]]
 name = "lazy_static"

@@ -245,6 +245,16 @@ impl ContextStore {
         self.settle(&ctx, claim, RELEASED, now)
     }
 
+    /// The live claim `lease` holds under the context, if any.
+    pub fn held_by(
+        &self,
+        ctx: &ContextId,
+        _lease: &str,
+        _now: Now,
+    ) -> Result<Option<Claim>, Error> {
+        Err(Error::UnknownContext(ctx.0.clone()))
+    }
+
     /// The context's log: its submissions' entries, oldest first.
     pub fn log(&self, ctx: &ContextId) -> Result<Vec<String>, Error> {
         let view = self.view()?;
