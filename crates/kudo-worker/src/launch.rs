@@ -2,7 +2,7 @@
 //! the kudo MCP server passed on the command line, so a repo needs no setup of
 //! its own and the repo's own settings are never touched.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 
 use std::io::Read;
 use std::path::Path;

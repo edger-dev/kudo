@@ -1,0 +1,2 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af","hash":"fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439","parents":["b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af"],"ts":"2026-10-20T15:05:10.623982101Z","author":"YJ Park","provenance":"phase 1 e2e","metadata":{"kudo::designs":"03b3d56e68281574f93da19c399e4da8e3cffbb8ca0e2167a520d9e2f1f05a1a","name":"stop-hook-drives-the-pull-loop","status::active":"true"}}
