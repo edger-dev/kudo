@@ -562,9 +562,16 @@ impl ShimServer {
     }
 }
 
-/// The protocol versions the shim agrees to. Not rmcp's full list: see the
-/// test below for why 2026-07-28 is left out.
-pub const SUPPORTED_PROTOCOLS: &[ProtocolVersion] = &[];
+/// The `tools/list` reply. Written out rather than left to the macro, which
+/// omits the freshness fields MCP 2026-07-28 requires (see the test below).
+/// The list depends on this session's environment, so it is private to it;
+/// a zero ttl asks the client to re-list rather than trust a cache.
+fn tool_list(tools: Vec<rmcp::model::Tool>) -> rmcp::model::ListToolsResult {
+    let mut reply = rmcp::model::ListToolsResult::with_all_items(tools);
+    reply.ttl_ms = Some(0);
+    reply.cache_scope = Some(rmcp::model::CacheScope::Private);
+    reply
+}
 
 /// The server's own identity and hints.
 ///
@@ -573,6 +580,14 @@ pub const SUPPORTED_PROTOCOLS: &[ProtocolVersion] = &[];
 /// the other side.
 #[tool_handler]
 impl ServerHandler for ShimServer {
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, ErrorData> {
+        Ok(tool_list(Self::tool_router().list_all()))
+    }
+
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
         info.protocol_version = ProtocolVersion::default();
@@ -596,14 +611,18 @@ mod tests {
     /// A compile-time assertion that the macro produced a real MCP server:
     /// without this, a change to the attribute could silently leave the tools
     /// unrouted and nothing would fail until a client connected.
-    /// The shim must not agree to a protocol its SDK only half implements: the
-    /// agent CLI negotiates 2026-07-28 when offered it, then rejects every
-    /// `tools/list` reply for lacking `ttlMs` — and the session silently has no
-    /// kudo tools at all.
+    /// The agent CLI negotiates MCP 2026-07-28, which requires `ttlMs` and
+    /// `cacheScope` on a `tools/list` reply. Without them it rejects the reply
+    /// and the session silently has no kudo tools at all.
     #[test]
-    fn the_shim_does_not_offer_a_protocol_it_cannot_answer() {
-        assert!(!SUPPORTED_PROTOCOLS.contains(&ProtocolVersion::V_2026_07_28));
-        assert!(SUPPORTED_PROTOCOLS.contains(&ProtocolVersion::V_2025_11_25));
+    fn the_tool_list_carries_what_2026_07_28_requires() {
+        let reply = serde_json::to_value(tool_list(ShimServer::tool_router().list_all())).unwrap();
+        assert!(reply["ttlMs"].is_u64(), "{reply}");
+        assert!(
+            matches!(reply["cacheScope"].as_str(), Some("public" | "private")),
+            "{reply}"
+        );
+        assert!(reply["tools"].as_array().is_some_and(|t| !t.is_empty()));
     }
 
     /// A worker session sees the worker tools beside the job tools.

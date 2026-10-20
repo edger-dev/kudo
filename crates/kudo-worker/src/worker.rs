@@ -7,6 +7,9 @@ use kudo_context::{Claim, ContextId, ContextStore, Error, Now};
 use crate::lease::LeaseRecord;
 use crate::{LeaseBook, LeaseEnd};
 
+/// Stops refused for one open claim before the claim is given back.
+const MAX_REFUSALS: u32 = 3;
+
 /// What a worker is bound to and how far its lease may run.
 #[derive(Debug, Clone)]
 pub struct WorkerConfig {
@@ -68,6 +71,15 @@ impl<'a> Worker<'a> {
             .store
             .held_by(&self.cfg.context, &self.cfg.lease, now)?
         {
+            // A session that cannot (or will not) submit would otherwise be
+            // held open stop after stop until its turn limit: give the item
+            // back after a few refusals instead.
+            if record.refusals >= MAX_REFUSALS {
+                self.store.release(&open.id, now)?;
+                return self.end(record, LeaseEnd::Stuck);
+            }
+            record.refusals += 1;
+            self.book.put(&self.cfg.lease, &record)?;
             return Ok(Stop::Block {
                 reason: format!(
                     "Claim {} (\"{}\") is still open: submit or release it before stopping.",
@@ -85,6 +97,7 @@ impl<'a> Worker<'a> {
             return self.end(record, LeaseEnd::QueueEmpty);
         };
         record.turns += 1;
+        record.refusals = 0;
         self.book.put(&self.cfg.lease, &record)?;
         Ok(Stop::Block {
             reason: handoff(&claim),

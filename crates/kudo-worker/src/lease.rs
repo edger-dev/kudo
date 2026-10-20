@@ -48,6 +48,8 @@ impl LeaseEnd {
 pub struct LeaseRecord {
     /// Items handed over by the Stop hook so far.
     pub turns: u32,
+    /// Stops refused in a row because a claim was open and unsubmitted.
+    pub refusals: u32,
     /// Set once the lease has ended.
     pub ended: Option<LeaseEnd>,
 }
@@ -76,6 +78,7 @@ impl LeaseBook {
         for line in text.lines() {
             match line.split_once('=') {
                 Some(("turns", n)) => record.turns = n.parse().unwrap_or(0),
+                Some(("refusals", n)) => record.refusals = n.parse().unwrap_or(0),
                 Some(("ended", why)) => record.ended = LeaseEnd::parse(why),
                 _ => {}
             }
@@ -86,7 +89,7 @@ impl LeaseBook {
     /// Replace the record for `lease`.
     pub fn put(&self, lease: &str, record: &LeaseRecord) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
-        let mut text = format!("turns={}\n", record.turns);
+        let mut text = format!("turns={}\nrefusals={}\n", record.turns, record.refusals);
         if let Some(why) = record.ended {
             text.push_str(&format!("ended={}\n", why.as_str()));
         }
