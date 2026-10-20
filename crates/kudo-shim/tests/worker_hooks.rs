@@ -200,3 +200,21 @@ fn pull_on_an_empty_queue_says_so_and_a_bad_claim_is_an_error() {
     );
     assert!(worker_tools::submit(&s, "no-such-claim", "h", "l", T0).is_err());
 }
+
+#[test]
+fn after_a_submit_pull_says_to_end_the_turn_and_the_stop_hands_over_the_next() {
+    let (s, store) = setup();
+    store.enqueue(&s.context, "first", T0).unwrap();
+    store.enqueue(&s.context, "second", T0).unwrap();
+
+    let _ = worker_tools::pull(&s, T0).unwrap();
+    let claim = store.held_by(&s.context, &s.lease, T0).unwrap().unwrap();
+    worker_tools::submit(&s, &claim.id.0, "h1\n", "one", T0 + 1).unwrap();
+
+    let again = worker_tools::pull(&s, T0 + 2).unwrap();
+    assert!(again.contains("end your turn"), "{again}");
+    assert_eq!(store.held_by(&s.context, &s.lease, T0 + 2).unwrap(), None, "nothing claimed");
+
+    let out = json(&hook::run("stop", &event("Stop", ""), &s, T0 + 3));
+    assert!(out["reason"].as_str().unwrap().contains("second"), "{out}");
+}
