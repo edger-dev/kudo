@@ -53,3 +53,9 @@ rmcp = { version = "3.0.0-beta.2", features = ["server", "transport-io"] }
 # boundary between them is bytes. See RFC-0006.
 moco-job = { git = "https://github.com/edger-dev/moco", rev = "81fe07605e116d75fac6ca85f7f5e56f463f5310" }
 serde = { version = "1", features = ["derive"] }
+
+# The context store is a kinora store, written through kinora's library. A
+# third facet line (kinora is on 0.46) joins the graph; nothing facet-derived
+# crosses between kinora and the hub, only strings and bytes.
+kinora = { git = "https://github.com/edger-dev/kinora", rev = "5a376e0f645421d71d66d96321c30335b4dde5b2" }
+jiff = "0.2.23"

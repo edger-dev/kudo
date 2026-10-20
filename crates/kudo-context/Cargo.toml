@@ -9,6 +9,8 @@ workspace = true
 
 # An engine: a library linked into every composition root that needs it (the
 # shim, the node, the console), so a pull or a submit reaches the store with no
-# node and no hub on the path. No dependencies yet — phase 2 gives it the
-# context kino, phase 3 the object store.
+# node and no hub on the path. Phase 1 stores into a local kinora store; phase 3
+# puts that store on an object store.
 [dependencies]
+kinora = { workspace = true }
+jiff = { workspace = true }
