@@ -173,8 +173,12 @@ impl ContextStore {
             None,
             now,
         )?;
+        let id = ClaimId(born.id);
+        if !self.confirm(&id, lease)? {
+            return Ok(None); // lost a race for this attempt
+        }
         Ok(Some(Claim {
-            id: ClaimId(born.id),
+            id,
             context: ctx.clone(),
             item,
             attempt,
@@ -255,8 +259,13 @@ impl ContextStore {
     /// Whether `lease` holds the claim. Two pulls racing for the same attempt
     /// both write it — the same id, two births; the birth with the smallest
     /// lease wins, and the loser must back off.
-    pub(crate) fn confirm(&self, _claim: &ClaimId, _lease: &str) -> Result<bool, Error> {
-        Ok(true)
+    pub(crate) fn confirm(&self, claim: &ClaimId, lease: &str) -> Result<bool, Error> {
+        let view = self.view()?;
+        let holder = view
+            .by_id
+            .get(&claim.0)
+            .and_then(|events| claim_birth(events));
+        Ok(holder.is_some_and(|e| field(e, LEASE) == lease))
     }
 
     fn settle(
@@ -417,8 +426,8 @@ impl View {
             .collect();
         self.by_id
             .values()
-            .filter_map(|events| events.first())
-            .filter(|e| field(e, KIND) == "claim" && field(e, ITEM) == item)
+            .filter_map(|events| claim_birth(events))
+            .filter(|e| field(e, ITEM) == item)
             .map(|e| (e, settles.get(e.id.as_str()).copied()))
             .collect()
     }
@@ -447,8 +456,7 @@ impl View {
         let event = self
             .by_id
             .get(&claim.0)
-            .and_then(|events| birth(events))
-            .filter(|e| field(e, KIND) == "claim")
+            .and_then(|events| claim_birth(events))
             .ok_or_else(|| Error::UnknownClaim(claim.0.clone()))?;
         let settled = self
             .claims_on(field(event, ITEM))
@@ -466,6 +474,16 @@ impl View {
 
 fn birth(events: &[Event]) -> Option<&Event> {
     events.iter().find(|e| e.parents.is_empty())
+}
+
+/// The birth that holds a claim: racing pulls of one attempt each write a
+/// birth with the same id, and the smallest lease wins — the same answer for
+/// every reader, with no lock.
+fn claim_birth(events: &[Event]) -> Option<&Event> {
+    events
+        .iter()
+        .filter(|e| e.parents.is_empty() && field(e, KIND) == "claim")
+        .min_by(|a, b| field(a, LEASE).cmp(field(b, LEASE)))
 }
 
 fn field<'a>(event: &'a Event, key: &str) -> &'a str {
