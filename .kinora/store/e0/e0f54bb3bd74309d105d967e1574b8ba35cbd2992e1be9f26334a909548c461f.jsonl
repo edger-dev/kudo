@@ -1,0 +1,2 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"c0d2c76488b561c631bc29b995424ef3e8b9c3d3fdbad5a2db4896bf72b48c0d","hash":"9e984cccc30ba2ee9d6ea2041ef0ed895b89a5c08e6c09558c90df06bc92d84b","parents":["2d5f4529c6c33816b384975a267151e7308f9eff0724295cec34ae083a293304"],"ts":"2026-10-20T15:15:25.24747549Z","author":"YJ Park","provenance":"phase 1","metadata":{"name":"first-kudo-plan","status::resolved":"false","task::milestone":"v1"}}
