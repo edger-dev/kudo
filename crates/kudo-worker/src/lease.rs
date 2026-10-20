@@ -15,6 +15,9 @@ pub enum LeaseEnd {
     Budget,
     /// A human typed in the pane; the session is theirs now.
     Takeover,
+    /// The session would not submit or release its claim through repeated
+    /// refused stops; the claim was given back.
+    Stuck,
 }
 
 impl LeaseEnd {
@@ -24,6 +27,7 @@ impl LeaseEnd {
             Self::Compaction => "compaction",
             Self::Budget => "budget",
             Self::Takeover => "takeover",
+            Self::Stuck => "stuck",
         }
     }
 
@@ -33,6 +37,7 @@ impl LeaseEnd {
             "compaction" => Some(Self::Compaction),
             "budget" => Some(Self::Budget),
             "takeover" => Some(Self::Takeover),
+            "stuck" => Some(Self::Stuck),
             _ => None,
         }
     }

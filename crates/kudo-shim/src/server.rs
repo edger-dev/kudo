@@ -562,6 +562,10 @@ impl ShimServer {
     }
 }
 
+/// The protocol versions the shim agrees to. Not rmcp's full list: see the
+/// test below for why 2026-07-28 is left out.
+pub const SUPPORTED_PROTOCOLS: &[ProtocolVersion] = &[];
+
 /// The server's own identity and hints.
 ///
 /// Named for **this** shim, not for the SDK that carries it: the agent sees this
@@ -592,6 +596,16 @@ mod tests {
     /// A compile-time assertion that the macro produced a real MCP server:
     /// without this, a change to the attribute could silently leave the tools
     /// unrouted and nothing would fail until a client connected.
+    /// The shim must not agree to a protocol its SDK only half implements: the
+    /// agent CLI negotiates 2026-07-28 when offered it, then rejects every
+    /// `tools/list` reply for lacking `ttlMs` — and the session silently has no
+    /// kudo tools at all.
+    #[test]
+    fn the_shim_does_not_offer_a_protocol_it_cannot_answer() {
+        assert!(!SUPPORTED_PROTOCOLS.contains(&ProtocolVersion::V_2026_07_28));
+        assert!(SUPPORTED_PROTOCOLS.contains(&ProtocolVersion::V_2025_11_25));
+    }
+
     /// A worker session sees the worker tools beside the job tools.
     #[test]
     fn the_worker_tools_are_routed() {

@@ -215,3 +215,44 @@ fn the_launchers_kickoff_prompt_is_not_a_takeover() {
     w.user_prompt(kudo_worker::KICKOFF, T0).unwrap();
     let _ = block_reason(w.stop(T0 + 1).unwrap());
 }
+
+#[test]
+fn a_guard_refused_three_times_gives_the_item_back_and_ends_the_lease() {
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "cannot be submitted", T0).unwrap();
+    let w = f.worker(10);
+    let _ = block_reason(w.stop(T0).unwrap()); // the handoff
+
+    for n in 1..=3 {
+        let reason = block_reason(w.stop(T0 + n).unwrap());
+        assert!(
+            reason.contains("submit or release"),
+            "refusal {n}: {reason}"
+        );
+    }
+    assert_eq!(w.stop(T0 + 4).unwrap(), Stop::Allow(LeaseEnd::Stuck));
+    assert_eq!(
+        f.store.held_by(&f.ctx, LEASE, T0 + 5).unwrap(),
+        None,
+        "released"
+    );
+    assert!(f.store.has_ready(&f.ctx, T0 + 5).unwrap());
+}
+
+#[test]
+fn a_submit_between_refusals_resets_the_guard() {
+    let f = Fixture::new();
+    for ask in ["a", "b"] {
+        f.store.enqueue(&f.ctx, ask, T0).unwrap();
+    }
+    let w = f.worker(10);
+    let _ = block_reason(w.stop(T0).unwrap());
+    let _ = block_reason(w.stop(T0 + 1).unwrap());
+    let _ = block_reason(w.stop(T0 + 2).unwrap());
+    f.submit_held(T0 + 3);
+    let _ = block_reason(w.stop(T0 + 4).unwrap()); // hands over b
+    for n in 5..=7 {
+        let reason = block_reason(w.stop(T0 + n).unwrap());
+        assert!(reason.contains("submit or release"), "{reason}");
+    }
+}
