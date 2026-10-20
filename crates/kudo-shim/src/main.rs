@@ -29,6 +29,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
 
+    // The local commands: drive a context by hand, start a worker here.
+    if let Some(cmd @ ("context" | "worker")) = args.get(1).map(String::as_str) {
+        let Some(store) = kudo_shim::cli::default_store_dir() else {
+            eprintln!("cannot find a place for the context store: set KUDO_CONTEXT_STORE");
+            std::process::exit(2);
+        };
+        if cmd == "worker" {
+            let Some(ctx) = args.get(2) else {
+                eprintln!("usage: kudo-shim worker <context>");
+                std::process::exit(2);
+            };
+            eprintln!("{}", kudo_shim::cli::exec_worker(&store, ctx));
+            std::process::exit(1);
+        }
+        match kudo_shim::cli::context(&store, &args[2..], unix_now()) {
+            Ok(text) => print!("{text}"),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(2);
+            }
+        }
+        return Ok(());
+    }
+
     // Diagnostics go to stderr: stdout *is* the MCP transport, so a stray line
     // there corrupts the protocol rather than informing anyone.
     let Some(addr) = hub_addr_from_env() else {
@@ -76,11 +100,7 @@ fn run_hook(event: &str) -> i32 {
         eprintln!("kudo-shim hook: reading the event: {e}");
         return 1;
     }
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
-        .unwrap_or(0);
-    let reply = kudo_shim::hook::run(event, &stdin, &setup, now);
+    let reply = kudo_shim::hook::run(event, &stdin, &setup, unix_now());
     if !reply.stdout.is_empty() {
         let mut out = std::io::stdout();
         let _ = out
@@ -88,4 +108,12 @@ fn run_hook(event: &str) -> i32 {
             .and_then(|()| out.flush());
     }
     reply.code
+}
+
+/// Seconds since the Unix epoch.
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
 }

@@ -132,8 +132,10 @@ impl ContextStore {
     }
 
     /// How many items are ready to pull.
-    pub fn ready_count(&self, ctx: &ContextId, _now: Now) -> Result<usize, Error> {
-        Err(Error::UnknownContext(ctx.0.clone()))
+    pub fn ready_count(&self, ctx: &ContextId, now: Now) -> Result<usize, Error> {
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        Ok(view.ready(ctx, now).len())
     }
 
     /// Claim the oldest ready item for `lease`, with a deadline `ttl` seconds
@@ -467,21 +469,30 @@ impl View {
 
     /// The oldest ready item under `ctx` and the attempt its next claim takes.
     fn next_ready(&self, ctx: &ContextId, now: Now) -> Option<(&Event, u32)> {
+        self.ready(ctx, now).into_iter().next()
+    }
+
+    /// Every ready item under `ctx`, oldest first, with the attempt its next
+    /// claim takes.
+    fn ready(&self, ctx: &ContextId, now: Now) -> Vec<(&Event, u32)> {
         let mut items = self.of_kind_in("item", ctx);
         items.sort_by_key(|e| seq_of(e));
-        items.into_iter().find_map(|item| {
-            let claims = self.claims_on(&item.id);
-            let submitted = claims
-                .iter()
-                .any(|(_, outcome)| *outcome == Some(SUBMITTED));
-            let held = claims
-                .iter()
-                .any(|(claim, outcome)| outcome.is_none() && deadline_of(claim) > now);
-            let attempt = u32::try_from(claims.len())
-                .unwrap_or(u32::MAX)
-                .saturating_add(1);
-            (!submitted && !held).then_some((item, attempt))
-        })
+        items
+            .into_iter()
+            .filter_map(|item| {
+                let claims = self.claims_on(&item.id);
+                let submitted = claims
+                    .iter()
+                    .any(|(_, outcome)| *outcome == Some(SUBMITTED));
+                let held = claims
+                    .iter()
+                    .any(|(claim, outcome)| outcome.is_none() && deadline_of(claim) > now);
+                let attempt = u32::try_from(claims.len())
+                    .unwrap_or(u32::MAX)
+                    .saturating_add(1);
+                (!submitted && !held).then_some((item, attempt))
+            })
+            .collect()
     }
 
     /// The claim's birth event, if it is still live at `now`.
