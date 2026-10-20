@@ -50,6 +50,9 @@ pub struct LeaseRecord {
     pub turns: u32,
     /// Stops refused in a row because a claim was open and unsubmitted.
     pub refusals: u32,
+    /// The lease submitted an item this turn; the next one comes with the
+    /// Stop handoff, not from another pull.
+    pub submitted_this_turn: bool,
     /// Set once the lease has ended.
     pub ended: Option<LeaseEnd>,
 }
@@ -79,6 +82,7 @@ impl LeaseBook {
             match line.split_once('=') {
                 Some(("turns", n)) => record.turns = n.parse().unwrap_or(0),
                 Some(("refusals", n)) => record.refusals = n.parse().unwrap_or(0),
+                Some(("submitted_this_turn", b)) => record.submitted_this_turn = b == "true",
                 Some(("ended", why)) => record.ended = LeaseEnd::parse(why),
                 _ => {}
             }
@@ -89,7 +93,10 @@ impl LeaseBook {
     /// Replace the record for `lease`.
     pub fn put(&self, lease: &str, record: &LeaseRecord) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
-        let mut text = format!("turns={}\nrefusals={}\n", record.turns, record.refusals);
+        let mut text = format!(
+            "turns={}\nrefusals={}\nsubmitted_this_turn={}\n",
+            record.turns, record.refusals, record.submitted_this_turn
+        );
         if let Some(why) = record.ended {
             text.push_str(&format!("ended={}\n", why.as_str()));
         }

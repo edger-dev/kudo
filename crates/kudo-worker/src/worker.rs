@@ -2,7 +2,7 @@
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af
 
-use kudo_context::{Claim, ContextId, ContextStore, Error, Now};
+use kudo_context::{Claim, ClaimId, ContextId, ContextStore, Error, Now, Submission, SubmissionId};
 
 use crate::lease::LeaseRecord;
 use crate::{LeaseBook, LeaseEnd};
@@ -32,6 +32,19 @@ pub enum Stop {
     Allow(LeaseEnd),
 }
 
+/// What the `pull` tool gets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pull {
+    /// A claim on the next item.
+    Claimed(Claim),
+    /// Nothing is ready under the context.
+    Nothing,
+    /// This turn already submitted an item: end the turn, and the Stop hook
+    /// hands over the next one. One item per turn keeps a clean point for a
+    /// human to take over and for the open-claim guard to act.
+    EndTurn,
+}
+
 /// The hook decisions over a context store and a lease book.
 pub struct Worker<'a> {
     store: &'a ContextStore,
@@ -50,11 +63,12 @@ impl<'a> Worker<'a> {
         let head = self.store.head(&self.cfg.context)?;
         Ok(format!(
             "You are a kudo worker under context {ctx}. Its head, as the last \
-             worker left it:\n\n{body}\n\nWork one item at a time. Call `pull` \
-             to claim the next item under this context, do it, then call \
+             worker left it:\n\n{body}\n\nWork exactly one item per turn. Call \
+             `pull` to claim an item (unless one was handed to you), do it, call \
              `submit` with the claim id, the full new head (where / next / \
-             established / open) and a log entry citing your evidence. When you \
-             stop, the next item is handed to you if one is ready.",
+             established / open) and a log entry citing your evidence — then end \
+             your turn. Do not pull again in the same turn: the next item is \
+             handed to you when you stop.",
             ctx = self.cfg.context.0,
             body = head.body.trim_end(),
         ))
@@ -98,10 +112,42 @@ impl<'a> Worker<'a> {
         };
         record.turns += 1;
         record.refusals = 0;
+        record.submitted_this_turn = false;
         self.book.put(&self.cfg.lease, &record)?;
         Ok(Stop::Block {
             reason: handoff(&claim),
         })
+    }
+
+    /// The `pull` tool: claim the next item, unless this turn already
+    /// submitted one.
+    pub fn pull(&self, now: Now) -> Result<Pull, Error> {
+        if self.record()?.submitted_this_turn {
+            return Ok(Pull::EndTurn);
+        }
+        Ok(
+            match self
+                .store
+                .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
+            {
+                Some(claim) => Pull::Claimed(claim),
+                None => Pull::Nothing,
+            },
+        )
+    }
+
+    /// The `submit` tool: submit the claim's work, and mark the turn done.
+    pub fn submit(
+        &self,
+        claim: &ClaimId,
+        submission: &Submission,
+        now: Now,
+    ) -> Result<SubmissionId, Error> {
+        let id = self.store.submit(claim, submission, now)?;
+        let mut record = self.record()?;
+        record.submitted_this_turn = true;
+        self.book.put(&self.cfg.lease, &record)?;
+        Ok(id)
     }
 
     /// PreCompact: the lease ends, and an open claim is released.

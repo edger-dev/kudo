@@ -23,4 +23,4 @@ pub use env::{DEFAULT_CLAIM_TTL, DEFAULT_MAX_TURNS, KICKOFF, WorkerSetup};
 pub use launch::{LaunchPlan, new_lease_id, plan};
 pub use lease::LeaseRecord;
 pub use lease::{LeaseBook, LeaseEnd};
-pub use worker::{Stop, Worker, WorkerConfig};
+pub use worker::{Pull, Stop, Worker, WorkerConfig};

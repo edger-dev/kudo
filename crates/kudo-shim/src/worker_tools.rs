@@ -5,7 +5,7 @@
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af
 
 use kudo_context::{ClaimId, ContextStore, Now, Submission};
-use kudo_worker::WorkerSetup;
+use kudo_worker::{LeaseBook, Pull, Worker, WorkerSetup};
 
 fn open(setup: &WorkerSetup) -> Result<ContextStore, String> {
     ContextStore::open(&setup.store_dir).map_err(|e| e.to_string())
@@ -22,21 +22,26 @@ pub fn context_read(setup: &WorkerSetup) -> Result<String, String> {
     ))
 }
 
-/// Claim the next item under the bound context for this lease.
+/// Claim the next item under the bound context for this lease — unless this
+/// turn already submitted one, when the answer is to end the turn.
 pub fn pull(setup: &WorkerSetup, now: Now) -> Result<String, String> {
     let store = open(setup)?;
-    let claim = store
-        .pull(&setup.context, &setup.lease, now, setup.claim_ttl)
+    let book = LeaseBook::new(&setup.leases_dir());
+    let pulled = Worker::new(&store, &book, setup.config())
+        .pull(now)
         .map_err(|e| e.to_string())?;
-    Ok(match claim {
-        Some(c) => format!(
+    Ok(match pulled {
+        Pull::Claimed(c) => format!(
             "Claimed {} (attempt {}), live for {}s:\n\n{}\n\nSubmit with this claim id when done.",
             c.id.0,
             c.attempt,
             setup.claim_ttl,
             c.item.ask.trim_end()
         ),
-        None => format!("Nothing ready under context {}.", setup.context.0),
+        Pull::Nothing => format!("Nothing ready under context {}.", setup.context.0),
+        Pull::EndTurn => "You already submitted an item this turn: end your turn now. If \
+                          another item is ready it is handed to you as the next turn."
+            .to_owned(),
     })
 }
 
@@ -48,15 +53,18 @@ pub fn submit(
     log: &str,
     now: Now,
 ) -> Result<String, String> {
+    let store = open(setup)?;
+    let book = LeaseBook::new(&setup.leases_dir());
     let submission = Submission {
         head: head.to_owned(),
         log: log.to_owned(),
     };
-    let id = open(setup)?
+    let id = Worker::new(&store, &book, setup.config())
         .submit(&ClaimId(claim.to_owned()), &submission, now)
         .map_err(|e| e.to_string())?;
     Ok(format!(
-        "Submitted {} for claim {claim}; the head is superseded.",
+        "Submitted {} for claim {claim}; the head is superseded. End your turn now: \
+         the next item, if any, is handed to you when you stop.",
         id.0
     ))
 }

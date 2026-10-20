@@ -174,7 +174,8 @@ fn the_tools_pull_submit_and_release() {
     worker_tools::submit(&s, &claim.id.0, "new head\n", "log", T0 + 1).unwrap();
     assert_eq!(store.head(&s.context).unwrap().body, "new head\n");
 
-    let _ = worker_tools::pull(&s, T0 + 2).unwrap();
+    // The next item comes with the Stop handoff, not from a second pull.
+    let _ = hook::run("stop", &event("Stop", ""), &s, T0 + 2);
     let second = store
         .held_by(&s.context, &s.lease, T0 + 2)
         .unwrap()
@@ -213,7 +214,11 @@ fn after_a_submit_pull_says_to_end_the_turn_and_the_stop_hands_over_the_next() {
 
     let again = worker_tools::pull(&s, T0 + 2).unwrap();
     assert!(again.contains("end your turn"), "{again}");
-    assert_eq!(store.held_by(&s.context, &s.lease, T0 + 2).unwrap(), None, "nothing claimed");
+    assert_eq!(
+        store.held_by(&s.context, &s.lease, T0 + 2).unwrap(),
+        None,
+        "nothing claimed"
+    );
 
     let out = json(&hook::run("stop", &event("Stop", ""), &s, T0 + 3));
     assert!(out["reason"].as_str().unwrap().contains("second"), "{out}");
