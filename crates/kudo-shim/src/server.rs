@@ -125,6 +125,15 @@ pub struct SubmitArgs {
     pub log: String,
 }
 
+/// File a rough edge.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct InboxArgs {
+    /// The rough edge in one line: what got in the way.
+    pub line: String,
+    /// More detail, if one line is not enough.
+    pub body: Option<String>,
+}
+
 /// Give a claim back.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
 pub struct ReleaseArgs {
@@ -227,6 +236,20 @@ impl ShimServer {
         Parameters(args): Parameters<SubmitArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         self.worker_call(|s, now| worker_tools::submit(s, &args.claim, &args.head, &args.log, now))
+    }
+
+    #[tool(
+        name = "inbox",
+        description = "File a rough edge you hit while working — a tool that misbehaved, a \
+                       missing capability, an instruction that did not fit — in one line, \
+                       with an optional body. It lands in this context's inbox for triage; \
+                       it does not change the work."
+    )]
+    async fn inbox(
+        &self,
+        Parameters(args): Parameters<InboxArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.worker_call(|s, now| worker_tools::inbox(s, &args.line, args.body.as_deref(), now))
     }
 
     #[tool(

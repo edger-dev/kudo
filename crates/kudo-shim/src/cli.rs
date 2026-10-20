@@ -57,14 +57,21 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
             let ctx = ContextId((*ctx).to_owned());
             let head = store.head(&ctx).map_err(|e| e.to_string())?;
             let ready = store.ready_count(&ctx, now).map_err(|e| e.to_string())?;
+            let inbox = store.inbox(&ctx).map_err(|e| e.to_string())?;
             let log = store.log(&ctx).map_err(|e| e.to_string())?;
             let mut out = format!(
-                "{}\n-- {ready} ready, {} submitted\n",
+                "{}
+-- {ready} ready, {} submitted, {} in the inbox
+",
                 head.body.trim_end(),
-                log.len()
+                log.len(),
+                inbox.len()
             );
             for (n, entry) in log.iter().enumerate() {
                 out.push_str(&format!("\n[{}] {}\n", n + 1, entry.trim_end()));
+            }
+            for entry in &inbox {
+                out.push_str(&format!("\ninbox: {} ({})\n", entry.line, entry.lease));
             }
             Ok(out)
         }

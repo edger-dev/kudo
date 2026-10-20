@@ -79,10 +79,16 @@ pub fn release(setup: &WorkerSetup, claim: &str, now: Now) -> Result<String, Str
 
 /// File a rough edge in the context's inbox: one line, optionally a body.
 pub fn inbox(
-    _setup: &WorkerSetup,
-    _line: &str,
-    _body: Option<&str>,
-    _now: Now,
+    setup: &WorkerSetup,
+    line: &str,
+    body: Option<&str>,
+    now: Now,
 ) -> Result<String, String> {
-    Err("not built yet".into())
+    let id = open(setup)?
+        .file_inbox(&setup.context, &setup.lease, line, body, now)
+        .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "filed {id} in the inbox of context {}",
+        setup.context.0
+    ))
 }

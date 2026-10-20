@@ -287,17 +287,54 @@ impl ContextStore {
     pub fn file_inbox(
         &self,
         ctx: &ContextId,
-        _lease: &str,
-        _line: &str,
-        _body: Option<&str>,
-        _now: Now,
+        lease: &str,
+        line: &str,
+        body: Option<&str>,
+        now: Now,
     ) -> Result<String, Error> {
-        Err(Error::UnknownContext(ctx.0.clone()))
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let seq = (view.of_kind_in("inbox", ctx).len() + 1).to_string();
+        let mut content = format!("<!-- kudo inbox {} #{seq} -->\n# {}\n", ctx.0, line.trim());
+        if let Some(body) = body.filter(|b| !b.trim().is_empty()) {
+            content.push('\n');
+            content.push_str(body.trim_end());
+            content.push('\n');
+        }
+        let born = self.put(
+            "markdown",
+            content.into_bytes(),
+            meta([
+                (KIND, "inbox"),
+                (CONTEXT, &ctx.0),
+                (LEASE, lease),
+                (SEQ, &seq),
+            ]),
+            None,
+            now,
+        )?;
+        Ok(born.id)
     }
 
     /// The context's inbox, oldest first.
     pub fn inbox(&self, ctx: &ContextId) -> Result<Vec<InboxEntry>, Error> {
-        Err(Error::UnknownContext(ctx.0.clone()))
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let mut entries = view.of_kind_in("inbox", ctx);
+        entries.sort_by_key(|e| seq_of(e));
+        entries
+            .into_iter()
+            .map(|e| {
+                let text = strip_marker(&self.read(&e.hash)?);
+                let (first, rest) = text.split_once('\n').unwrap_or((&text, ""));
+                let body = rest.trim();
+                Ok(InboxEntry {
+                    line: first.trim_start_matches("# ").to_owned(),
+                    body: (!body.is_empty()).then(|| body.to_owned()),
+                    lease: field(e, LEASE).to_owned(),
+                })
+            })
+            .collect()
     }
 
     /// The context's log: its submissions' entries, oldest first.
