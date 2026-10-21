@@ -43,8 +43,12 @@ pub fn publish(addr: &str, topic: String, payload: Vec<u8>) -> bool {
                     .build()
                     .ok()
                     .and_then(|rt| {
-                        rt.block_on(async { tokio::time::timeout(BUDGET, attempt).await })
-                            .ok()
+                        let done =
+                            rt.block_on(async { tokio::time::timeout(BUDGET, attempt).await });
+                        // Never wait for leftovers (a slow DNS lookup on a
+                        // blocking thread) past the budget.
+                        rt.shutdown_background();
+                        done.ok()
                     })
                     .flatten()
                     .is_some()

@@ -268,6 +268,7 @@ impl<'a> Worker<'a> {
             .record_trace(&self.cfg.context, &self.cfg.lease, event, now)
         {
             eprintln!("kudo: could not trace {event:?}: {e}");
+            return; // the channel says only what the trace holds
         }
         // implements: 03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d@03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d
         if let Some(observe) = &self.observer {
