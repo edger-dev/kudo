@@ -113,3 +113,37 @@ fn heads_lists_the_current_head_alone_when_there_is_no_fork() {
     assert_eq!(heads, vec![store.head(&ctx).unwrap()]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A version's hash is its content's: a head that goes back to an earlier
+/// version's bytes must not make the history a loop.
+#[test]
+fn a_head_that_returns_to_earlier_bytes_is_still_the_head() {
+    let (dir, store, ctx) = store_with_context("undo");
+    let first = store.head(&ctx).unwrap().body;
+    for (n, body) in ["# two\nchanged\n", first.as_str()].into_iter().enumerate() {
+        store.enqueue(&ctx, &format!("item {n}"), T0).unwrap();
+        let claim = store.pull(&ctx, "lease-a", T0, TTL).unwrap().unwrap();
+        store
+            .submit(&claim.id, &sub(body, None), T0 + 1 + n as i64)
+            .unwrap();
+    }
+    assert_eq!(store.head(&ctx).unwrap().body, first);
+    assert_eq!(store.heads(&ctx).unwrap().len(), 1);
+    assert_eq!(store.head_history(&ctx).unwrap().len(), 3);
+
+    store.enqueue(&ctx, "after the undo", T0).unwrap();
+    let claim = store.pull(&ctx, "lease-a", T0 + 5, TTL).unwrap().unwrap();
+    store
+        .submit(&claim.id, &sub("# two\nonward\n", None), T0 + 6)
+        .unwrap();
+    assert_eq!(store.head(&ctx).unwrap().body, "# two\nonward\n");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_head_version_reads_by_its_hash() {
+    let (dir, store, ctx) = store_with_context("by-hash");
+    let head = store.head(&ctx).unwrap();
+    assert_eq!(store.head_version(&head.version).unwrap(), head);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -204,3 +204,10 @@ fn handoff(claim: &Claim) -> String {
         ask = claim.item.ask.trim_end(),
     )
 }
+
+/// The head as a worker is shown it: every tip, newest first, each with its
+/// version.
+pub fn render_heads(heads: &[kudo_context::Head]) -> String {
+    let _ = heads;
+    String::new()
+}

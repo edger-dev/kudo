@@ -257,3 +257,67 @@ fn a_submit_between_refusals_resets_the_guard() {
         assert!(reason.contains("submit or release"), "{reason}");
     }
 }
+
+/// The claim records the head the worker is shown with it: a worker on its
+/// second turn must see what another worker established meanwhile.
+// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
+#[test]
+fn the_handoff_carries_the_head_as_it_is_now() {
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "mine", T0).unwrap();
+    f.store.enqueue(&f.ctx, "theirs", T0).unwrap();
+    f.store.enqueue(&f.ctx, "next", T0).unwrap();
+    let w = f.worker(10);
+    let _ = block_reason(w.stop(T0).unwrap());
+    f.submit_held(T0 + 1);
+
+    // Another worker lands a head between this worker's turns.
+    let theirs = f
+        .store
+        .pull(&f.ctx, "lease-other", T0 + 2, 600)
+        .unwrap()
+        .unwrap();
+    let sub = Submission {
+        head: "head with their finding\n".into(),
+        log: "theirs".into(),
+        ..Default::default()
+    };
+    f.store.submit(&theirs.id, &sub, T0 + 3).unwrap();
+
+    let reason = block_reason(w.stop(T0 + 4).unwrap());
+    assert!(reason.contains("next"), "{reason}");
+    assert!(
+        reason.contains("head with their finding"),
+        "the head as it is now: {reason}"
+    );
+    let version = f.store.head(&f.ctx).unwrap().version;
+    assert!(reason.contains(&version), "{reason}");
+}
+
+/// When the head is forked, a worker is shown every tip, not only the newest.
+#[test]
+fn a_forked_head_is_shown_whole() {
+    let heads = [
+        kudo_context::Head {
+            version: "v-new".into(),
+            body: "the newer tip\n".into(),
+        },
+        kudo_context::Head {
+            version: "v-old".into(),
+            body: "the older tip\n".into(),
+        },
+    ];
+    let text = kudo_worker::render_heads(&heads);
+    assert!(
+        text.contains("the newer tip") && text.contains("the older tip"),
+        "{text}"
+    );
+    assert!(text.contains("v-new") && text.contains("v-old"), "{text}");
+    assert!(
+        text.to_lowercase().contains("fork"),
+        "says it is forked: {text}"
+    );
+
+    let one = kudo_worker::render_heads(&heads[..1]);
+    assert!(!one.to_lowercase().contains("fork"), "{one}");
+}

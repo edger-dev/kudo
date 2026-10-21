@@ -164,6 +164,11 @@ impl ContextStore {
         view.tips(ctx)?.iter().map(|e| self.head_of(e)).collect()
     }
 
+    /// One version of a head, by its hash.
+    pub fn head_version(&self, version: &str) -> Result<Head, Error> {
+        Err(Error::Kinora(format!("no head version {version}")))
+    }
+
     /// Every version of the head, oldest first.
     pub fn head_history(&self, ctx: &ContextId) -> Result<Vec<Head>, Error> {
         let view = self.view()?;
@@ -955,6 +960,79 @@ mod tests {
         let heads = store.heads(&ctx).unwrap();
         assert_eq!(heads.len(), 1, "the fork is closed: {heads:?}");
         assert_eq!(heads[0].body, "left\nright\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A fork closes even when the worker keeps one tip's bytes as they are.
+    #[test]
+    fn a_fork_closes_on_a_submit_that_keeps_one_tip() {
+        let dir =
+            std::env::temp_dir().join(format!("kudo-context-fork-keep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ContextStore::init(&dir).unwrap();
+        let ctx = store.create_context("fork", "h0\n", T0).unwrap();
+        let root = store.head(&ctx).unwrap().version;
+        for (body, at) in [("older\n", T0 + 1), ("newer\n", T0 + 2)] {
+            store
+                .put(
+                    "markdown",
+                    body.as_bytes().to_vec(),
+                    meta([(KIND, "head")]),
+                    Some((ctx.0.clone(), vec![root.clone()])),
+                    at,
+                )
+                .unwrap();
+        }
+        store.enqueue(&ctx, "pick one", T0 + 3).unwrap();
+        let claim = store.pull(&ctx, "lease-a", T0 + 3, 600).unwrap().unwrap();
+        let keep = Submission {
+            head: "older\n".into(),
+            log: "the older tip was right".into(),
+            ..Default::default()
+        };
+        store.submit(&claim.id, &keep, T0 + 4).unwrap();
+        let heads = store.heads(&ctx).unwrap();
+        assert_eq!(heads.len(), 1, "{heads:?}");
+        assert_eq!(heads[0].body, "older\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A claim taken before claims recorded their base is checked against
+    /// nothing: its first submit is not refused for a move nobody made.
+    #[test]
+    fn a_claim_without_a_recorded_base_is_not_refused() {
+        let dir = std::env::temp_dir().join(format!("kudo-context-legacy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ContextStore::init(&dir).unwrap();
+        let ctx = store.create_context("legacy", "h\n", T0).unwrap();
+        let item = store.enqueue(&ctx, "old claim", T0).unwrap();
+        let content = format!("kudo claim\nitem: {}\nattempt: 1\n", item.0);
+        let deadline = (T0 + 600).to_string();
+        let born = store
+            .put(
+                "text",
+                content.into_bytes(),
+                meta([
+                    (KIND, "claim"),
+                    (CONTEXT, &ctx.0),
+                    (ITEM, &item.0),
+                    (ATTEMPT, "1"),
+                    (LEASE, "lease-a"),
+                    (DEADLINE, &deadline),
+                ]),
+                None,
+                T0,
+            )
+            .unwrap();
+        let sub = Submission {
+            head: "h2\n".into(),
+            log: "done".into(),
+            ..Default::default()
+        };
+        store.submit(&ClaimId(born.id), &sub, T0 + 1).unwrap();
+        assert_eq!(store.head(&ctx).unwrap().body, "h2\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
