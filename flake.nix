@@ -9,8 +9,26 @@
         pname = "kudo";
         src = ./.;
         # The console (crates/kudo-console) is Dioxus fullstack: dx builds its
-        # wasm UI; wasm-bindgen matches the crate's own version.
-        extraDevPackages = pkgs: [ pkgs.dioxus-cli pkgs.wasm-bindgen-cli ];
+        # wasm UI, and its wasm-bindgen must be the exact version the lockfile
+        # resolved. nixpkgs' dx carries an older one at the *end* of its PATH,
+        # so this one, earlier, wins. Bump the version and both hashes with
+        # the lockfile's wasm-bindgen.
+        extraDevPackages = pkgs:
+          let
+            wasm-bindgen-cli = pkgs.buildWasmBindgenCli rec {
+              src = pkgs.fetchCrate {
+                pname = "wasm-bindgen-cli";
+                version = "0.2.126";
+                hash = "sha256-H6Is3fiZVxZCfOMWK5dWMSrtn50VGv0sfdnsT+cTtyk=";
+              };
+              cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+                inherit src;
+                inherit (src) pname version;
+                hash = "sha256-VucqkXbCi4qtQzY/HrXiDnbSURsagPsdNVMn1Tw3UiY=";
+              };
+            };
+          in
+          [ wasm-bindgen-cli pkgs.dioxus-cli ];
       }
       {
         rust = { wasm = true; };

@@ -7,7 +7,9 @@
 
 use dioxus::prelude::*;
 use kudo_console::layout::{Direction, Layout, PaneKind, STACKED, THREE_PANES};
-use kudo_console::model::{ConsoleData, ContextCard, ContextDetail, NodeView, TraceRow, WorkerView};
+use kudo_console::model::{
+    ConsoleData, ContextCard, ContextDetail, NodeView, TraceRow, WorkerView,
+};
 use kudo_console::shell::Shell;
 
 fn sample() -> ConsoleData {
@@ -61,7 +63,10 @@ fn three_panes_put_where_head_and_trace_side_by_side() {
     let html = render(THREE_PANES);
     assert_eq!(pane_order(&html), ["where", "head", "trace"], "{html}");
     assert!(html.contains("data-direction=\"row\""), "{html}");
-    assert!(html.contains("first kudo") && html.contains("state: active"), "{html}");
+    assert!(
+        html.contains("first kudo") && html.contains("state: active"),
+        "{html}"
+    );
     assert!(html.contains("lease-start"), "{html}");
 }
 
@@ -76,5 +81,9 @@ fn a_second_arrangement_is_only_a_different_value() {
     assert_eq!(kinds(&STACKED), kinds(&THREE_PANES), "the same panes");
     let html = render(STACKED);
     assert!(html.contains("data-direction=\"column\""), "{html}");
-    assert_ne!(pane_order(&html), pane_order(&render(THREE_PANES)), "a different arrangement");
+    assert_ne!(
+        pane_order(&html),
+        pane_order(&render(THREE_PANES)),
+        "a different arrangement"
+    );
 }

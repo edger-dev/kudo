@@ -1,0 +1,31 @@
+//! The console's server functions: thin calls into the context engine and the
+//! hub — nothing a second face would need lives here.
+//!
+//! implements: d7562b1ac2f15d346f0a98561dc3da3351fabcd807f4ce4bbcd614f2f2a73c1f@9ac5369cd207a2da44b4ac1698c0b6725ef7ab4d94798e3411253a0c60d32c29
+
+use dioxus::prelude::*;
+
+use crate::model::ConsoleData;
+
+/// Everything the panes draw from, with `selected` (an id or unique prefix)
+/// as the selected context.
+#[server]
+pub async fn console_data(selected: Option<String>) -> Result<ConsoleData, ServerFnError> {
+    crate::server::console_data(selected)
+        .await
+        .map_err(ServerFnError::new)
+}
+
+/// Enqueue `ask` under the context `context` (an id or unique prefix).
+#[server]
+pub async fn enqueue(context: String, ask: String) -> Result<String, ServerFnError> {
+    crate::server::enqueue(&context, &ask).map_err(ServerFnError::new)
+}
+
+/// Wait until something has moved since `after` (the hub's events), or a
+/// while has passed; the version now. The page long-polls this instead of
+/// re-reading on a timer.
+#[server]
+pub async fn wait_version(after: u64) -> Result<u64, ServerFnError> {
+    Ok(crate::server::wait_version(after).await)
+}

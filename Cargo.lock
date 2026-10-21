@@ -4147,10 +4147,12 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "dioxus-ssr",
+ "hub-protocol",
  "kudo-context",
  "kudo-shim",
  "serde",
  "tokio",
+ "vox",
 ]
 
 [[package]]

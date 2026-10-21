@@ -23,13 +23,27 @@ fn a_card_shows_counts_and_the_leases_still_running() {
     let store = store("cards");
     let ctx = store.create_context("carded", "# carded\n", T0).unwrap();
     store.enqueue(&ctx, "one", T0).unwrap();
-    store.record_trace(&ctx, "lease-live", &TraceEvent::LeaseStart, T0).unwrap();
     store
-        .record_trace(&ctx, "lease-live", &TraceEvent::Pull(ClaimId("c1".into())), T0 + 1)
+        .record_trace(&ctx, "lease-live", &TraceEvent::LeaseStart, T0)
         .unwrap();
-    store.record_trace(&ctx, "lease-done", &TraceEvent::LeaseStart, T0).unwrap();
     store
-        .record_trace(&ctx, "lease-done", &TraceEvent::LeaseEnd("queue-empty".into()), T0 + 2)
+        .record_trace(
+            &ctx,
+            "lease-live",
+            &TraceEvent::Pull(ClaimId("c1".into())),
+            T0 + 1,
+        )
+        .unwrap();
+    store
+        .record_trace(&ctx, "lease-done", &TraceEvent::LeaseStart, T0)
+        .unwrap();
+    store
+        .record_trace(
+            &ctx,
+            "lease-done",
+            &TraceEvent::LeaseEnd("queue-empty".into()),
+            T0 + 2,
+        )
         .unwrap();
 
     let cards = views::contexts(&store, T0 + 3).unwrap();
@@ -45,8 +59,12 @@ fn a_card_shows_counts_and_the_leases_still_running() {
 #[test]
 fn the_detail_is_the_head_and_the_trace_newest_first() {
     let store = store("detail");
-    let ctx = store.create_context("detailed", "# detailed\nstate: new\n", T0).unwrap();
-    store.record_trace(&ctx, "l", &TraceEvent::LeaseStart, T0).unwrap();
+    let ctx = store
+        .create_context("detailed", "# detailed\nstate: new\n", T0)
+        .unwrap();
+    store
+        .record_trace(&ctx, "l", &TraceEvent::LeaseStart, T0)
+        .unwrap();
     store
         .record_trace(&ctx, "l", &TraceEvent::LeaseEnd("budget".into()), T0 + 5)
         .unwrap();

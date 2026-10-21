@@ -38,9 +38,18 @@ pub struct Layout {
 pub const THREE_PANES: Layout = Layout {
     direction: Direction::Row,
     panes: &[
-        Pane { kind: PaneKind::Where, grow: 1 },
-        Pane { kind: PaneKind::Head, grow: 2 },
-        Pane { kind: PaneKind::Trace, grow: 2 },
+        Pane {
+            kind: PaneKind::Where,
+            grow: 1,
+        },
+        Pane {
+            kind: PaneKind::Head,
+            grow: 2,
+        },
+        Pane {
+            kind: PaneKind::Trace,
+            grow: 2,
+        },
     ],
 };
 
@@ -48,8 +57,17 @@ pub const THREE_PANES: Layout = Layout {
 pub const STACKED: Layout = Layout {
     direction: Direction::Column,
     panes: &[
-        Pane { kind: PaneKind::Head, grow: 1 },
-        Pane { kind: PaneKind::Where, grow: 1 },
-        Pane { kind: PaneKind::Trace, grow: 1 },
+        Pane {
+            kind: PaneKind::Head,
+            grow: 1,
+        },
+        Pane {
+            kind: PaneKind::Where,
+            grow: 1,
+        },
+        Pane {
+            kind: PaneKind::Trace,
+            grow: 1,
+        },
     ],
 };
