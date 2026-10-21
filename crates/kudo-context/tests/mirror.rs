@@ -22,7 +22,11 @@ fn scratch(name: &str) -> PathBuf {
 /// A machine's store, mirrored to the bucket at `bucket`.
 fn machine(dir: &Path, bucket: &Path) -> ContextStore {
     let mirror = Mirror::from_url(&format!("file://{}", bucket.display())).unwrap();
-    ContextStore::init(dir).unwrap().with_mirror(mirror)
+    // No spacing: each read here stands for a separate process.
+    ContextStore::init(dir)
+        .unwrap()
+        .with_mirror(mirror)
+        .with_sync_spacing(std::time::Duration::ZERO)
 }
 
 fn sub(head: &str) -> Submission {
@@ -49,7 +53,7 @@ fn an_item_enqueued_on_one_machine_is_ready_on_the_other() {
         .into_iter()
         .map(|c| c.id)
         .collect();
-    assert_eq!(seen, [ctx.clone()]);
+    assert_eq!(seen, std::slice::from_ref(&ctx));
     assert_eq!(edger.ready_count(&ctx, T0).unwrap(), 1);
     let _ = std::fs::remove_dir_all(&root);
 }

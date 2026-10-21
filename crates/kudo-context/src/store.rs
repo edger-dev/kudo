@@ -63,6 +63,12 @@ const RELEASED: &str = "released";
 pub struct ContextStore {
     /// The `.kinora` directory inside the store's directory.
     kinora: PathBuf,
+    /// The object store this one syncs with, if any.
+    mirror: Option<crate::Mirror>,
+    /// The least time between two pulls a read may trigger.
+    spacing: std::time::Duration,
+    /// When the mirror was last pulled.
+    last_pull: std::sync::Mutex<Option<std::time::Instant>>,
 }
 
 impl ContextStore {
@@ -81,14 +87,63 @@ impl ContextStore {
                 format!("no context store at {}", dir.display()),
             )));
         }
-        Ok(Self { kinora })
+        Ok(Self {
+            kinora,
+            mirror: None,
+            spacing: std::time::Duration::from_secs(1),
+            last_pull: std::sync::Mutex::new(None),
+        })
     }
 
     /// Mirror this store: every operation pulls the mirror before it reads,
     /// and every write is pushed as it lands.
-    pub fn with_mirror(self, mirror: crate::Mirror) -> Self {
-        let _ = mirror;
+    pub fn with_mirror(mut self, mirror: crate::Mirror) -> Self {
+        self.mirror = Some(mirror);
         self
+    }
+
+    /// The least time between two pulls a plain read may trigger (a second
+    /// by default). A claim, a submit, a release and a repo declaration
+    /// always pull first, whatever the spacing.
+    pub fn with_sync_spacing(mut self, spacing: std::time::Duration) -> Self {
+        self.spacing = spacing;
+        self
+    }
+
+    /// Push what this store has not sent, then pull what it lacks. A mirror
+    /// that cannot be reached is reported on stderr and the store goes on
+    /// locally; what it could not send goes on the next sync.
+    // implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
+    fn sync(&self, force: bool) {
+        let Some(mirror) = &self.mirror else {
+            return;
+        };
+        let mut last = self
+            .last_pull
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !force && last.is_some_and(|at| at.elapsed() < self.spacing) {
+            return;
+        }
+        if let Err(e) = kinora_remote::blocking::push(mirror, &self.kinora) {
+            eprintln!("kudo: context store mirror unreachable, working locally (push: {e})");
+            return;
+        }
+        match kinora_remote::blocking::pull(mirror, &self.kinora) {
+            Ok(_) => *last = Some(std::time::Instant::now()),
+            Err(e) => {
+                eprintln!("kudo: context store mirror unreachable, working locally (pull: {e})")
+            }
+        }
+    }
+
+    /// Push what was just written; offline, it waits for the next sync.
+    fn push_now(&self) {
+        if let Some(mirror) = &self.mirror
+            && let Err(e) = kinora_remote::blocking::push(mirror, &self.kinora)
+        {
+            eprintln!("kudo: context store mirror unreachable, kept locally (push: {e})");
+        }
     }
 
     /// Birth a context whose first head is `head`.
@@ -164,6 +219,7 @@ impl ContextStore {
     /// Declare a repo the context spans; a repo of the same name on the same
     /// node moves to the new path.
     pub fn declare_repo(&self, ctx: &ContextId, repo: &Repo, now: Now) -> Result<(), Error> {
+        self.sync(true);
         validate(repo)?;
         let view = self.view()?;
         view.require_context(ctx)?;
@@ -564,6 +620,7 @@ impl ContextStore {
         now: Now,
         ttl: i64,
     ) -> Result<Option<Claim>, Error> {
+        self.sync(true);
         let view = self.view()?;
         view.require_context(ctx)?;
         let Some((item_event, attempt)) = view.next_ready(ctx, now) else {
@@ -623,6 +680,7 @@ impl ContextStore {
         submission: &Submission,
         now: Now,
     ) -> Result<Submitted, Error> {
+        self.sync(true);
         let view = self.view()?;
         let claim_event = view.live_claim(claim, now)?;
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
@@ -705,6 +763,7 @@ impl ContextStore {
 
     /// Give a live claim back: its item is ready again, as the next attempt.
     pub fn release(&self, claim: &ClaimId, now: Now) -> Result<(), Error> {
+        self.sync(true);
         let view = self.view()?;
         let claim_event = view.live_claim(claim, now)?;
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
@@ -879,6 +938,7 @@ impl ContextStore {
             },
         )
         .map_err(kin)?;
+        self.push_now();
         Ok(stored.event)
     }
 
@@ -901,6 +961,7 @@ impl ContextStore {
     }
 
     fn view(&self) -> Result<View, Error> {
+        self.sync(false);
         View::load(&self.kinora)
     }
 }
