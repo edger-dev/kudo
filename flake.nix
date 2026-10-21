@@ -28,7 +28,7 @@
               };
             };
           in
-          [ wasm-bindgen-cli pkgs.dioxus-cli ];
+          [ wasm-bindgen-cli pkgs.dioxus-cli pkgs.binaryen ];
       }
       {
         rust = { wasm = true; };

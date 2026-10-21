@@ -17,9 +17,13 @@ dx serve -p kudo-console --web --fullstack      # build, run, live-reload
 or run a built server directly:
 
 ```
-dx build -p kudo-console --web --fullstack
-cd target/dx/kudo-console/debug/web && ./server
+dx build -p kudo-console --web --fullstack --release
+cd target/dx/kudo-console/release/web && ./server
 ```
+
+Use the release build for anything reached over a network: the debug build's
+WebAssembly is about 50 MB, and until it loads the page shows but no button
+works. The release build's is about 2.4 MB.
 
 It reads the same environment as `kudo-shim`: `KUDO_CONTEXT_STORE` (or the
 default store), `KUDO_CONTEXT_MIRROR` and `AWS_*` for a mirror, and
