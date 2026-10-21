@@ -2,7 +2,9 @@
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 
-use kudo_context::{Claim, ClaimId, ContextId, ContextStore, Error, Now, Submission, Submitted};
+use kudo_context::{
+    Claim, ClaimId, ContextId, ContextStore, Error, Now, Submission, Submitted, TraceEvent,
+};
 
 use crate::lease::LeaseRecord;
 use crate::{LeaseBook, LeaseEnd};
@@ -59,8 +61,9 @@ impl<'a> Worker<'a> {
 
     /// SessionStart: the text injected into the session — the context's head
     /// and what a worker does.
-    pub fn session_start(&self, _now: Now) -> Result<String, Error> {
+    pub fn session_start(&self, now: Now) -> Result<String, Error> {
         let heads = self.store.heads(&self.cfg.context)?;
+        self.trace(&TraceEvent::LeaseStart, now)?;
         Ok(format!(
             "You are a kudo worker under context {ctx}. {body}\n\nWork exactly one item per turn. Call \
              `pull` to claim an item (unless one was handed to you), do it, call \
@@ -116,10 +119,12 @@ impl<'a> Worker<'a> {
             // back after a few refusals instead.
             if record.refusals >= MAX_REFUSALS {
                 self.store.release(&open.id, now)?;
-                return self.end(record, LeaseEnd::Stuck);
+                self.trace(&TraceEvent::Release(open.id.clone()), now)?;
+                return self.end(record, LeaseEnd::Stuck, now);
             }
             record.refusals += 1;
             self.book.put(&self.cfg.lease, &record)?;
+            self.trace(&TraceEvent::Refused(open.id.clone()), now)?;
             return Ok(Stop::Block {
                 reason: format!(
                     "Claim {} (\"{}\") is still open: submit or release it before stopping.",
@@ -128,18 +133,19 @@ impl<'a> Worker<'a> {
             });
         }
         if record.turns >= self.cfg.max_turns {
-            return self.end(record, LeaseEnd::Budget);
+            return self.end(record, LeaseEnd::Budget, now);
         }
         let Some(claim) =
             self.store
                 .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
         else {
-            return self.end(record, LeaseEnd::QueueEmpty);
+            return self.end(record, LeaseEnd::QueueEmpty, now);
         };
         record.turns += 1;
         record.refusals = 0;
         record.submitted_this_turn = false;
         self.book.put(&self.cfg.lease, &record)?;
+        self.trace(&TraceEvent::Handoff(claim.id.clone()), now)?;
         Ok(Stop::Block {
             reason: format!("Next item. {}", self.claim_text(&claim)?),
         })
@@ -156,7 +162,10 @@ impl<'a> Worker<'a> {
                 .store
                 .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
             {
-                Some(claim) => Pull::Claimed(claim),
+                Some(claim) => {
+                    self.trace(&TraceEvent::Pull(claim.id.clone()), now)?;
+                    Pull::Claimed(claim)
+                }
                 None => Pull::Nothing,
             },
         )
@@ -173,7 +182,20 @@ impl<'a> Worker<'a> {
         let mut record = self.record()?;
         record.submitted_this_turn = true;
         self.book.put(&self.cfg.lease, &record)?;
+        self.trace(
+            &TraceEvent::Submit {
+                claim: claim.clone(),
+                submission: done.id.clone(),
+            },
+            now,
+        )?;
         Ok(done)
+    }
+
+    /// The `release` tool: give the claim back unfinished.
+    pub fn release(&self, claim: &ClaimId, now: Now) -> Result<(), Error> {
+        self.store.release(claim, now)?;
+        self.trace(&TraceEvent::Release(claim.clone()), now)
     }
 
     /// PreCompact: the lease ends, and an open claim is released.
@@ -199,15 +221,23 @@ impl<'a> Worker<'a> {
             .store
             .held_by(&self.cfg.context, &self.cfg.lease, now)?
         {
-            self.store.release(&open.id, now)?;
+            self.release(&open.id, now)?;
         }
-        self.end(record, why).map(|_| ())
+        self.end(record, why, now).map(|_| ())
     }
 
-    fn end(&self, mut record: LeaseRecord, why: LeaseEnd) -> Result<Stop, Error> {
+    fn end(&self, mut record: LeaseRecord, why: LeaseEnd, now: Now) -> Result<Stop, Error> {
         record.ended = Some(why);
         self.book.put(&self.cfg.lease, &record)?;
+        self.trace(&TraceEvent::LeaseEnd(why.as_str().to_owned()), now)?;
         Ok(Stop::Allow(why))
+    }
+
+    /// Record one loop event of this lease.
+    // implements: a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098@a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098
+    fn trace(&self, event: &TraceEvent, now: Now) -> Result<(), Error> {
+        self.store
+            .record_trace(&self.cfg.context, &self.cfg.lease, event, now)
     }
 
     fn record(&self) -> Result<LeaseRecord, Error> {

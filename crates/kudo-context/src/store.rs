@@ -20,6 +20,8 @@
 //! implements: 6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd@6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd
 //! implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@aaddfc2e7ee067ea5780ce6ee2dfe4587bfb47b0c067b2670a31308c019a7e21
 //! implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
+//! implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9
+//! implements: a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098@a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -49,6 +51,9 @@ const HEAD: &str = "kudo::head";
 const BASE: &str = "kudo::base";
 const EVIDENCE: &str = "kudo::evidence";
 const ORIGIN: &str = "kudo::origin";
+const EVENT: &str = "kudo::event";
+const SUBMISSION: &str = "kudo::submission";
+const REASON: &str = "kudo::reason";
 const ORIGIN_ID: &str = "kudo::origin_id";
 
 const SUBMITTED: &str = "submitted";
@@ -316,20 +321,134 @@ impl ContextStore {
         event: &TraceEvent,
         now: Now,
     ) -> Result<(), Error> {
-        let _ = (ctx, lease, event, now);
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let seq = (view
+            .of_kind_in("trace", ctx)
+            .iter()
+            .filter(|e| field(e, LEASE) == lease)
+            .count()
+            + 1)
+        .to_string();
+        let (name, claim, submission, reason) = match event {
+            TraceEvent::LeaseStart => ("lease-start", "", "", ""),
+            TraceEvent::Handoff(c) => ("handoff", c.0.as_str(), "", ""),
+            TraceEvent::Pull(c) => ("pull", c.0.as_str(), "", ""),
+            TraceEvent::Refused(c) => ("refused", c.0.as_str(), "", ""),
+            TraceEvent::Release(c) => ("release", c.0.as_str(), "", ""),
+            TraceEvent::Submit { claim, submission } => {
+                ("submit", claim.0.as_str(), submission.0.as_str(), "")
+            }
+            TraceEvent::LeaseEnd(why) => ("lease-end", "", "", why.as_str()),
+        };
+        let line = [name, claim, submission, reason]
+            .into_iter()
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        // The nonce keeps two equal events of one lease two kinos.
+        let content = format!("<!-- kudo trace {lease} #{seq} {} -->\n{line}\n", nonce()?);
+        self.put(
+            "text",
+            content.into_bytes(),
+            meta([
+                (KIND, "trace"),
+                (CONTEXT, &ctx.0),
+                (LEASE, lease),
+                (SEQ, &seq),
+                (EVENT, name),
+                (CLAIM, claim),
+                (SUBMISSION, submission),
+                (REASON, reason),
+            ]),
+            None,
+            now,
+        )?;
         Ok(())
     }
 
     /// The context's trace: every lease's events, in order.
     pub fn trace(&self, ctx: &ContextId) -> Result<Vec<TraceEntry>, Error> {
-        let _ = ctx;
-        Ok(Vec::new())
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let mut events = view.of_kind_in("trace", ctx);
+        events.sort_by(|a, b| {
+            (a.ts.as_str(), field(a, LEASE), seq_of(a)).cmp(&(
+                b.ts.as_str(),
+                field(b, LEASE),
+                seq_of(b),
+            ))
+        });
+        Ok(events
+            .into_iter()
+            .filter_map(|e| {
+                let claim = || ClaimId(field(e, CLAIM).to_owned());
+                let event = match field(e, EVENT) {
+                    "lease-start" => TraceEvent::LeaseStart,
+                    "handoff" => TraceEvent::Handoff(claim()),
+                    "pull" => TraceEvent::Pull(claim()),
+                    "refused" => TraceEvent::Refused(claim()),
+                    "release" => TraceEvent::Release(claim()),
+                    "submit" => TraceEvent::Submit {
+                        claim: claim(),
+                        submission: SubmissionId(field(e, SUBMISSION).to_owned()),
+                    },
+                    "lease-end" => TraceEvent::LeaseEnd(field(e, REASON).to_owned()),
+                    _ => return None,
+                };
+                Some(TraceEntry {
+                    lease: field(e, LEASE).to_owned(),
+                    seq: seq_of(e),
+                    at: e.ts.clone(),
+                    event,
+                })
+            })
+            .collect())
     }
 
     /// What produced the head version `version`; `None` for the first head.
     pub fn provenance(&self, ctx: &ContextId, version: &str) -> Result<Option<Provenance>, Error> {
-        let _ = (ctx, version);
-        Ok(None)
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        // A head version names the claim that wrote it; the first head none.
+        let Some(head) = view
+            .by_id
+            .get(&ctx.0)
+            .and_then(|events| events.iter().find(|e| e.hash == version))
+        else {
+            return Err(Error::Kinora(format!(
+                "no head version {version} in {}",
+                ctx.0
+            )));
+        };
+        let claim = field(head, CLAIM);
+        if claim.is_empty() {
+            return Ok(None);
+        }
+        let claim_event = view
+            .by_id
+            .get(claim)
+            .and_then(|events| claim_birth(events))
+            .ok_or_else(|| Error::UnknownClaim(claim.to_owned()))?;
+        let submission = view
+            .of_kind_in("submission", ctx)
+            .into_iter()
+            .find(|e| field(e, CLAIM) == claim)
+            .ok_or_else(|| {
+                Error::Kinora(format!("claim {claim} wrote a head but no submission"))
+            })?;
+        let item = view
+            .by_id
+            .get(field(claim_event, ITEM))
+            .and_then(|events| birth(events))
+            .ok_or_else(|| Error::Kinora(format!("claim {claim} names a missing item")))?;
+        Ok(Some(Provenance {
+            submission: SubmissionId(submission.id.clone()),
+            claim: ClaimId(claim.to_owned()),
+            item: self.item_of(item)?,
+            attempt: field(claim_event, ATTEMPT).parse().unwrap_or(1),
+            lease: field(claim_event, LEASE).to_owned(),
+        }))
     }
 
     /// The context's current head.

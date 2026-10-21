@@ -4,12 +4,14 @@
 
 use std::path::{Path, PathBuf};
 
-use kudo_context::{ContextId, ContextStore, Repo};
+use kudo_context::{ContextId, ContextStore, Repo, TraceEvent};
 
 const USAGE: &str = "usage: kudo-shim context new <title>\n       \
                      kudo-shim context enqueue <context> <ask>\n       \
                      kudo-shim context show <context>\n       \
                      kudo-shim context list\n       \
+                     kudo-shim context trace <context>\n       \
+                     kudo-shim context why <context> [head-version]\n       \
                      kudo-shim context repo add <context> <name> [path] [--node <node>]\n       \
                      kudo-shim worker <context> [--repo <name>]";
 
@@ -114,6 +116,56 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
                 repo.node,
                 repo.path.display()
             ))
+        }
+        ["trace", ctx] => {
+            let store = open(store_dir)?;
+            let ctx = named(&store, ctx)?;
+            let mut out = String::new();
+            for t in store.trace(&ctx).map_err(|e| e.to_string())? {
+                let short = |id: &str| id.get(..SHORT_ID).unwrap_or(id).to_owned();
+                let what = match &t.event {
+                    TraceEvent::LeaseStart => "lease-start".to_owned(),
+                    TraceEvent::Handoff(c) => format!("handoff {}", short(&c.0)),
+                    TraceEvent::Pull(c) => format!("pull {}", short(&c.0)),
+                    TraceEvent::Refused(c) => format!("refused {}", short(&c.0)),
+                    TraceEvent::Release(c) => format!("release {}", short(&c.0)),
+                    TraceEvent::Submit { claim, submission } => {
+                        format!("submit {} -> {}", short(&claim.0), short(&submission.0))
+                    }
+                    TraceEvent::LeaseEnd(why) => format!("lease-end {why}"),
+                };
+                let lease = t.lease.get(..8).unwrap_or(&t.lease);
+                out.push_str(&format!("{}  {lease} #{}  {what}\n", t.at, t.seq));
+            }
+            if out.is_empty() {
+                out.push_str("no trace yet\n");
+            }
+            Ok(out)
+        }
+        ["why", ctx, version @ ..] if version.len() <= 1 => {
+            let store = open(store_dir)?;
+            let ctx = named(&store, ctx)?;
+            let version = match version.first() {
+                Some(v) => (*v).to_owned(),
+                None => store.head(&ctx).map_err(|e| e.to_string())?.version,
+            };
+            Ok(
+                match store
+                    .provenance(&ctx, &version)
+                    .map_err(|e| e.to_string())?
+                {
+                    None => format!("head {version}: the first head, no submission wrote it\n"),
+                    Some(p) => format!(
+                        "head {version}\n  written by submission {}\n  for claim {} (attempt {})\n  \
+                         answering item: {}\n  held by lease {}  (kudo-shim context trace shows it)\n",
+                        p.submission.0,
+                        p.claim.0,
+                        p.attempt,
+                        p.item.ask.lines().next().unwrap_or_default(),
+                        p.lease
+                    ),
+                },
+            )
         }
         ["list"] => {
             if !store_dir.join(".kinora").is_dir() {

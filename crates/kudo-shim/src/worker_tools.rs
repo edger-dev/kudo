@@ -121,7 +121,9 @@ fn moved(store: &ContextStore, claim: &str, current: &[String]) -> String {
 
 /// Give a claim back unfinished.
 pub fn release(setup: &WorkerSetup, claim: &str, now: Now) -> Result<String, String> {
-    open(setup)?
+    let store = open(setup)?;
+    let book = LeaseBook::new(&setup.leases_dir());
+    Worker::new(&store, &book, setup.config())
         .release(&ClaimId(claim.to_owned()), now)
         .map_err(|e| e.to_string())?;
     Ok(format!("Released claim {claim}; its item is ready again."))

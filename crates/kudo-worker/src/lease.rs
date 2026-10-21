@@ -21,7 +21,8 @@ pub enum LeaseEnd {
 }
 
 impl LeaseEnd {
-    fn as_str(self) -> &'static str {
+    /// The name the lease record and the trace use.
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::QueueEmpty => "queue-empty",
             Self::Compaction => "compaction",
