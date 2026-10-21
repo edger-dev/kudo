@@ -36,11 +36,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(2);
         };
         if cmd == "worker" {
-            let Some(ctx) = args.get(2) else {
-                eprintln!("usage: kudo-shim worker <context>");
-                std::process::exit(2);
+            let (ctx, repo) = match &args[2..] {
+                [ctx] => (ctx, None),
+                [ctx, flag, repo] if flag == "--repo" => (ctx, Some(repo.as_str())),
+                _ => {
+                    eprintln!("usage: kudo-shim worker <context> [--repo <name>]");
+                    std::process::exit(2);
+                }
             };
-            eprintln!("{}", kudo_shim::cli::exec_worker(&store, ctx));
+            eprintln!("{}", kudo_shim::cli::exec_worker(&store, ctx, repo));
             std::process::exit(1);
         }
         match kudo_shim::cli::context(&store, &args[2..], unix_now()) {

@@ -48,6 +48,8 @@ const OUTCOME: &str = "kudo::outcome";
 const HEAD: &str = "kudo::head";
 const BASE: &str = "kudo::base";
 const EVIDENCE: &str = "kudo::evidence";
+const ORIGIN: &str = "kudo::origin";
+const ORIGIN_ID: &str = "kudo::origin_id";
 
 const SUBMITTED: &str = "submitted";
 const RELEASED: &str = "released";
@@ -150,23 +152,160 @@ impl ContextStore {
     /// Declare a repo the context spans; a repo of the same name on the same
     /// node moves to the new path.
     pub fn declare_repo(&self, ctx: &ContextId, repo: &Repo, now: Now) -> Result<(), Error> {
-        let _ = (ctx, repo, now);
+        validate(repo)?;
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let birth = format!("<!-- kudo repos {} -->\n# Repos\n", ctx.0);
+        let id = Hash::of_content(birth.as_bytes()).as_hex().to_owned();
+        let tips: Vec<String> = match view.by_id.contains_key(&id) {
+            true => view.tips_of(&id).iter().map(|e| e.hash.clone()).collect(),
+            false => vec![
+                self.put(
+                    "markdown",
+                    birth.into_bytes(),
+                    meta([(KIND, "repos"), (CONTEXT, &ctx.0)]),
+                    None,
+                    now,
+                )?
+                .hash,
+            ],
+        };
+        let mut repos = self.repos_in(&view, ctx)?;
+        repos.retain(|r| !(r.name == repo.name && r.node == repo.node));
+        repos.push(repo.clone());
+        repos.sort();
+        // A marker of its own per version: a declaration that returns to an
+        // earlier one's text is a new version, never a loop.
+        let mut content = format!("<!-- kudo repos {} {} -->\n# Repos\n\n", ctx.0, nonce()?);
+        for r in &repos {
+            content.push_str(&format!(
+                "- {} @ {}: {}\n",
+                r.name,
+                r.node,
+                r.path.display()
+            ));
+        }
+        self.put(
+            "markdown",
+            content.into_bytes(),
+            meta([(KIND, "repos"), (CONTEXT, &ctx.0)]),
+            Some((id, tips)),
+            now,
+        )?;
         Ok(())
     }
 
     /// The repos the context declares, by name then node.
     pub fn repos(&self, ctx: &ContextId) -> Result<Vec<Repo>, Error> {
-        let _ = ctx;
-        Ok(Vec::new())
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        self.repos_in(&view, ctx)
     }
 
     /// The repo of this name on this node.
     pub fn repo_on(&self, ctx: &ContextId, name: &str, node: &str) -> Result<Repo, Error> {
-        let _ = ctx;
-        Err(Error::UnknownRepo {
-            name: name.to_owned(),
-            node: node.to_owned(),
-        })
+        self.repos(ctx)?
+            .into_iter()
+            .find(|r| r.name == name && r.node == node)
+            .ok_or_else(|| Error::UnknownRepo {
+                name: name.to_owned(),
+                node: node.to_owned(),
+            })
+    }
+
+    fn repos_in(&self, view: &View, ctx: &ContextId) -> Result<Vec<Repo>, Error> {
+        let birth = format!("<!-- kudo repos {} -->\n# Repos\n", ctx.0);
+        let id = Hash::of_content(birth.as_bytes()).as_hex().to_owned();
+        let Some(tip) = view.tips_of(&id).first().copied() else {
+            return Ok(Vec::new());
+        };
+        let mut repos: Vec<Repo> = self
+            .read(&tip.hash)?
+            .lines()
+            .filter_map(|line| {
+                let (name, rest) = line.strip_prefix("- ")?.split_once(" @ ")?;
+                let (node, path) = rest.split_once(": ")?;
+                Some(Repo {
+                    name: name.to_owned(),
+                    node: node.to_owned(),
+                    path: PathBuf::from(path),
+                })
+            })
+            .collect();
+        repos.sort();
+        Ok(repos)
+    }
+
+    /// Copy into this store every kino a submission cites from the ledger of
+    /// a repo the context declares (cite-and-cache): the context then reads
+    /// whole without the repo. A repo whose ledger is not on this machine is
+    /// skipped.
+    fn cache_cited(
+        &self,
+        view: &View,
+        ctx: &ContextId,
+        submission: &Submission,
+        now: Now,
+    ) -> Result<(), Error> {
+        let known = view.known();
+        let wanted: Vec<&str> = submission
+            .established
+            .iter()
+            .flat_map(|l| l.evidence.iter().map(|e| e.trim()))
+            .filter(|e| is_kino_id(e) && !known.contains(e))
+            .collect();
+        if wanted.is_empty() {
+            return Ok(());
+        }
+        let mut cached = std::collections::HashSet::new();
+        for repo in self.repos_in(view, ctx)? {
+            let ledger = kinora_root(&repo.path);
+            if !ledger.is_dir() {
+                continue;
+            }
+            let Ok(resolver) = Resolver::load(&ledger) else {
+                continue;
+            };
+            for want in &wanted {
+                if cached.contains(want) {
+                    continue;
+                }
+                let found = match resolver.identities().get(*want) {
+                    Some(identity) => identity
+                        .heads
+                        .iter()
+                        .max_by(|a, b| a.ts.cmp(&b.ts))
+                        .cloned(),
+                    None => resolver
+                        .identities()
+                        .values()
+                        .flat_map(|i| i.events.iter())
+                        .find(|e| e.hash == *want)
+                        .cloned(),
+                };
+                let Some(event) = found else { continue };
+                let Ok(hash) = event.hash.parse::<Hash>() else {
+                    continue;
+                };
+                let Ok(bytes) = ContentStore::new(&ledger).read(&hash) else {
+                    continue;
+                };
+                self.put(
+                    &event.kind,
+                    bytes,
+                    meta([
+                        (KIND, "cite"),
+                        (CONTEXT, &ctx.0),
+                        (ORIGIN, &repo.name),
+                        (ORIGIN_ID, want),
+                    ]),
+                    None,
+                    now,
+                )?;
+                cached.insert(*want);
+            }
+        }
+        Ok(())
     }
 
     /// The context's current head.
@@ -349,6 +488,8 @@ impl ContextStore {
             }
         };
 
+        self.cache_cited(&view, &ctx, submission, now)?;
+        let view = self.view()?;
         let checked = view.check_evidence(submission);
         let seq = (view.of_kind_in("submission", &ctx).len() + 1).to_string();
         let content = format!(
@@ -641,16 +782,29 @@ impl View {
         Ok(chain)
     }
 
-    /// Sort a submission's established lines by whether their evidence
-    /// resolves: a kino id this store holds, or a URL.
-    fn check_evidence(&self, submission: &Submission) -> Checked {
-        let known: std::collections::HashSet<&str> = self
-            .by_id
+    /// Every id this store can answer for: its identities, their versions,
+    /// and the origin ids of the kinos it cached from repo ledgers.
+    fn known(&self) -> std::collections::HashSet<&str> {
+        self.by_id
             .iter()
             .flat_map(|(id, events)| {
-                std::iter::once(id.as_str()).chain(events.iter().map(|e| e.hash.as_str()))
+                std::iter::once(id.as_str())
+                    .chain(events.iter().map(|e| e.hash.as_str()))
+                    .chain(
+                        events
+                            .iter()
+                            .filter(|e| field(e, KIND) == "cite")
+                            .map(|e| field(e, ORIGIN_ID)),
+                    )
             })
-            .collect();
+            .collect()
+    }
+
+    /// Sort a submission's established lines by whether their evidence
+    /// resolves: a kino id this store holds (or cached from a declared repo's
+    /// ledger), or a URL.
+    fn check_evidence(&self, submission: &Submission) -> Checked {
+        let known = self.known();
         let mut checked = Checked::default();
         for line in &submission.established {
             let (good, bad): (Vec<&String>, Vec<&String>) = line
@@ -676,11 +830,12 @@ impl View {
     /// submits raced.
     fn tips(&self, ctx: &ContextId) -> Result<Vec<&Event>, Error> {
         self.require_context(ctx)?;
-        let events = self
-            .by_id
-            .get(&ctx.0)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
+        Ok(self.tips_of(&ctx.0))
+    }
+
+    /// The versions of an identity nothing supersedes, newest first.
+    fn tips_of(&self, id: &str) -> Vec<&Event> {
+        let events = self.by_id.get(id).map(Vec::as_slice).unwrap_or_default();
         let referenced: std::collections::HashSet<&str> = events
             .iter()
             .flat_map(|e| e.parents.iter().map(String::as_str))
@@ -691,7 +846,7 @@ impl View {
             .collect();
         tips.sort_by(|a, b| b.ts.cmp(&a.ts).then_with(|| a.hash.cmp(&b.hash)));
         tips.dedup_by(|a, b| a.hash == b.hash);
-        Ok(tips)
+        tips
     }
 
     /// Claims on an item, as (claim birth event, its settle outcome if any).
@@ -780,6 +935,34 @@ impl Checked {
             .filter(|e| !is_url(e))
             .collect()
     }
+}
+
+/// A repo declaration that can stand: a name and a node with no spaces, `@`
+/// or `:` (the declaration's own separators), and an absolute path.
+fn validate(repo: &Repo) -> Result<(), Error> {
+    for (what, word) in [("name", &repo.name), ("node", &repo.node)] {
+        if word.is_empty()
+            || word
+                .chars()
+                .any(|c| c.is_whitespace() || c == '@' || c == ':')
+        {
+            return Err(Error::InvalidRepo(format!(
+                "the {what} {word:?} must be one word with no '@' or ':'"
+            )));
+        }
+    }
+    let path = repo.path.to_string_lossy();
+    if !repo.path.is_absolute() || path.contains('\n') {
+        return Err(Error::InvalidRepo(format!(
+            "the path {path:?} must be absolute"
+        )));
+    }
+    Ok(())
+}
+
+/// Sixty-four hex digits: the shape of a kino id or version hash.
+fn is_kino_id(evidence: &str) -> bool {
+    evidence.len() == 64 && evidence.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 fn is_url(evidence: &str) -> bool {

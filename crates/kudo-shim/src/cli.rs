@@ -4,13 +4,14 @@
 
 use std::path::{Path, PathBuf};
 
-use kudo_context::{ContextId, ContextStore};
+use kudo_context::{ContextId, ContextStore, Repo};
 
 const USAGE: &str = "usage: kudo-shim context new <title>\n       \
                      kudo-shim context enqueue <context> <ask>\n       \
                      kudo-shim context show <context>\n       \
                      kudo-shim context list\n       \
-                     kudo-shim worker <context>";
+                     kudo-shim context repo add <context> <name> [path] [--node <node>]\n       \
+                     kudo-shim worker <context> [--repo <name>]";
 
 /// Where the context store lives: `KUDO_CONTEXT_STORE`, else
 /// `$XDG_STATE_HOME/kudo/contexts`, else `~/.local/state/kudo/contexts`.
@@ -69,6 +70,14 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
                 log.len(),
                 inbox.len()
             );
+            for repo in store.repos(&ctx).map_err(|e| e.to_string())? {
+                out.push_str(&format!(
+                    "repo {} @ {}: {}\n",
+                    repo.name,
+                    repo.node,
+                    repo.path.display()
+                ));
+            }
             for (n, entry) in log.iter().enumerate() {
                 out.push_str(&format!("\n[{}] {}\n", n + 1, entry.trim_end()));
             }
@@ -76,6 +85,35 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
                 out.push_str(&format!("\ninbox: {} ({})\n", entry.line, entry.lease));
             }
             Ok(out)
+        }
+        ["repo", "add", ctx, name, rest @ ..] => {
+            let (node, path) = match rest {
+                [] => (node_name(), None),
+                [path] => (node_name(), Some(*path)),
+                ["--node", node] => ((*node).to_owned(), None),
+                [path, "--node", node] => ((*node).to_owned(), Some(*path)),
+                _ => return Err(USAGE.to_owned()),
+            };
+            let path = match path {
+                Some(p) => PathBuf::from(p),
+                None => std::env::current_dir().map_err(|e| e.to_string())?,
+            };
+            let store = open(store_dir)?;
+            let ctx = named(&store, ctx)?;
+            let repo = Repo {
+                name: (*name).to_owned(),
+                node,
+                path,
+            };
+            store
+                .declare_repo(&ctx, &repo, now)
+                .map_err(|e| e.to_string())?;
+            Ok(format!(
+                "declared repo {} @ {}: {}\n",
+                repo.name,
+                repo.node,
+                repo.path.display()
+            ))
         }
         ["list"] => {
             if !store_dir.join(".kinora").is_dir() {
@@ -128,7 +166,16 @@ fn open_or_init(dir: &Path) -> Result<ContextStore, String> {
 
 /// This machine's node name: `KUDO_NODE`, else its hostname.
 pub fn node_name() -> String {
-    String::new()
+    if let Ok(node) = std::env::var("KUDO_NODE")
+        && !node.trim().is_empty()
+    {
+        return node.trim().to_owned();
+    }
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .ok()
+        .map(|h| h.trim().to_owned())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "localhost".to_owned())
 }
 
 /// Where a worker under `ctx` starts: the path of the declared repo `repo` on
@@ -139,13 +186,23 @@ pub fn worker_dir(
     repo: Option<&str>,
     node: &str,
 ) -> Result<Option<PathBuf>, String> {
-    let _ = (store_dir, ctx, repo, node);
-    Ok(None)
+    let Some(name) = repo else {
+        return Ok(None);
+    };
+    let store = open(store_dir)?;
+    let ctx = named(&store, ctx)?;
+    match store.repo_on(&ctx, name, node) {
+        Ok(repo) => Ok(Some(repo.path)),
+        Err(e) => Err(format!(
+            "{e}: declare it with `kudo-shim context repo add {} {name} <path> --node {node}`",
+            ctx.0.get(..SHORT_ID).unwrap_or(&ctx.0)
+        )),
+    }
 }
 
 /// Replace this process with the agent CLI, started as a worker under `ctx`.
 /// Returns only on failure.
-pub fn exec_worker(store_dir: &Path, ctx: &str) -> String {
+pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
     use std::os::unix::process::CommandExt;
 
     let Ok(hub) = std::env::var(crate::HUB_ADDR_ENV) else {
@@ -156,6 +213,10 @@ pub fn exec_worker(store_dir: &Path, ctx: &str) -> String {
     };
     let ctx = match open(store_dir).and_then(|s| named(&s, ctx)) {
         Ok(ctx) => ctx,
+        Err(e) => return e,
+    };
+    let dir = match worker_dir(store_dir, &ctx.0, repo, &node_name()) {
+        Ok(dir) => dir,
         Err(e) => return e,
     };
     let shim = match std::env::current_exe() {
@@ -183,10 +244,12 @@ pub fn exec_worker(store_dir: &Path, ctx: &str) -> String {
         return "empty launch plan".to_owned();
     };
     eprintln!("kudo: worker lease {} under context {}", setup.lease, ctx.0);
-    let err = std::process::Command::new(program)
-        .args(rest)
-        .envs(plan.env)
-        .exec();
+    let mut command = std::process::Command::new(program);
+    if let Some(dir) = &dir {
+        eprintln!("kudo: in {}", dir.display());
+        command.current_dir(dir);
+    }
+    let err = command.args(rest).envs(plan.env).exec();
     format!("cannot start {program}: {err}")
 }
 
