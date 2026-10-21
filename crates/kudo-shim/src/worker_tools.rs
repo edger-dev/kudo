@@ -45,7 +45,7 @@ pub fn pull(setup: &WorkerSetup, now: Now) -> Result<String, String> {
 
 /// Submit the work for a claim: the typed submission, with the full new head.
 /// The reply names any established line that landed as claimed.
-// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
 pub fn submit(
     setup: &WorkerSetup,
     claim: &str,

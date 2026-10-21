@@ -739,7 +739,7 @@ mod tests {
     }
 
     /// The submit tool takes the typed submission, not one free-text log.
-    // implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
+    // implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
     #[test]
     fn the_submit_tool_takes_the_typed_submission() {
         let submit = ShimServer::tool_router()
