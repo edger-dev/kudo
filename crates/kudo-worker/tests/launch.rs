@@ -171,7 +171,7 @@ fn the_mirror_settings_are_forwarded_to_the_shim() {
 
 /// A node that says so runs its workers' CLI in bypass-permissions mode; any
 /// other node, or any other value, leaves the CLI asking.
-// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8
+// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@e46433161767390901da276f230249c0a35964412899db7ad9bf2335db511061
 #[test]
 fn a_worker_bypasses_permissions_only_where_its_node_says_so() {
     use kudo_worker::env::{BYPASS_ENV, bypass_from};

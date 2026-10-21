@@ -90,10 +90,15 @@ pub async fn start(
 ) -> Result<PaneRecord, String> {
     let named = worker_nodes_from(|k| std::env::var(k).ok());
     if !may_start(node, named.as_deref()) {
-        return Err(format!(
-            "workers start only on {} (set in {WORKER_NODES_ENV})",
-            named.unwrap_or_default().join(", ")
-        ));
+        let named = named.unwrap_or_default();
+        return Err(if named.is_empty() {
+            format!("workers start on no node ({WORKER_NODES_ENV} is empty)")
+        } else {
+            format!(
+                "workers start only on {} (set in {WORKER_NODES_ENV})",
+                named.join(", ")
+            )
+        });
     }
     let (ctx, repo) = {
         let (store, context, node) = (store.clone(), context.to_owned(), node.to_owned());

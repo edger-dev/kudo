@@ -67,7 +67,10 @@ is refused. Unset, every node is offered.
 
 Whether a worker's CLI asks before running tools is the **node's** decision,
 never the console's: a node whose own environment has `KUDO_WORKER_BYPASS=1`
-runs its workers with `--permission-mode bypassPermissions`. Set it only on a
+runs its workers with `--permission-mode bypassPermissions`. It is an opt-in,
+not a lock: on an ungoverned node a start request's env reaches the job, so a
+hub caller could set it too — but could already run any command there. A
+governed node refuses such env. Set it only on a
 sandboxed node — yolo, whose outbound traffic goes through OneCLI:
 
 ```nix

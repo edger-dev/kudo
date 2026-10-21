@@ -26,8 +26,9 @@ pub const CLAIM_TTL_ENV: &str = "KUDO_CLAIM_TTL";
 pub const MAX_TURNS_ENV: &str = "KUDO_MAX_TURNS";
 
 /// Set to `1` in a node's own environment: its workers run the agent CLI in
-/// bypass-permissions mode. The node's decision — no launcher can send it.
-// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8
+/// bypass-permissions mode. The node's opt-in; the console never sends it (on
+/// an ungoverned node a start request's env could — see the spec).
+// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@e46433161767390901da276f230249c0a35964412899db7ad9bf2335db511061
 pub const BYPASS_ENV: &str = "KUDO_WORKER_BYPASS";
 
 /// Whether this node's workers bypass permissions: only `1` says so.
