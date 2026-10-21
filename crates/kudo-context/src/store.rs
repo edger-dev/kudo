@@ -98,10 +98,7 @@ enum Failure {
 fn failure(e: &kinora_remote::RemoteError) -> Failure {
     use kinora_remote::RemoteError as R;
     match e {
-        R::Store(
-            object_store::Error::Unauthenticated { .. }
-            | object_store::Error::PermissionDenied { .. },
-        ) => Failure::Refused(e.to_string()),
+        e if e.is_refused() => Failure::Refused(e.to_string()),
         R::Io(_) => Failure::Local,
         _ => Failure::Offline,
     }

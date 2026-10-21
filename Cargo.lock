@@ -2906,7 +2906,7 @@ dependencies = [
 [[package]]
 name = "kinora"
 version = "0.0.1"
-source = "git+https://github.com/edger-dev/kinora?rev=928341c551319aca3ce7bb0060613758b9d99bc4#928341c551319aca3ce7bb0060613758b9d99bc4"
+source = "git+https://github.com/edger-dev/kinora?rev=4fc19c762b554476306a629324ed893549f18b0a#4fc19c762b554476306a629324ed893549f18b0a"
 dependencies = [
  "blake3",
  "facet 0.46.5",
@@ -2922,7 +2922,7 @@ dependencies = [
 [[package]]
 name = "kinora-remote"
 version = "0.0.1"
-source = "git+https://github.com/edger-dev/kinora?rev=928341c551319aca3ce7bb0060613758b9d99bc4#928341c551319aca3ce7bb0060613758b9d99bc4"
+source = "git+https://github.com/edger-dev/kinora?rev=4fc19c762b554476306a629324ed893549f18b0a#4fc19c762b554476306a629324ed893549f18b0a"
 dependencies = [
  "futures",
  "kinora",
