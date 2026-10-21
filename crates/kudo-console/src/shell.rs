@@ -48,7 +48,7 @@ fn render(kind: PaneKind, data: &ConsoleData) -> Element {
         PaneKind::Where => rsx! { WherePane { data: data.clone() } },
         PaneKind::Head => rsx! { HeadPane { data: data.clone() } },
         PaneKind::Trace => rsx! { TracePane { data: data.clone() } },
-        PaneKind::Terminal => rsx! { div {} },
+        PaneKind::Terminal => rsx! { TerminalPane { data: data.clone() } },
     }
 }
 
@@ -82,6 +82,39 @@ fn WherePane(data: ConsoleData) -> Element {
                 for worker in card.workers.iter() {
                     div { key: "{worker.lease}", style: "padding-left:1em;",
                         "worker {short(&worker.lease)}: {worker.last}"
+                        if worker.quiet {
+                            " (quiet — likely gone)"
+                        }
+                        if let Some(pane) = worker.pane.clone() {
+                            button {
+                                style: "margin-left:6px;",
+                                onclick: move |e: MouseEvent| {
+                                    e.stop_propagation();
+                                    if let Some(mut selection) = selection {
+                                        selection.write().pane = Some(pane.clone());
+                                    }
+                                },
+                                "take over"
+                            }
+                        }
+                    }
+                }
+                for node in data.nodes.iter() {
+                    button {
+                        key: "start-{node.id}",
+                        style: "margin:2px;",
+                        onclick: {
+                            let context = card.id.clone();
+                            let node = node.id.clone();
+                            move |e: MouseEvent| {
+                                e.stop_propagation();
+                                let (context, node) = (context.clone(), node.clone());
+                                async move {
+                                    let _ = crate::api::start_worker(context, node).await;
+                                }
+                            }
+                        },
+                        "start a worker on {node.id}"
                     }
                 }
             }
@@ -115,5 +148,45 @@ fn TracePane(data: ConsoleData) -> Element {
                 }
             }
         },
+    }
+}
+
+/// A worker's pane, taken over: its screen, and keys to type into it.
+#[component]
+fn TerminalPane(data: ConsoleData) -> Element {
+    let Some(terminal) = data.terminal.clone() else {
+        return rsx! { p { "take over a worker to see its pane" } };
+    };
+    let mut typed = use_signal(String::new);
+    let pane = terminal.pane.clone();
+    let send = move |bytes: Vec<u8>| {
+        let pane = pane.clone();
+        async move {
+            let _ = crate::api::type_into(pane.node, pane.job, bytes).await;
+        }
+    };
+    let (enter, ctrl_c, escape) = (send.clone(), send.clone(), send.clone());
+    rsx! {
+        h3 { "pane {terminal.pane.job} on {terminal.pane.node}" }
+        pre { style: "background:#111;color:#ddd;padding:6px;white-space:pre;", "{terminal.screen}" }
+        form {
+            onsubmit: move |e: FormEvent| {
+                e.prevent_default();
+                let mut line = typed().into_bytes();
+                line.push(b'\r');
+                typed.set(String::new());
+                send(line)
+            },
+            input {
+                style: "width:60%;",
+                placeholder: "type into the pane (Enter sends)",
+                value: "{typed}",
+                oninput: move |e| typed.set(e.value()),
+            }
+            button { r#type: "submit", "send" }
+        }
+        button { onclick: move |_| enter(vec![b'\r']), "Enter" }
+        button { onclick: move |_| ctrl_c(vec![0x03]), "Ctrl-C" }
+        button { onclick: move |_| escape(vec![0x1b]), "Esc" }
     }
 }

@@ -199,14 +199,15 @@ pub async fn screen(
     moco_job::wire::decode::<ScreenReply>(&bytes).map_err(decode_failed)
 }
 
-/// Type bytes into a terminal job, as the console (stub).
+/// Type bytes into a terminal job, as the console.
 pub async fn input(
     hub: &HubClient,
     target: Target,
     connector: &str,
     request: moco_job::wire::InputRequest,
 ) -> Result<(), ShimError> {
-    let _ = (hub, target, connector, request);
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    route(hub, target, connector, "input", payload).await?;
     Ok(())
 }
 

@@ -5,7 +5,7 @@
 
 use kudo_context::{ContextStore, Error, Now, TraceEvent};
 
-use crate::model::{ConsoleData, ContextCard, ContextDetail, TraceRow, WorkerView};
+use crate::model::{ConsoleData, ContextCard, ContextDetail, PaneRef, TraceRow, WorkerView};
 
 /// A lease silent for longer than a claim lives is likely dead (killed,
 /// crashed, its machine asleep): shown as quiet, never as working.
@@ -28,17 +28,24 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                     None => last.push((entry.lease, entry.event, entry.at)),
                 }
             }
+            let panes = store.panes(&c.id)?;
+            let pane_of = |lease: &str| {
+                panes.iter().rfind(|p| p.lease == lease).map(|p| PaneRef {
+                    node: p.node.clone(),
+                    job: p.job.clone(),
+                })
+            };
             let workers = last
                 .into_iter()
                 .filter(|(_, event, _)| !matches!(event, TraceEvent::LeaseEnd(_)))
                 .map(|(lease, event, at)| WorkerView {
-                    lease,
                     last: event.to_line(),
                     quiet: at
                         .parse::<jiff::Timestamp>()
                         .map(|t| now - t.as_second() > QUIET_AFTER)
                         .unwrap_or(false),
-                    pane: None,
+                    pane: pane_of(&lease),
+                    lease,
                 })
                 .collect();
             Ok(ContextCard {

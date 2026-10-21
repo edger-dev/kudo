@@ -42,10 +42,24 @@ pub fn App() -> Element {
             }
         }
     });
+    // A pane being taken over has no events: its screen is re-read every
+    // second while it is shown (in the page only).
+    use_future(move || async move {
+        #[cfg(target_arch = "wasm32")]
+        loop {
+            pause(1000).await;
+            if selection.read().pane.is_some() {
+                tick += 1;
+            }
+        }
+    });
     let data = use_server_future(move || {
         let _ = tick();
-        let selected = selection.read().context.clone();
-        async move { crate::api::console_data(selected).await }
+        let (selected, pane) = {
+            let s = selection.read();
+            (s.context.clone(), s.pane.clone())
+        };
+        async move { crate::api::console_data(selected, pane).await }
     })?;
     let mut ask = use_signal(String::new);
     let read = data.read();

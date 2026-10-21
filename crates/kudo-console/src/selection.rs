@@ -7,4 +7,6 @@
 pub struct Selection {
     /// The selected context's id.
     pub context: Option<String>,
+    /// The pane being taken over.
+    pub pane: Option<crate::model::PaneRef>,
 }

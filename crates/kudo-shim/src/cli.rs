@@ -281,8 +281,15 @@ fn init_if_missing(dir: &Path) -> Result<ContextStore, String> {
 /// The lease a worker runs under: the one its launcher picked, or a fresh
 /// one (stub).
 pub fn lease_for(given: Option<String>) -> Result<String, String> {
-    let _ = given;
-    Err("not yet".to_owned())
+    match given {
+        Some(lease)
+            if lease.len() == 36 && lease.chars().all(|c| c.is_ascii_hexdigit() || c == '-') =>
+        {
+            Ok(lease)
+        }
+        Some(lease) => Err(format!("{lease:?} is not a lease id (a UUID)")),
+        None => kudo_worker::new_lease_id().map_err(|e| format!("cannot make a lease id: {e}")),
+    }
 }
 
 /// The mirror settings to hand on by name, from these variables.
@@ -373,9 +380,11 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
         Ok(path) => path,
         Err(e) => return format!("cannot find this binary: {e}"),
     };
-    let lease = match kudo_worker::new_lease_id() {
+    // A launcher that picked the lease (the console, to record the pane it
+    // starts) hands it in.
+    let lease = match lease_for(std::env::var(kudo_worker::env::LEASE_ENV).ok()) {
         Ok(lease) => lease,
-        Err(e) => return format!("cannot make a lease id: {e}"),
+        Err(e) => return e,
     };
     let setup = kudo_worker::WorkerSetup {
         store_dir: store_dir.to_path_buf(),

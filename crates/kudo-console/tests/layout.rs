@@ -80,7 +80,7 @@ fn three_panes_put_where_head_and_trace_side_by_side() {
         "{html}"
     );
     assert!(
-        html.contains("claude&gt; waiting for you") || html.contains("claude> waiting for you"),
+        html.contains("claude&#62; waiting for you"),
         "{html}"
     );
     assert!(

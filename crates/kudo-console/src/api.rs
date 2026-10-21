@@ -5,14 +5,17 @@
 
 use dioxus::prelude::*;
 
-use crate::model::ConsoleData;
+use crate::model::{ConsoleData, PaneRef};
 
 /// Everything the panes draw from, with `selected` (an id or unique prefix)
 /// as the selected context.
 #[server]
-pub async fn console_data(selected: Option<String>) -> Result<ConsoleData, ServerFnError> {
+pub async fn console_data(
+    selected: Option<String>,
+    pane: Option<PaneRef>,
+) -> Result<ConsoleData, ServerFnError> {
     crate::server::guarded().await?;
-    Ok(crate::server::console_data(selected).await)
+    Ok(crate::server::console_data(selected, pane).await)
 }
 
 /// Enqueue `ask` under the context `context` (an id or unique prefix).
@@ -31,4 +34,23 @@ pub async fn enqueue(context: String, ask: String) -> Result<String, ServerFnErr
 pub async fn wait_version(after: u64) -> Result<u64, ServerFnError> {
     crate::server::guarded().await?;
     Ok(crate::server::wait_version(after).await)
+}
+
+/// Start a worker for `context` on `node`, in a pane the console can take
+/// over: the job id.
+#[server]
+pub async fn start_worker(context: String, node: String) -> Result<String, ServerFnError> {
+    crate::server::guarded().await?;
+    crate::server::start_worker(context, node)
+        .await
+        .map_err(ServerFnError::new)
+}
+
+/// Type `bytes` into the pane `job` on `node` — the human's take over.
+#[server]
+pub async fn type_into(node: String, job: String, bytes: Vec<u8>) -> Result<(), ServerFnError> {
+    crate::server::guarded().await?;
+    crate::server::type_into(node, job, bytes)
+        .await
+        .map_err(ServerFnError::new)
 }

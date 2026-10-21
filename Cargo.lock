@@ -4153,6 +4153,7 @@ dependencies = [
  "kudo-context",
  "kudo-shim",
  "kudo-worker",
+ "moco-job",
  "serde",
  "tokio",
  "vox",

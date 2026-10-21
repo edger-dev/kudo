@@ -52,6 +52,8 @@ const BASE: &str = "kudo::base";
 const EVIDENCE: &str = "kudo::evidence";
 const ORIGIN: &str = "kudo::origin";
 const EVENT: &str = "kudo::event";
+const NODE: &str = "kudo::node";
+const JOB: &str = "kudo::job";
 const SUBMISSION: &str = "kudo::submission";
 const REASON: &str = "kudo::reason";
 const ORIGIN_ID: &str = "kudo::origin_id";
@@ -558,7 +560,9 @@ impl ContextStore {
         Ok(())
     }
 
-    /// Record that `lease` runs in the pane `job` on `node` (stub).
+    /// Record that `lease` runs in the pane `job` on `node`: written by the
+    /// console when it starts a worker there, so the worker can be shown and
+    /// taken over.
     pub fn record_pane(
         &self,
         ctx: &ContextId,
@@ -567,14 +571,41 @@ impl ContextStore {
         job: &str,
         now: Now,
     ) -> Result<(), Error> {
-        let _ = (ctx, lease, node, job, now);
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let content = format!(
+            "<!-- kudo pane {lease} {} -->\npane {lease} {node} {job}\n",
+            nonce()?
+        );
+        self.put(
+            "text",
+            content.into_bytes(),
+            meta([
+                (KIND, "pane"),
+                (CONTEXT, &ctx.0),
+                (LEASE, lease),
+                (NODE, node),
+                (JOB, job),
+            ]),
+            None,
+            now,
+        )?;
         Ok(())
     }
 
-    /// The panes recorded under the context (stub).
+    /// The panes recorded under the context.
     pub fn panes(&self, ctx: &ContextId) -> Result<Vec<PaneRecord>, Error> {
-        let _ = ctx;
-        Ok(Vec::new())
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        Ok(view
+            .of_kind_in("pane", ctx)
+            .into_iter()
+            .map(|e| PaneRecord {
+                lease: field(e, LEASE).to_owned(),
+                node: field(e, NODE).to_owned(),
+                job: field(e, JOB).to_owned(),
+            })
+            .collect())
     }
 
     /// The context's trace: every lease's events, in order.
