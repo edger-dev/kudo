@@ -6,7 +6,7 @@
 #![cfg(feature = "server")]
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
-use dioxus::fullstack::{HeaderMap, HeaderValue};
+use dioxus::fullstack::{HeaderMap, HeaderValue, Method};
 use kudo_console::guard::allowed;
 
 fn headers(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
@@ -20,7 +20,7 @@ fn headers(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
 #[test]
 fn same_origin_json_is_allowed() {
     assert!(
-        allowed(&headers(&[
+        allowed(&Method::POST, &headers(&[
             ("content-type", "application/json"),
             ("host", "127.0.0.1:8099"),
             ("origin", "http://127.0.0.1:8099"),
@@ -29,7 +29,7 @@ fn same_origin_json_is_allowed() {
     );
     // A tool on this machine sends no Origin at all.
     assert!(
-        allowed(&headers(&[
+        allowed(&Method::POST, &headers(&[
             ("content-type", "application/json"),
             ("host", "127.0.0.1:8099")
         ]))
@@ -46,7 +46,7 @@ fn what_another_site_could_send_is_refused() {
         "multipart/form-data",
     ] {
         assert!(
-            allowed(&headers(&[
+            allowed(&Method::POST, &headers(&[
                 ("content-type", ct),
                 ("host", "127.0.0.1:8099")
             ]))
@@ -55,11 +55,11 @@ fn what_another_site_could_send_is_refused() {
         );
     }
     assert!(
-        allowed(&headers(&[("host", "127.0.0.1:8099")])).is_err(),
+        allowed(&Method::POST, &headers(&[("host", "127.0.0.1:8099")])).is_err(),
         "no content type"
     );
     assert!(
-        allowed(&headers(&[
+        allowed(&Method::POST, &headers(&[
             ("content-type", "application/json"),
             ("host", "127.0.0.1:8099"),
             ("origin", "https://evil.example"),
@@ -67,11 +67,18 @@ fn what_another_site_could_send_is_refused() {
         .is_err()
     );
     assert!(
-        allowed(&headers(&[
+        allowed(&Method::POST, &headers(&[
             ("content-type", "application/json"),
             ("host", "127.0.0.1:8099"),
             ("sec-fetch-site", "cross-site"),
         ]))
         .is_err()
     );
+}
+
+/// Rendering the page runs the server functions inside the page's own GET:
+/// that is not something another site can turn into a write.
+#[test]
+fn the_page_render_itself_is_allowed() {
+    assert!(allowed(&Method::GET, &headers(&[("host", "127.0.0.1:8099")])).is_ok());
 }
