@@ -9,44 +9,59 @@
 
 use dioxus::fullstack::{HeaderMap, Method};
 
+/// The names in a comma-separated variable.
+fn listed(var: &str) -> Vec<String> {
+    std::env::var(var)
+        .map(|list| {
+            list.split(',')
+                .map(|h| h.trim().to_owned())
+                .filter(|h| !h.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Whether `host` (with its port) is one this console answers to: localhost,
-/// or a name listed in `KUDO_CONSOLE_HOSTS` (comma-separated).
-fn answers_to(host: &str) -> bool {
+/// or one of `hosts`.
+fn answers_to(host: &str, hosts: &[String]) -> bool {
     let name = match host.rsplit_once(':') {
         Some((name, port)) if port.bytes().all(|b| b.is_ascii_digit()) => name,
         _ => host,
     };
-    if matches!(name, "localhost" | "127.0.0.1" | "[::1]") {
-        return true;
-    }
-    std::env::var("KUDO_CONSOLE_HOSTS")
-        .map(|list| list.split(',').any(|h| h.trim() == name))
-        .unwrap_or(false)
+    matches!(name, "localhost" | "127.0.0.1" | "[::1]")
+        || hosts.iter().any(|h| h == name || h == host)
 }
 
-/// [`allowed`], with the named hosts and origins given (stub).
+/// Whether a request may reach a server function, with the hosts and
+/// origins named in `KUDO_CONSOLE_HOSTS` and `KUDO_CONSOLE_ORIGINS`
+/// (comma-separated) — for a console reached through an ingress, whose Host
+/// is the proxy's and whose Origin is the page's.
+pub fn allowed(method: &Method, headers: &HeaderMap) -> Result<(), String> {
+    allowed_with(
+        method,
+        headers,
+        &listed("KUDO_CONSOLE_HOSTS"),
+        &listed("KUDO_CONSOLE_ORIGINS"),
+    )
+}
+
+/// [`allowed`], with the named hosts and origins given. A page load (GET or
+/// HEAD, in which the page's own render runs the server functions) writes
+/// nothing another site could aim; anything else must name a host this
+/// console answers to (which defeats DNS rebinding), be JSON, and come from
+/// the console's own origin or one named.
 pub fn allowed_with(
     method: &Method,
     headers: &HeaderMap,
     hosts: &[String],
     origins: &[String],
 ) -> Result<(), String> {
-    let _ = (hosts, origins);
-    allowed(method, headers)
-}
-
-/// Whether a request may reach a server function. A page load (GET or HEAD,
-/// in which the page's own render runs them) writes nothing another site
-/// could aim; anything else must be JSON, and not from another origin.
-pub fn allowed(method: &Method, headers: &HeaderMap) -> Result<(), String> {
     if method == Method::GET || method == Method::HEAD {
         return Ok(());
     }
     let get = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-    // DNS rebinding makes a hostile page same-origin with itself: the host
-    // must be one this console answers to.
     let host = get("host").unwrap_or_default();
-    if !answers_to(host) {
+    if !answers_to(host, hosts) {
         return Err(format!("the console does not answer to {host:?}"));
     }
     if !get("content-type").is_some_and(|ct| ct.starts_with("application/json")) {
@@ -56,9 +71,8 @@ pub fn allowed(method: &Method, headers: &HeaderMap) -> Result<(), String> {
         return Err("the console refuses requests from another site".to_owned());
     }
     if let Some(origin) = get("origin") {
-        let host = get("host").unwrap_or_default();
-        let same = origin == format!("http://{host}") || origin == format!("https://{host}");
-        if !same {
+        let own = origin == format!("http://{host}") || origin == format!("https://{host}");
+        if !own && !origins.iter().any(|o| o == origin) {
             return Err(format!("the console refuses requests from {origin}"));
         }
     }

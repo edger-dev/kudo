@@ -57,6 +57,18 @@ To reach the console by a name other than localhost (through a tunnel that
 keeps a hostname), list it in `KUDO_CONSOLE_HOSTS` (comma-separated); any
 other `Host` is refused, which also defeats DNS rebinding.
 
+Behind an ingress that rewrites `Host` (the proxy's name reaches the console,
+while the browser's `Origin` stays the public one), also list the public
+origin in `KUDO_CONSOLE_ORIGINS`. For yolo's ingress:
+
+```sh
+PORT=8080 KUDO_CONSOLE_HOSTS=8080.yolo.incus \
+  KUDO_CONSOLE_ORIGINS=https://yolo-8080.pc.yjpark.org ./server
+```
+
+The console still binds 127.0.0.1, where yolo's Caddy forwards. It has no
+login, so anyone the ingress lets in can use it.
+
 ## Live updates
 
 The server subscribes to the hub's `kudo/` events and the page long-polls a
