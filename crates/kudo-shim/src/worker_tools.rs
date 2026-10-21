@@ -8,7 +8,11 @@ use kudo_context::{ClaimId, ContextStore, Error, Now, Submission};
 use kudo_worker::{LeaseBook, Pull, Worker, WorkerSetup};
 
 fn open(setup: &WorkerSetup) -> Result<ContextStore, String> {
-    crate::cli::open_configured(&setup.store_dir)
+    crate::cli::open_store(
+        &setup.store_dir,
+        crate::cli::mirror_from_env().as_deref(),
+        false,
+    )
 }
 
 /// The bound context's head.

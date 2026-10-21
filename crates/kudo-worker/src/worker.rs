@@ -183,8 +183,9 @@ impl<'a> Worker<'a> {
         submission: &Submission,
         now: Now,
     ) -> Result<Submitted, Error> {
-        self.own(claim)?;
-        let done = self.store.submit(claim, submission, now)?;
+        let done = self
+            .store
+            .submit_as(&self.cfg.lease, claim, submission, now)?;
         let mut record = self.record()?;
         record.submitted_this_turn = true;
         self.book.put(&self.cfg.lease, &record)?;
@@ -200,21 +201,8 @@ impl<'a> Worker<'a> {
 
     /// The `release` tool: give the claim back unfinished.
     pub fn release(&self, claim: &ClaimId, now: Now) -> Result<(), Error> {
-        self.own(claim)?;
-        self.store.release(claim, now)?;
+        self.store.release_as(&self.cfg.lease, claim, now)?;
         self.trace(&TraceEvent::Release(claim.clone()), now);
-        Ok(())
-    }
-
-    /// Refuse a claim this lease did not take.
-    fn own(&self, claim: &ClaimId) -> Result<(), Error> {
-        let holder = self.store.claim_lease(claim)?;
-        if holder != self.cfg.lease {
-            return Err(Error::ClaimNotHeld {
-                claim: claim.0.clone(),
-                lease: self.cfg.lease.clone(),
-            });
-        }
         Ok(())
     }
 

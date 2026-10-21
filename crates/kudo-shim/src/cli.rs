@@ -208,7 +208,9 @@ fn named(store: &ContextStore, id_or_prefix: &str) -> Result<ContextId, String> 
 /// mirror, a store this machine has never held is created and filled from it.
 // implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
 pub fn open_store(dir: &Path, mirror: Option<&str>, create: bool) -> Result<ContextStore, String> {
-    let _ = create;
+    if !create && !dir.join(".kinora").is_dir() {
+        return Err(format!("no context store at {}", dir.display()));
+    }
     let Some(url) = mirror else {
         return ContextStore::open(dir).map_err(|e| e.to_string());
     };

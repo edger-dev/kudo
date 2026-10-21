@@ -59,7 +59,11 @@ impl HookReply {
 /// Answer one hook event for the worker `setup` describes.
 pub fn run(event: &str, stdin: &str, setup: &WorkerSetup, now: Now) -> HookReply {
     let input: Value = serde_json::from_str(stdin).unwrap_or(Value::Null);
-    let store = match crate::cli::open_configured(&setup.store_dir) {
+    let store = match crate::cli::open_store(
+        &setup.store_dir,
+        crate::cli::mirror_from_env().as_deref(),
+        false,
+    ) {
         Ok(store) => store,
         Err(e) => return HookReply::failed(e),
     };

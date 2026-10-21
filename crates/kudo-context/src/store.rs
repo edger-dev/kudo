@@ -67,8 +67,44 @@ pub struct ContextStore {
     mirror: Option<crate::Mirror>,
     /// The least time between two pulls a read may trigger.
     spacing: std::time::Duration,
-    /// When the mirror was last pulled.
-    last_pull: std::sync::Mutex<Option<std::time::Instant>>,
+    /// After the mirror could not be reached, how long to work locally.
+    backoff: std::time::Duration,
+    /// When the mirror was last pulled, last failed, last written to.
+    sync_state: std::sync::Mutex<SyncState>,
+}
+
+/// The mirror's recent history within this process.
+#[derive(Default)]
+struct SyncState {
+    last_pull: Option<std::time::Instant>,
+    failed_at: Option<std::time::Instant>,
+    last_write: Option<std::time::Instant>,
+}
+
+/// A pull this recent, with no local write since, makes a forced one
+/// redundant (two calls of one operation, milliseconds apart).
+const FRESH: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// What a failed sync means for the store.
+enum Failure {
+    /// The mirror cannot be reached: work locally for a while.
+    Offline,
+    /// The mirror refused this machine: an error to surface.
+    Refused(String),
+    /// Something local (an unreadable file): report it, sync the rest.
+    Local,
+}
+
+fn failure(e: &kinora_remote::RemoteError) -> Failure {
+    use kinora_remote::RemoteError as R;
+    match e {
+        R::Store(
+            object_store::Error::Unauthenticated { .. }
+            | object_store::Error::PermissionDenied { .. },
+        ) => Failure::Refused(e.to_string()),
+        R::Io(_) => Failure::Local,
+        _ => Failure::Offline,
+    }
 }
 
 impl ContextStore {
@@ -91,7 +127,8 @@ impl ContextStore {
             kinora,
             mirror: None,
             spacing: std::time::Duration::from_secs(1),
-            last_pull: std::sync::Mutex::new(None),
+            backoff: std::time::Duration::from_secs(30),
+            sync_state: std::sync::Mutex::new(SyncState::default()),
         })
     }
 
@@ -112,8 +149,8 @@ impl ContextStore {
 
     /// After the mirror could not be reached, how long this process works
     /// locally before trying it again (30 seconds by default).
-    pub fn with_offline_backoff(self, backoff: std::time::Duration) -> Self {
-        let _ = backoff;
+    pub fn with_offline_backoff(mut self, backoff: std::time::Duration) -> Self {
+        self.backoff = backoff;
         self
     }
 
@@ -125,50 +162,104 @@ impl ContextStore {
         submission: &Submission,
         now: Now,
     ) -> Result<Submitted, Error> {
-        let _ = lease;
-        self.submit(claim, submission, now)
+        self.submit_checked(Some(lease), claim, submission, now)
     }
 
     /// Release for `lease`: refused unless `lease` holds the claim.
     pub fn release_as(&self, lease: &str, claim: &ClaimId, now: Now) -> Result<(), Error> {
-        let _ = lease;
-        self.release(claim, now)
+        self.release_checked(Some(lease), claim, now)
     }
 
     /// Push what this store has not sent, then pull what it lacks. A mirror
     /// that cannot be reached is reported on stderr and the store goes on
     /// locally; what it could not send goes on the next sync.
     // implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
-    fn sync(&self, force: bool) {
+    fn sync(&self, force: bool) -> Result<(), Error> {
         let Some(mirror) = &self.mirror else {
-            return;
+            return Ok(());
         };
-        let mut last = self
-            .last_pull
+        let mut state = self
+            .sync_state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !force && last.is_some_and(|at| at.elapsed() < self.spacing) {
-            return;
+        if state
+            .failed_at
+            .is_some_and(|at| at.elapsed() < self.backoff)
+        {
+            return Ok(()); // offline a moment ago: work locally
+        }
+        let wrote_since = match (state.last_write, state.last_pull) {
+            (Some(w), Some(p)) => w > p,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if let Some(at) = state.last_pull {
+            let spaced = !force && at.elapsed() < self.spacing;
+            let redundant = force && !wrote_since && at.elapsed() < FRESH;
+            if spaced || redundant {
+                return Ok(());
+            }
         }
         if let Err(e) = kinora_remote::blocking::push(mirror, &self.kinora) {
-            eprintln!("kudo: context store mirror unreachable, working locally (push: {e})");
-            return;
+            match failure(&e) {
+                Failure::Refused(why) => return Err(Error::Mirror(why)),
+                Failure::Offline => {
+                    state.failed_at = Some(std::time::Instant::now());
+                    eprintln!(
+                        "kudo: context store mirror unreachable, working locally (push: {e})"
+                    );
+                    return Ok(());
+                }
+                // A local file it could not send: the pull still runs.
+                Failure::Local => eprintln!("kudo: context store mirror push incomplete: {e}"),
+            }
         }
         match kinora_remote::blocking::pull(mirror, &self.kinora) {
-            Ok(_) => *last = Some(std::time::Instant::now()),
-            Err(e) => {
-                eprintln!("kudo: context store mirror unreachable, working locally (pull: {e})")
+            Ok(_) => {
+                state.last_pull = Some(std::time::Instant::now());
+                state.failed_at = None;
+                Ok(())
             }
+            Err(e) => match failure(&e) {
+                Failure::Refused(why) => Err(Error::Mirror(why)),
+                Failure::Offline | Failure::Local => {
+                    state.failed_at = Some(std::time::Instant::now());
+                    eprintln!(
+                        "kudo: context store mirror unreachable, working locally (pull: {e})"
+                    );
+                    Ok(())
+                }
+            },
         }
     }
 
     /// Push what was just written; offline, it waits for the next sync.
-    fn push_now(&self) {
-        if let Some(mirror) = &self.mirror
-            && let Err(e) = kinora_remote::blocking::push(mirror, &self.kinora)
+    fn push_now(&self) -> Result<(), Error> {
+        let Some(mirror) = &self.mirror else {
+            return Ok(());
+        };
+        let mut state = self
+            .sync_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.last_write = Some(std::time::Instant::now());
+        if state
+            .failed_at
+            .is_some_and(|at| at.elapsed() < self.backoff)
         {
-            eprintln!("kudo: context store mirror unreachable, kept locally (push: {e})");
+            return Ok(());
         }
+        if let Err(e) = kinora_remote::blocking::push(mirror, &self.kinora) {
+            match failure(&e) {
+                Failure::Refused(why) => return Err(Error::Mirror(why)),
+                Failure::Offline => {
+                    state.failed_at = Some(std::time::Instant::now());
+                    eprintln!("kudo: context store mirror unreachable, kept locally (push: {e})");
+                }
+                Failure::Local => eprintln!("kudo: context store mirror push incomplete: {e}"),
+            }
+        }
+        Ok(())
     }
 
     /// Birth a context whose first head is `head`.
@@ -244,7 +335,7 @@ impl ContextStore {
     /// Declare a repo the context spans; a repo of the same name on the same
     /// node moves to the new path.
     pub fn declare_repo(&self, ctx: &ContextId, repo: &Repo, now: Now) -> Result<(), Error> {
-        self.sync(true);
+        self.sync(true)?;
         validate(repo)?;
         let view = self.view()?;
         view.require_context(ctx)?;
@@ -645,7 +736,7 @@ impl ContextStore {
         now: Now,
         ttl: i64,
     ) -> Result<Option<Claim>, Error> {
-        self.sync(true);
+        self.sync(true)?;
         let view = self.view()?;
         view.require_context(ctx)?;
         let Some((item_event, attempt)) = view.next_ready(ctx, now) else {
@@ -705,9 +796,20 @@ impl ContextStore {
         submission: &Submission,
         now: Now,
     ) -> Result<Submitted, Error> {
-        self.sync(true);
+        self.submit_checked(None, claim, submission, now)
+    }
+
+    fn submit_checked(
+        &self,
+        lease: Option<&str>,
+        claim: &ClaimId,
+        submission: &Submission,
+        now: Now,
+    ) -> Result<Submitted, Error> {
+        self.sync(true)?;
         let view = self.view()?;
         let claim_event = view.live_claim(claim, now)?;
+        held_by_lease(claim_event, claim, lease)?;
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
         let item = field(claim_event, ITEM).to_owned();
 
@@ -788,9 +890,14 @@ impl ContextStore {
 
     /// Give a live claim back: its item is ready again, as the next attempt.
     pub fn release(&self, claim: &ClaimId, now: Now) -> Result<(), Error> {
-        self.sync(true);
+        self.release_checked(None, claim, now)
+    }
+
+    fn release_checked(&self, lease: Option<&str>, claim: &ClaimId, now: Now) -> Result<(), Error> {
+        self.sync(true)?;
         let view = self.view()?;
         let claim_event = view.live_claim(claim, now)?;
+        held_by_lease(claim_event, claim, lease)?;
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
         self.settle(&ctx, claim, RELEASED, now)
     }
@@ -904,6 +1011,9 @@ impl ContextStore {
     /// both write it — the same id, two births; the birth with the smallest
     /// lease wins, and the loser must back off.
     pub(crate) fn confirm(&self, claim: &ClaimId, lease: &str) -> Result<bool, Error> {
+        // The other machine's birth of this claim may have reached the
+        // mirror while this one wrote its own.
+        self.sync(true)?;
         let view = self.view()?;
         let holder = view
             .by_id
@@ -963,7 +1073,7 @@ impl ContextStore {
             },
         )
         .map_err(kin)?;
-        self.push_now();
+        self.push_now()?;
         Ok(stored.event)
     }
 
@@ -986,7 +1096,7 @@ impl ContextStore {
     }
 
     fn view(&self) -> Result<View, Error> {
-        self.sync(false);
+        self.sync(false)?;
         View::load(&self.kinora)
     }
 }
@@ -1367,6 +1477,18 @@ fn render(submission: &Submission, checked: &Checked, head_version: &str) -> Str
     list(&mut out, "Gaps", &gaps);
     out.push_str(&format!("\nHead as left: version {head_version}\n"));
     out
+}
+
+/// Refuse a claim the given lease does not hold — judged on the same view
+/// the write is made from, after the forced pull.
+fn held_by_lease(claim_event: &Event, claim: &ClaimId, lease: Option<&str>) -> Result<(), Error> {
+    match lease {
+        Some(lease) if field(claim_event, LEASE) != lease => Err(Error::ClaimNotHeld {
+            claim: claim.0.clone(),
+            lease: lease.to_owned(),
+        }),
+        _ => Ok(()),
+    }
 }
 
 fn birth(events: &[Event]) -> Option<&Event> {
