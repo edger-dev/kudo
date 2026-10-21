@@ -75,3 +75,14 @@ fn a_prefix_two_contexts_share_is_refused() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn two_contexts_with_one_title_born_in_one_second_are_two() {
+    let (dir, store) = store("twins");
+    let a = store.create_context("twin", "h\n", T0).unwrap();
+    let b = store.create_context("twin", "h\n", T0).unwrap();
+    assert_ne!(a, b);
+    assert_eq!(store.contexts().unwrap().len(), 2);
+    assert_eq!(store.head_history(&a).unwrap().len(), 1, "no fork");
+    let _ = std::fs::remove_dir_all(&dir);
+}
