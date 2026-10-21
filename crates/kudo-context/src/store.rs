@@ -93,13 +93,43 @@ impl ContextStore {
 
     /// Every context in the store, newest first.
     pub fn contexts(&self) -> Result<Vec<ContextSummary>, Error> {
-        Ok(Vec::new())
+        let view = self.view()?;
+        let mut cards = view.cards();
+        cards.sort_by(|a, b| b.ts.cmp(&a.ts).then_with(|| a.id.cmp(&b.id)));
+        cards
+            .into_iter()
+            .map(|card| {
+                let content = self.read(&card.hash)?;
+                let title = content
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .trim_start_matches("# ")
+                    .to_owned();
+                Ok(ContextSummary {
+                    id: ContextId(card.id.clone()),
+                    title,
+                    created: card.ts.clone(),
+                })
+            })
+            .collect()
     }
 
     /// The context `id_or_prefix` names: its full id, or a prefix of it that
-    /// no other context shares.
+    /// no other context shares (ids are all one length, so a full id is
+    /// always unique).
     pub fn resolve_context(&self, id_or_prefix: &str) -> Result<ContextId, Error> {
-        Err(Error::UnknownContext(id_or_prefix.to_owned()))
+        let view = self.view()?;
+        let matches: Vec<&Event> = view
+            .cards()
+            .into_iter()
+            .filter(|card| card.id.starts_with(id_or_prefix))
+            .collect();
+        match matches.as_slice() {
+            [one] => Ok(ContextId(one.id.clone())),
+            [] => Err(Error::UnknownContext(id_or_prefix.to_owned())),
+            many => Err(Error::AmbiguousContext(id_or_prefix.to_owned(), many.len())),
+        }
     }
 
     /// The context's current head.
@@ -475,6 +505,15 @@ impl View {
             .values()
             .filter_map(|events| events.first())
             .filter(|e| field(e, KIND) == kind && field(e, CONTEXT) == ctx.0)
+            .collect()
+    }
+
+    /// The card (birth event) of every context.
+    fn cards(&self) -> Vec<&Event> {
+        self.by_id
+            .values()
+            .filter_map(|events| birth(events))
+            .filter(|e| field(e, KIND) == "context")
             .collect()
     }
 

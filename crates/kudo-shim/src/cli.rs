@@ -48,14 +48,15 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
         }
         ["enqueue", ctx, ask @ ..] if !ask.is_empty() => {
             let store = open(store_dir)?;
+            let ctx = named(&store, ctx)?;
             let item = store
-                .enqueue(&ContextId((*ctx).to_owned()), &ask.join(" "), now)
+                .enqueue(&ctx, &ask.join(" "), now)
                 .map_err(|e| e.to_string())?;
             Ok(format!("enqueued {}\n", item.0))
         }
         ["show", ctx] => {
             let store = open(store_dir)?;
-            let ctx = ContextId((*ctx).to_owned());
+            let ctx = named(&store, ctx)?;
             let head = store.head(&ctx).map_err(|e| e.to_string())?;
             let ready = store.ready_count(&ctx, now).map_err(|e| e.to_string())?;
             let inbox = store.inbox(&ctx).map_err(|e| e.to_string())?;
@@ -76,8 +77,39 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
             }
             Ok(out)
         }
+        ["list"] => {
+            if !store_dir.join(".kinora").is_dir() {
+                return Ok("no contexts yet: kudo-shim context new <title>\n".to_owned());
+            }
+            let store = open(store_dir)?;
+            let all = store.contexts().map_err(|e| e.to_string())?;
+            if all.is_empty() {
+                return Ok("no contexts yet: kudo-shim context new <title>\n".to_owned());
+            }
+            let mut out = String::new();
+            for c in &all {
+                let ready = store.ready_count(&c.id, now).map_err(|e| e.to_string())?;
+                let submitted = store.log(&c.id).map_err(|e| e.to_string())?.len();
+                let short = c.id.0.get(..SHORT_ID).unwrap_or(&c.id.0);
+                out.push_str(&format!(
+                    "{short}  {}  ({ready} ready, {submitted} submitted, created {})\n",
+                    c.title, c.created
+                ));
+            }
+            Ok(out)
+        }
         _ => Err(USAGE.to_owned()),
     }
+}
+
+/// How much of a context id `list` shows; any unique prefix is accepted back.
+const SHORT_ID: usize = 12;
+
+/// The context a full id or a unique prefix names.
+fn named(store: &ContextStore, id_or_prefix: &str) -> Result<ContextId, String> {
+    store
+        .resolve_context(id_or_prefix)
+        .map_err(|e| e.to_string())
 }
 
 fn open(dir: &Path) -> Result<ContextStore, String> {
@@ -103,12 +135,10 @@ pub fn exec_worker(store_dir: &Path, ctx: &str) -> String {
             crate::HUB_ADDR_ENV
         );
     };
-    if let Err(e) = open(store_dir).and_then(|s| {
-        s.head(&ContextId(ctx.to_owned()))
-            .map_err(|e| e.to_string())
-    }) {
-        return e;
-    }
+    let ctx = match open(store_dir).and_then(|s| named(&s, ctx)) {
+        Ok(ctx) => ctx,
+        Err(e) => return e,
+    };
     let shim = match std::env::current_exe() {
         Ok(path) => path,
         Err(e) => return format!("cannot find this binary: {e}"),
@@ -119,7 +149,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str) -> String {
     };
     let setup = kudo_worker::WorkerSetup {
         store_dir: store_dir.to_path_buf(),
-        context: ContextId(ctx.to_owned()),
+        context: ctx.clone(),
         lease,
         claim_ttl: env_num(kudo_worker::env::CLAIM_TTL_ENV)
             .unwrap_or(kudo_worker::DEFAULT_CLAIM_TTL),
@@ -133,7 +163,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str) -> String {
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
     };
-    eprintln!("kudo: worker lease {} under context {ctx}", setup.lease);
+    eprintln!("kudo: worker lease {} under context {}", setup.lease, ctx.0);
     let err = std::process::Command::new(program)
         .args(rest)
         .envs(plan.env)
