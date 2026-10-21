@@ -16,6 +16,7 @@
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 //! implements: 6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd@6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd
+//! implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -42,6 +43,7 @@ const LEASE: &str = "kudo::lease";
 const DEADLINE: &str = "kudo::deadline";
 const OUTCOME: &str = "kudo::outcome";
 const HEAD: &str = "kudo::head";
+const BASE: &str = "kudo::base";
 
 const SUBMITTED: &str = "submitted";
 const RELEASED: &str = "released";
@@ -91,7 +93,7 @@ impl ContextStore {
             "markdown",
             head.as_bytes().to_vec(),
             meta([(KIND, "head")]),
-            Some((born.id, born.hash)),
+            Some((born.id, vec![born.hash])),
             now,
         )?;
         Ok(ctx)
@@ -154,7 +156,8 @@ impl ContextStore {
     /// The head's current versions, newest first: one, unless two submits
     /// raced and forked it.
     pub fn heads(&self, ctx: &ContextId) -> Result<Vec<Head>, Error> {
-        Ok(vec![self.head(ctx)?])
+        let view = self.view()?;
+        view.tips(ctx)?.iter().map(|e| self.head_of(e)).collect()
     }
 
     /// Every version of the head, oldest first.
@@ -223,6 +226,8 @@ impl ContextStore {
         {
             return Ok(None);
         }
+        let base: Vec<String> = view.tips(ctx)?.iter().map(|e| e.hash.clone()).collect();
+        let base_s = base.join(",");
         let attempt_s = attempt.to_string();
         let deadline_s = deadline.to_string();
         let born = self.put(
@@ -235,6 +240,7 @@ impl ContextStore {
                 (ATTEMPT, &attempt_s),
                 (LEASE, lease),
                 (DEADLINE, &deadline_s),
+                (BASE, &base_s),
             ]),
             None,
             now,
@@ -250,7 +256,7 @@ impl ContextStore {
             attempt,
             lease: lease.to_owned(),
             deadline,
-            base: Vec::new(),
+            base,
         }))
     }
 
@@ -267,21 +273,44 @@ impl ContextStore {
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
         let item = field(claim_event, ITEM).to_owned();
 
-        let chain = view.head_chain(&ctx)?;
-        let current = chain
-            .last()
-            .ok_or_else(|| Error::UnknownContext(ctx.0.clone()))?;
-        let head_version = if self.head_of(current)?.body == submission.head {
-            current.hash.clone()
-        } else {
-            self.put(
-                "markdown",
-                submission.head.as_bytes().to_vec(),
-                meta([(KIND, "head"), (CLAIM, &claim.0)]),
-                Some((ctx.0.clone(), current.hash.clone())),
-                now,
-            )?
-            .hash
+        // The new head must build on the head as it is now: every tip, if
+        // two submits raced and forked it.
+        let tips = view.tips(&ctx)?;
+        let current: Vec<String> = tips.iter().map(|e| e.hash.clone()).collect();
+        let mut base = submission
+            .base
+            .clone()
+            .unwrap_or_else(|| base_of(claim_event));
+        base.sort();
+        let mut now_sorted = current.clone();
+        now_sorted.sort();
+        if base != now_sorted {
+            return Err(Error::HeadMoved {
+                claim: claim.0.clone(),
+                current,
+            });
+        }
+        let unchanged = tips
+            .iter()
+            .map(|e| Ok((e, self.head_of(e)?.body == submission.head)))
+            .collect::<Result<Vec<_>, Error>>()?
+            .into_iter()
+            .find(|(_, same)| *same)
+            .map(|(e, _)| e.hash.clone());
+        let head_version = match unchanged {
+            // The same bytes as a tip: nothing to supersede it with (a fork
+            // stays open until a submit changes the head).
+            Some(version) => version,
+            None => {
+                self.put(
+                    "markdown",
+                    submission.head.as_bytes().to_vec(),
+                    meta([(KIND, "head"), (CLAIM, &claim.0)]),
+                    Some((ctx.0.clone(), current)),
+                    now,
+                )?
+                .hash
+            }
         };
 
         let seq = (view.of_kind_in("submission", &ctx).len() + 1).to_string();
@@ -337,7 +366,7 @@ impl ContextStore {
             attempt: field(claim, ATTEMPT).parse().unwrap_or(1),
             lease: lease.to_owned(),
             deadline: deadline_of(claim),
-            base: Vec::new(),
+            base: base_of(claim),
         }))
     }
 
@@ -443,17 +472,17 @@ impl ContextStore {
     }
 
     /// Store one kino: a birth when `version_of` is `None`, else a version of
-    /// that identity with the given parent.
+    /// that identity with the given parents.
     fn put(
         &self,
         kind: &str,
         content: Vec<u8>,
         metadata: BTreeMap<String, String>,
-        version_of: Option<(String, String)>,
+        version_of: Option<(String, Vec<String>)>,
         now: Now,
     ) -> Result<Event, Error> {
         let (id, parents) = match version_of {
-            Some((id, parent)) => (Some(id), vec![parent]),
+            Some((id, parents)) => (Some(id), parents),
             None => (None, Vec::new()),
         };
         let stored = store_kino(
@@ -550,17 +579,10 @@ impl View {
             .map(Vec::as_slice)
             .unwrap_or_default();
         let by_hash: HashMap<&str, &Event> = events.iter().map(|e| (e.hash.as_str(), e)).collect();
-        let referenced: std::collections::HashSet<&str> = events
-            .iter()
-            .flat_map(|e| e.parents.iter().map(String::as_str))
-            .collect();
-        // Single writer per context in phase 1; on a fork, follow the newest.
-        let tip = events
-            .iter()
-            .filter(|e| !referenced.contains(e.hash.as_str()))
-            .max_by(|a, b| a.ts.cmp(&b.ts));
+        // On a fork, follow the newest tip; a merge's first parent is the
+        // newest tip it closed.
         let mut chain = Vec::new();
-        let mut cursor = tip;
+        let mut cursor = self.tips(ctx)?.first().copied();
         while let Some(e) = cursor {
             if e.parents.is_empty() {
                 break; // the card
@@ -573,6 +595,28 @@ impl View {
         }
         chain.reverse();
         Ok(chain)
+    }
+
+    /// The head versions nothing supersedes, newest first: one, unless two
+    /// submits raced.
+    fn tips(&self, ctx: &ContextId) -> Result<Vec<&Event>, Error> {
+        self.require_context(ctx)?;
+        let events = self
+            .by_id
+            .get(&ctx.0)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let referenced: std::collections::HashSet<&str> = events
+            .iter()
+            .flat_map(|e| e.parents.iter().map(String::as_str))
+            .collect();
+        let mut tips: Vec<&Event> = events
+            .iter()
+            .filter(|e| !referenced.contains(e.hash.as_str()))
+            .collect();
+        tips.sort_by(|a, b| b.ts.cmp(&a.ts).then_with(|| a.hash.cmp(&b.hash)));
+        tips.dedup_by(|a, b| a.hash == b.hash);
+        Ok(tips)
     }
 
     /// Claims on an item, as (claim birth event, its settle outcome if any).
@@ -665,6 +709,15 @@ fn field<'a>(event: &'a Event, key: &str) -> &'a str {
 
 fn seq_of(event: &Event) -> u64 {
     field(event, SEQ).parse().unwrap_or(0)
+}
+
+/// The head versions a claim was taken from.
+fn base_of(event: &Event) -> Vec<String> {
+    field(event, BASE)
+        .split(',')
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 fn deadline_of(event: &Event) -> Now {
@@ -766,7 +819,7 @@ mod tests {
                     "markdown",
                     body.as_bytes().to_vec(),
                     meta([(KIND, "head")]),
-                    Some((ctx.0.clone(), root.clone())),
+                    Some((ctx.0.clone(), vec![root.clone()])),
                     at,
                 )
                 .unwrap();

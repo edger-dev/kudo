@@ -123,6 +123,10 @@ pub struct SubmitArgs {
     pub head: String,
     /// The log entry: what you established, with evidence, and what you ruled out.
     pub log: String,
+    /// Only after a refused submit: the head version(s) the refusal gave you,
+    /// which your new head builds on.
+    #[serde(default)]
+    pub base: Option<String>,
 }
 
 /// File a rough edge.
@@ -236,7 +240,14 @@ impl ShimServer {
         Parameters(args): Parameters<SubmitArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         self.worker_call(|s, now| {
-            worker_tools::submit(s, &args.claim, &args.head, &args.log, None, now)
+            worker_tools::submit(
+                s,
+                &args.claim,
+                &args.head,
+                &args.log,
+                args.base.as_deref(),
+                now,
+            )
         })
     }
 
