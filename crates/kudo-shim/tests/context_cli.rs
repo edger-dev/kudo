@@ -36,7 +36,8 @@ fn a_bad_command_says_how_to_use_it() {
         err.contains("new")
             && err.contains("enqueue")
             && err.contains("show")
-            && err.contains("list"),
+            && err.contains("list")
+            && err.contains("repo add"),
         "{err}"
     );
 }
@@ -70,5 +71,56 @@ fn list_shows_each_context_with_its_counts_and_a_prefix_names_one() {
         lines[1].starts_with(&a[..12]) && lines[1].contains("first one"),
         "{listed}"
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9
+#[test]
+fn repo_add_declares_a_repo_and_show_lists_it() {
+    let dir = std::env::temp_dir().join(format!("kudo-shim-cli-repo-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let ctx = cli::context(&dir, &args(&["new", "spans"]), T0).unwrap();
+    let ctx = ctx.trim();
+
+    let said = cli::context(
+        &dir,
+        &args(&["repo", "add", &ctx[..8], "kudo", "/w/kudo", "--node", "n1"]),
+        T0,
+    )
+    .unwrap();
+    assert!(said.contains("kudo") && said.contains("n1"), "{said}");
+
+    let shown = cli::context(&dir, &args(&["show", ctx]), T0).unwrap();
+    assert!(shown.contains("repo kudo @ n1: /w/kudo"), "{shown}");
+
+    let bad = cli::context(
+        &dir,
+        &args(&["repo", "add", ctx, "kudo", "rel/path", "--node", "n1"]),
+        T0,
+    );
+    assert!(bad.is_err(), "{bad:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_worker_starts_in_a_declared_repo_on_this_node() {
+    let dir = std::env::temp_dir().join(format!("kudo-shim-cli-wdir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let ctx = cli::context(&dir, &args(&["new", "spans"]), T0).unwrap();
+    let ctx = ctx.trim();
+    cli::context(
+        &dir,
+        &args(&["repo", "add", ctx, "kudo", "/w/kudo", "--node", "n1"]),
+        T0,
+    )
+    .unwrap();
+
+    assert_eq!(
+        cli::worker_dir(&dir, ctx, Some("kudo"), "n1").unwrap(),
+        Some(std::path::PathBuf::from("/w/kudo"))
+    );
+    assert_eq!(cli::worker_dir(&dir, ctx, None, "n1").unwrap(), None);
+    let err = cli::worker_dir(&dir, ctx, Some("kudo"), "n2").unwrap_err();
+    assert!(err.contains("repo add"), "says how to declare it: {err}");
     let _ = std::fs::remove_dir_all(&dir);
 }

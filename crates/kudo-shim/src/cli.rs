@@ -126,6 +126,23 @@ fn open_or_init(dir: &Path) -> Result<ContextStore, String> {
     ContextStore::init(dir).map_err(|e| e.to_string())
 }
 
+/// This machine's node name: `KUDO_NODE`, else its hostname.
+pub fn node_name() -> String {
+    String::new()
+}
+
+/// Where a worker under `ctx` starts: the path of the declared repo `repo` on
+/// `node`, or `None` (here) when no repo is named.
+pub fn worker_dir(
+    store_dir: &Path,
+    ctx: &str,
+    repo: Option<&str>,
+    node: &str,
+) -> Result<Option<PathBuf>, String> {
+    let _ = (store_dir, ctx, repo, node);
+    Ok(None)
+}
+
 /// Replace this process with the agent CLI, started as a worker under `ctx`.
 /// Returns only on failure.
 pub fn exec_worker(store_dir: &Path, ctx: &str) -> String {

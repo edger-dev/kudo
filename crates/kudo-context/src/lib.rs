@@ -139,3 +139,13 @@ pub struct Submitted {
     /// Evidence entries that did not resolve.
     pub unresolved: Vec<String>,
 }
+
+/// A repo a context spans: by name, on a node, at a path there.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Repo {
+    pub name: String,
+    /// The machine's name: its hostname, or `KUDO_NODE`.
+    pub node: String,
+    /// Absolute.
+    pub path: std::path::PathBuf,
+}

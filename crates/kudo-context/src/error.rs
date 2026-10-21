@@ -22,6 +22,10 @@ pub enum Error {
     /// The head moved since the submission's base: build on `current` (the
     /// head's versions now) and submit again. The claim stays live.
     HeadMoved { claim: String, current: Vec<String> },
+    /// The context declares no repo of this name on this node.
+    UnknownRepo { name: String, node: String },
+    /// A repo declaration that cannot stand: why.
+    InvalidRepo(String),
 }
 
 impl fmt::Display for Error {
@@ -41,6 +45,10 @@ impl fmt::Display for Error {
                 "the head moved since claim {claim} was taken: it is now {}",
                 current.join(", ")
             ),
+            Self::UnknownRepo { name, node } => {
+                write!(f, "the context declares no repo {name} on {node}")
+            }
+            Self::InvalidRepo(why) => write!(f, "invalid repo: {why}"),
         }
     }
 }

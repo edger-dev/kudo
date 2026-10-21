@@ -32,7 +32,7 @@ use kinora::resolve::Resolver;
 use kinora::store::ContentStore;
 
 use crate::{
-    Claim, ClaimId, ContextId, ContextSummary, Error, Head, InboxEntry, Item, ItemId, Now,
+    Claim, ClaimId, ContextId, ContextSummary, Error, Head, InboxEntry, Item, ItemId, Now, Repo,
     Submission, SubmissionId, Submitted,
 };
 
@@ -145,6 +145,28 @@ impl ContextStore {
             [] => Err(Error::UnknownContext(id_or_prefix.to_owned())),
             many => Err(Error::AmbiguousContext(id_or_prefix.to_owned(), many.len())),
         }
+    }
+
+    /// Declare a repo the context spans; a repo of the same name on the same
+    /// node moves to the new path.
+    pub fn declare_repo(&self, ctx: &ContextId, repo: &Repo, now: Now) -> Result<(), Error> {
+        let _ = (ctx, repo, now);
+        Ok(())
+    }
+
+    /// The repos the context declares, by name then node.
+    pub fn repos(&self, ctx: &ContextId) -> Result<Vec<Repo>, Error> {
+        let _ = ctx;
+        Ok(Vec::new())
+    }
+
+    /// The repo of this name on this node.
+    pub fn repo_on(&self, ctx: &ContextId, name: &str, node: &str) -> Result<Repo, Error> {
+        let _ = ctx;
+        Err(Error::UnknownRepo {
+            name: name.to_owned(),
+            node: node.to_owned(),
+        })
     }
 
     /// The context's current head.
