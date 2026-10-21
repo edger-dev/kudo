@@ -164,9 +164,11 @@ fn the_home_module_gives_the_daemon_the_users_path() {
     let module = home_module();
     for dir in [
         "/run/wrappers/bin",
-        "%h/.nix-profile/bin",
+        "${config.home.profileDirectory}/bin",
         "/etc/profiles/per-user/%u/bin",
         "/run/current-system/sw/bin",
+        // Not NixOS: the distribution's own tools stay reachable.
+        "/usr/local/bin:/usr/bin:/bin",
     ] {
         assert!(
             module.contains(dir),
