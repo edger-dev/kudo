@@ -196,3 +196,51 @@ fn repo_kino(repo: &Path, content: &str) -> String {
     .unwrap();
     stored.event.id
 }
+
+/// Evidence is the context's own: a kino another context cached, or another
+/// context's submission, backs nothing here.
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
+#[test]
+fn evidence_does_not_cross_contexts() {
+    let (dir, store, a) = store_with_context("repos-cross");
+    let repo_dir = dir.join("project");
+    let spec = repo_kino(&repo_dir, "# A spec only A declares\n");
+    store
+        .declare_repo(
+            &a,
+            &Repo {
+                name: "project".into(),
+                node: "yolo".into(),
+                path: repo_dir,
+            },
+            T0,
+        )
+        .unwrap();
+    let submit = |ctx: &ContextId, evidence: &str, at: i64| {
+        store.enqueue(ctx, "cite", at).unwrap();
+        let claim = store.pull(ctx, "lease-x", at, 600).unwrap().unwrap();
+        let sub = Submission {
+            head: format!("# h {at}\n"),
+            log: "cite".into(),
+            established: vec![Established {
+                claim: "backed".into(),
+                evidence: vec![evidence.into()],
+            }],
+            ..Default::default()
+        };
+        store.submit(&claim.id, &sub, at + 1).unwrap()
+    };
+    let in_a = submit(&a, &spec, T0 + 1);
+    assert!(in_a.downgraded.is_empty(), "{in_a:?}");
+
+    let b = store.create_context("no repos", "# b\n", T0).unwrap();
+    let cached = submit(&b, &spec, T0 + 10);
+    assert_eq!(cached.downgraded, ["backed"], "A's cache is not B's");
+    let theirs = submit(&b, &in_a.id.0, T0 + 20);
+    assert_eq!(
+        theirs.downgraded,
+        ["backed"],
+        "A's submission is not B's evidence"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

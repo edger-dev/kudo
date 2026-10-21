@@ -108,16 +108,26 @@ fn a_worker_starts_in_a_declared_repo_on_this_node() {
     let _ = std::fs::remove_dir_all(&dir);
     let ctx = cli::context(&dir, &args(&["new", "spans"]), T0).unwrap();
     let ctx = ctx.trim();
+    let repo = dir.join("kudo-repo");
+    std::fs::create_dir_all(&repo).unwrap();
     cli::context(
         &dir,
-        &args(&["repo", "add", ctx, "kudo", "/w/kudo", "--node", "n1"]),
+        &args(&[
+            "repo",
+            "add",
+            ctx,
+            "kudo",
+            repo.to_str().unwrap(),
+            "--node",
+            "n1",
+        ]),
         T0,
     )
     .unwrap();
 
     assert_eq!(
         cli::worker_dir(&dir, ctx, Some("kudo"), "n1").unwrap(),
-        Some(std::path::PathBuf::from("/w/kudo"))
+        Some(repo.clone())
     );
     assert_eq!(cli::worker_dir(&dir, ctx, None, "n1").unwrap(), None);
     let err = cli::worker_dir(&dir, ctx, Some("kudo"), "n2").unwrap_err();
@@ -162,5 +172,33 @@ fn trace_lists_the_loop_events_and_why_names_what_wrote_the_head() {
     for part in [&done.id.0[..12], &claim.id.0[..12], "the ask", "lease-abc"] {
         assert!(why.contains(part), "{part} in {why}");
     }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_declared_repo_missing_on_this_node_is_named_in_the_error() {
+    let dir = std::env::temp_dir().join(format!("kudo-shim-cli-gone-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let ctx = cli::context(&dir, &args(&["new", "gone"]), T0).unwrap();
+    let ctx = ctx.trim();
+    cli::context(
+        &dir,
+        &args(&[
+            "repo",
+            "add",
+            ctx,
+            "ghost",
+            "/no/such/dir/anywhere",
+            "--node",
+            "n1",
+        ]),
+        T0,
+    )
+    .unwrap();
+    let err = cli::worker_dir(&dir, ctx, Some("ghost"), "n1").unwrap_err();
+    assert!(
+        err.contains("ghost") && err.contains("/no/such/dir/anywhere"),
+        "{err}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
