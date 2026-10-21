@@ -178,8 +178,33 @@ async fn type_all(pane: crate::model::PaneRef, bytes: Vec<u8>) -> bool {
     true
 }
 
-/// The keys a taken-over pane offers, as the bytes a terminal sends (stub).
-pub const KEYS: &[(&str, &[u8])] = &[];
+/// The keys a taken-over pane offers, as the bytes a terminal sends: what a
+/// CLI's menus and prompts need beyond a typed line.
+pub const KEYS: &[(&str, &[u8])] = &[
+    ("↑", b"\x1b[A"),
+    ("↓", b"\x1b[B"),
+    ("←", b"\x1b[D"),
+    ("→", b"\x1b[C"),
+    ("Tab", b"\t"),
+    ("Enter", b"\r"),
+    ("Esc", b"\x1b"),
+    ("Ctrl-C", b"\x03"),
+];
+
+/// The bytes for a key pressed in the empty line field: the arrows and
+/// Escape go straight to the pane (a menu answers them); anything else types
+/// into the field.
+fn key_bytes(key: &Key) -> Option<&'static [u8]> {
+    let label = match key {
+        Key::ArrowUp => "↑",
+        Key::ArrowDown => "↓",
+        Key::ArrowLeft => "←",
+        Key::ArrowRight => "→",
+        Key::Escape => "Esc",
+        _ => return None,
+    };
+    KEYS.iter().find(|(l, _)| *l == label).map(|(_, b)| *b)
+}
 
 /// A worker's pane, taken over: its screen, and keys to type into it.
 #[component]
@@ -196,7 +221,7 @@ fn TerminalPane(data: ConsoleData) -> Element {
             let _ = type_all(pane, bytes).await;
         }
     };
-    let (enter, ctrl_c, escape) = (key.clone(), key.clone(), key.clone());
+    let direct = key.clone();
     let line_pane = terminal.pane.clone();
     rsx! {
         h3 {
@@ -229,11 +254,27 @@ fn TerminalPane(data: ConsoleData) -> Element {
                 placeholder: "type into the pane (Enter sends)",
                 value: "{typed}",
                 oninput: move |e| typed.set(e.value()),
+                onkeydown: move |e: KeyboardEvent| {
+                    let bytes = typed().is_empty().then(|| key_bytes(&e.key())).flatten();
+                    if let Some(bytes) = bytes {
+                        e.prevent_default();
+                        spawn(direct(bytes.to_vec()));
+                    }
+                },
             }
             button { r#type: "submit", "send" }
         }
-        button { onclick: move |_| enter(vec![b'\r']), "Enter" }
-        button { onclick: move |_| ctrl_c(vec![0x03]), "Ctrl-C" }
-        button { onclick: move |_| escape(vec![0x1b]), "Esc" }
+        div {
+            for (label, bytes) in KEYS.iter().copied() {
+                button {
+                    key: "{label}",
+                    onclick: {
+                        let key = key.clone();
+                        move |_| key(bytes.to_vec())
+                    },
+                    "{label}"
+                }
+            }
+        }
     }
 }
