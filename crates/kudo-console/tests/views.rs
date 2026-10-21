@@ -141,3 +141,23 @@ fn a_pane_with_no_trace_yet_is_a_starting_worker() {
     assert_eq!(w.last, "starting");
     assert_eq!(w.pane.as_ref().unwrap().job, "job-9");
 }
+
+/// A pane that never traced goes quiet after ten minutes (still offered for
+/// take over) and leaves the listing after a day.
+// implements: 0c4e36f264b2b4fbc6fcfee93bc02ad5b8419a1d21a8638bf080623ab942a37d@0c4e36f264b2b4fbc6fcfee93bc02ad5b8419a1d21a8638bf080623ab942a37d
+#[test]
+fn a_pane_that_never_traced_goes_quiet_then_leaves() {
+    let store = store("stale");
+    let ctx = store.create_context("stale", "# s\n", T0).unwrap();
+    store
+        .record_pane(&ctx, "lease-stuck", "yolo", "job-1", T0)
+        .unwrap();
+    let worker = |now| views::contexts(&store, now).unwrap()[0].workers.clone();
+    assert!(!worker(T0 + 599)[0].quiet, "starting, not yet quiet");
+    let late = worker(T0 + 600);
+    assert!(late[0].quiet && late[0].pane.is_some(), "{late:?}");
+    assert!(
+        worker(T0 + 86_400).is_empty(),
+        "a day-old dead pane is gone"
+    );
+}
