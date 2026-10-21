@@ -60,6 +60,9 @@ in
           "MOCO_DIR=%S/kudo-node"
           "KUDO_PTY_HOLDER=${cfg.package}/bin/moco-pty-holder"
           "HUB_ADDR=${cfg.hubAddr}"
+          # A job is the user's own program, found as their shell would find
+          # it — not on systemd's bare PATH, where nothing but systemd lives.
+          "PATH=/run/wrappers/bin:%h/.nix-profile/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin"
         ]
         ++ lib.optional (cfg.nodeId != null) "NODE_ID=${cfg.nodeId}"
         ++ lib.mapAttrsToList (k: v: "${k}=${v}") cfg.environment;
