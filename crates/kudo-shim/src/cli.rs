@@ -225,6 +225,7 @@ pub fn node_name() -> String {
     }
     std::fs::read_to_string("/proc/sys/kernel/hostname")
         .ok()
+        .or_else(|| std::env::var("HOSTNAME").ok())
         .map(|h| h.trim().to_owned())
         .filter(|h| !h.is_empty())
         .unwrap_or_else(|| "localhost".to_owned())
@@ -244,7 +245,11 @@ pub fn worker_dir(
     let store = open(store_dir)?;
     let ctx = named(&store, ctx)?;
     match store.repo_on(&ctx, name, node) {
-        Ok(repo) => Ok(Some(repo.path)),
+        Ok(repo) if repo.path.is_dir() => Ok(Some(repo.path)),
+        Ok(repo) => Err(format!(
+            "repo {name} is declared on {node} at {}, but that directory does not exist here",
+            repo.path.display()
+        )),
         Err(e) => Err(format!(
             "{e}: declare it with `kudo-shim context repo add {} {name} <path> --node {node}`",
             ctx.0.get(..SHORT_ID).unwrap_or(&ctx.0)
@@ -255,6 +260,13 @@ pub fn worker_dir(
 /// Replace this process with the agent CLI, started as a worker under `ctx`.
 /// Returns only on failure.
 pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
+    // The worker may start in a repo's directory: a relative store path must
+    // not move with it.
+    let store_dir = match std::path::absolute(store_dir) {
+        Ok(dir) => dir,
+        Err(e) => return format!("cannot resolve the store path: {e}"),
+    };
+    let store_dir = store_dir.as_path();
     use std::os::unix::process::CommandExt;
 
     let Ok(hub) = std::env::var(crate::HUB_ADDR_ENV) else {

@@ -221,22 +221,27 @@ impl ContextStore {
     fn repos_in(&self, view: &View, ctx: &ContextId) -> Result<Vec<Repo>, Error> {
         let birth = format!("<!-- kudo repos {} -->\n# Repos\n", ctx.0);
         let id = Hash::of_content(birth.as_bytes()).as_hex().to_owned();
-        let Some(tip) = view.tips_of(&id).first().copied() else {
-            return Ok(Vec::new());
-        };
-        let mut repos: Vec<Repo> = self
-            .read(&tip.hash)?
-            .lines()
-            .filter_map(|line| {
-                let (name, rest) = line.strip_prefix("- ")?.split_once(" @ ")?;
-                let (node, path) = rest.split_once(": ")?;
-                Some(Repo {
-                    name: name.to_owned(),
-                    node: node.to_owned(),
-                    path: PathBuf::from(path),
-                })
-            })
-            .collect();
+        // Every tip, newest first: a raced declaration forks the kino, and no
+        // entry of either tip may be lost (on a clash the newer path wins).
+        let mut repos: Vec<Repo> = Vec::new();
+        for tip in view.tips_of(&id) {
+            for line in self.read(&tip.hash)?.lines() {
+                let Some((name, rest)) = line.strip_prefix("- ").and_then(|l| l.split_once(" @ "))
+                else {
+                    continue;
+                };
+                let Some((node, path)) = rest.split_once(": ") else {
+                    continue;
+                };
+                if !repos.iter().any(|r| r.name == name && r.node == node) {
+                    repos.push(Repo {
+                        name: name.to_owned(),
+                        node: node.to_owned(),
+                        path: PathBuf::from(path),
+                    });
+                }
+            }
+        }
         repos.sort();
         Ok(repos)
     }
@@ -252,12 +257,18 @@ impl ContextStore {
         submission: &Submission,
         now: Now,
     ) -> Result<(), Error> {
-        let known = view.known();
+        // Only ids the store has no kino for at all go to the repo ledgers:
+        // a bookkeeping id cited by mistake costs no ledger load.
+        let known = view.known(ctx);
         let wanted: Vec<String> = submission
             .established
             .iter()
             .flat_map(|l| l.evidence.iter().map(|e| normalize(e)))
-            .filter(|e| is_kino_id(e) && !known.contains(e.as_str()))
+            .filter(|e| {
+                is_kino_id(e)
+                    && !known.contains(e.as_str())
+                    && (!view.by_id.contains_key(e.as_str()) || view.cited_elsewhere(e))
+            })
             .collect();
         if wanted.is_empty() {
             return Ok(());
@@ -633,7 +644,7 @@ impl ContextStore {
 
         self.cache_cited(&view, &ctx, submission, now)?;
         let view = self.view()?;
-        let checked = view.check_evidence(submission);
+        let checked = view.check_evidence(&ctx, submission);
         let seq = (view.of_kind_in("submission", &ctx).len() + 1).to_string();
         let content = format!(
             "<!-- kudo submission {} -->\n{}",
@@ -925,15 +936,20 @@ impl View {
         Ok(chain)
     }
 
-    /// Every id that can back a fact: kinos cached from a declared repo's
-    /// ledger (by their own id and their origin's), earlier submissions, and
-    /// kinos kudo did not write. The queue's own records — contexts, heads,
-    /// items, claims, settles, repos, inbox lines — back nothing.
-    fn known(&self) -> std::collections::HashSet<&str> {
+    /// Every id that can back a fact under `ctx`: kinos it cached from a
+    /// declared repo's ledger (by their own id and their origin's) and its
+    /// earlier submissions. The queue's own records — contexts, heads, items,
+    /// claims, settles, repos, inbox lines — back nothing, and nothing of
+    /// another context counts.
+    fn known(&self, ctx: &ContextId) -> std::collections::HashSet<&str> {
         self.by_id
             .iter()
             .filter(|(_, events)| {
-                birth(events).is_some_and(|b| matches!(field(b, KIND), "" | "cite" | "submission"))
+                events.iter().any(|b| {
+                    b.parents.is_empty()
+                        && matches!(field(b, KIND), "cite" | "submission")
+                        && field(b, CONTEXT) == ctx.0
+                })
             })
             .flat_map(|(id, events)| {
                 std::iter::once(id.as_str())
@@ -941,18 +957,27 @@ impl View {
                     .chain(
                         events
                             .iter()
-                            .filter(|e| field(e, KIND) == "cite")
+                            .filter(|e| field(e, KIND) == "cite" && field(e, CONTEXT) == ctx.0)
                             .map(|e| field(e, ORIGIN_ID)),
                     )
             })
             .collect()
     }
 
+    /// Whether `id` is a kino some context cached from a repo ledger — the
+    /// only store-held id another context may cache again for itself.
+    fn cited_elsewhere(&self, id: &str) -> bool {
+        self.by_id
+            .values()
+            .flatten()
+            .any(|e| field(e, KIND) == "cite" && (e.id == id || field(e, ORIGIN_ID) == id))
+    }
+
     /// Sort a submission's established lines by whether their evidence
     /// resolves: a kino id this store holds (or cached from a declared repo's
     /// ledger), or a URL.
-    fn check_evidence(&self, submission: &Submission) -> Checked {
-        let known = self.known();
+    fn check_evidence(&self, ctx: &ContextId, submission: &Submission) -> Checked {
+        let known = self.known(ctx);
         let mut checked = Checked::default();
         for line in &submission.established {
             let claim = one_line(&line.claim);
@@ -1113,7 +1138,12 @@ fn validate(repo: &Repo) -> Result<(), Error> {
             )));
         }
     }
-    let path = repo.path.to_string_lossy();
+    let Some(path) = repo.path.to_str() else {
+        return Err(Error::InvalidRepo(format!(
+            "the path {} is not UTF-8",
+            repo.path.display()
+        )));
+    };
     if !repo.path.is_absolute() || path.contains('\n') {
         return Err(Error::InvalidRepo(format!(
             "the path {path:?} must be absolute"
@@ -1418,6 +1448,58 @@ mod tests {
         assert_eq!(heads.len(), 1, "{heads:?}");
         assert_eq!(heads[0].body, "older\n");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two declarations raced and forked the repos kino: both entries show,
+    /// and the next declaration keeps them both.
+    // implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9
+    #[test]
+    fn a_forked_repos_declaration_loses_no_repo() {
+        let dir =
+            std::env::temp_dir().join(format!("kudo-context-repos-fork-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ContextStore::init(&dir).unwrap();
+        let ctx = store.create_context("fork", "h\n", T0).unwrap();
+        let repo = |name: &str| Repo {
+            name: name.into(),
+            node: "n".into(),
+            path: PathBuf::from(format!("/w/{name}")),
+        };
+        store.declare_repo(&ctx, &repo("a"), T0).unwrap();
+        // A sibling of that version, as a racing declarer would write it.
+        let view = store.view().unwrap();
+        let birth = format!("<!-- kudo repos {} -->\n# Repos\n", ctx.0);
+        let id = Hash::of_content(birth.as_bytes()).as_hex().to_owned();
+        let root = birth_hash(&view, &id);
+        store
+            .put(
+                "markdown",
+                format!(
+                    "<!-- kudo repos {} x -->\n# Repos\n\n- b @ n: /w/b\n",
+                    ctx.0
+                )
+                .into_bytes(),
+                meta([(KIND, "repos"), (CONTEXT, &ctx.0)]),
+                Some((id, vec![root])),
+                T0 + 1,
+            )
+            .unwrap();
+        let names = |s: &ContextStore| -> Vec<String> {
+            s.repos(&ctx).unwrap().into_iter().map(|r| r.name).collect()
+        };
+        assert_eq!(names(&store), ["a", "b"]);
+        store.declare_repo(&ctx, &repo("c"), T0 + 2).unwrap();
+        assert_eq!(names(&store), ["a", "b", "c"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn birth_hash(view: &View, id: &str) -> String {
+        view.by_id
+            .get(id)
+            .and_then(|events| birth(events))
+            .map(|e| e.hash.clone())
+            .unwrap()
     }
 
     /// A claim taken before claims recorded their base is checked against
