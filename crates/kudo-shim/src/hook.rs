@@ -58,6 +58,18 @@ impl HookReply {
 
 /// Answer one hook event for the worker `setup` describes.
 pub fn run(event: &str, stdin: &str, setup: &WorkerSetup, now: Now) -> HookReply {
+    run_with(event, stdin, setup, now, crate::events::observer_from_env())
+}
+
+/// [`run`], with the observer of the loop's events given.
+pub fn run_with(
+    event: &str,
+    stdin: &str,
+    setup: &WorkerSetup,
+    now: Now,
+    observer: Option<kudo_worker::Observer>,
+) -> HookReply {
+    let _ = observer;
     let input: Value = serde_json::from_str(stdin).unwrap_or(Value::Null);
     let store = match crate::cli::open_store(
         &setup.store_dir,

@@ -47,16 +47,32 @@ pub enum Pull {
     EndTurn,
 }
 
+/// Told of every loop event the worker traces: the context, the lease, the
+/// event.
+pub type Observer = std::sync::Arc<dyn Fn(&ContextId, &str, &TraceEvent) + Send + Sync>;
+
 /// The hook decisions over a context store and a lease book.
 pub struct Worker<'a> {
     store: &'a ContextStore,
     book: &'a LeaseBook,
     cfg: WorkerConfig,
+    observer: Option<Observer>,
 }
 
 impl<'a> Worker<'a> {
     pub fn new(store: &'a ContextStore, book: &'a LeaseBook, cfg: WorkerConfig) -> Self {
-        Self { store, book, cfg }
+        Self {
+            store,
+            book,
+            cfg,
+            observer: None,
+        }
+    }
+
+    /// Tell `observer` of every loop event this worker traces (stub).
+    pub fn with_observer(mut self, observer: Observer) -> Self {
+        self.observer = Some(observer);
+        self
     }
 
     /// SessionStart: the text injected into the session — the context's head

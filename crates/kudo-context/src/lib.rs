@@ -173,6 +173,24 @@ pub enum TraceEvent {
     LeaseEnd(String),
 }
 
+impl TraceEvent {
+    /// The event's name, as topics and trace kinos spell it (stub).
+    pub fn name(&self) -> &'static str {
+        ""
+    }
+
+    /// The event as one line (stub).
+    pub fn to_line(&self) -> String {
+        String::new()
+    }
+
+    /// An event back from its line (stub).
+    pub fn from_line(line: &str) -> Option<Self> {
+        let _ = line;
+        None
+    }
+}
+
 /// A recorded trace event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceEntry {

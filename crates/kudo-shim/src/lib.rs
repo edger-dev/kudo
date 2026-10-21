@@ -15,6 +15,7 @@
 
 pub mod cli;
 pub mod error;
+pub mod events;
 pub mod hook;
 pub mod hub;
 pub mod jobs;

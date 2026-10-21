@@ -123,3 +123,29 @@ fn a_lease_reads_in_its_own_order_when_the_clock_steps_back() {
     assert_eq!(seqs, [1, 2]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An event travels as one line — the trace kino's own text — and reads back
+/// as the same event.
+// implements: 03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d@03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d
+#[test]
+fn an_event_round_trips_as_one_line() {
+    use kudo_context::{ClaimId, SubmissionId};
+    for event in [
+        TraceEvent::LeaseStart,
+        TraceEvent::Handoff(ClaimId("c1".into())),
+        TraceEvent::Pull(ClaimId("c2".into())),
+        TraceEvent::Refused(ClaimId("c3".into())),
+        TraceEvent::Release(ClaimId("c4".into())),
+        TraceEvent::Submit {
+            claim: ClaimId("c5".into()),
+            submission: SubmissionId("s5".into()),
+        },
+        TraceEvent::LeaseEnd("queue-empty".into()),
+    ] {
+        let line = event.to_line();
+        assert!(!line.contains('\n'), "{line:?}");
+        assert!(line.starts_with(event.name()), "{line:?}");
+        assert_eq!(TraceEvent::from_line(&line), Some(event));
+    }
+    assert_eq!(TraceEvent::from_line("nonsense"), None);
+}

@@ -35,16 +35,25 @@ pub fn default_store_dir() -> Option<PathBuf> {
 /// Run `kudo-shim context <args…>` against the store in `store_dir`; the text
 /// to print, or an error.
 pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, String> {
-    context_with_mirror(store_dir, mirror_from_env().as_deref(), args, now)
+    context_with(
+        store_dir,
+        mirror_from_env().as_deref(),
+        crate::hub_addr_from_env().as_deref(),
+        args,
+        now,
+    )
 }
 
-/// [`context`], with the mirror given rather than read from the environment.
-pub fn context_with_mirror(
+/// [`context`], with the mirror and the hub (for its events) given rather
+/// than read from the environment.
+pub fn context_with(
     store_dir: &Path,
     mirror: Option<&str>,
+    hub: Option<&str>,
     args: &[String],
     now: i64,
 ) -> Result<String, String> {
+    let _ = hub;
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
         ["new", title @ ..] if !title.is_empty() => {

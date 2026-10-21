@@ -244,15 +244,16 @@ fn list_on_a_new_machine_with_a_mirror_shows_the_other_machines_contexts() {
         std::env::temp_dir().join(format!("kudo-shim-cli-list-mirror-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let url = format!("file://{}", root.join("bucket").display());
-    let made = cli::context_with_mirror(
+    let made = cli::context_with(
         &root.join("pc"),
         Some(&url),
+        None,
         &args(&["new", "made on pc"]),
         T0,
     )
     .unwrap();
     let listed =
-        cli::context_with_mirror(&root.join("edger"), Some(&url), &args(&["list"]), T0).unwrap();
+        cli::context_with(&root.join("edger"), Some(&url), None, &args(&["list"]), T0).unwrap();
     assert!(listed.starts_with(&made.trim()[..12]), "{listed}");
     let _ = std::fs::remove_dir_all(&root);
 }

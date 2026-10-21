@@ -452,3 +452,35 @@ fn another_leases_claim_cannot_be_submitted_or_released() {
     );
     assert!(trace_of(&f).is_empty(), "nothing credited to this lease");
 }
+
+/// Every event the lease traces is handed to the observer too, in order.
+// implements: 03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d@03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d
+#[test]
+fn the_observer_sees_what_the_trace_records() {
+    use std::sync::{Arc, Mutex};
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "one", T0).unwrap();
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let w = f.worker(10).with_observer({
+        let seen = seen.clone();
+        Arc::new(
+            move |ctx: &ContextId, lease: &str, event: &kudo_context::TraceEvent| {
+                seen.lock()
+                    .unwrap()
+                    .push(format!("{}/{lease}/{}", ctx.0.len(), event.name()));
+            },
+        )
+    });
+    w.session_start(T0).unwrap();
+    let _ = block_reason(w.stop(T0 + 1).unwrap());
+    let names: Vec<String> = seen.lock().unwrap().clone();
+    assert_eq!(
+        names,
+        [
+            format!("64/{LEASE}/lease-start"),
+            format!("64/{LEASE}/handoff")
+        ]
+    );
+    let traced: Vec<&str> = trace_of(&f).iter().map(|e| e.name()).collect();
+    assert_eq!(traced, ["lease-start", "handoff"]);
+}
