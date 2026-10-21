@@ -63,7 +63,12 @@ impl<'a> Worker<'a> {
     /// and what a worker does.
     pub fn session_start(&self, now: Now) -> Result<String, Error> {
         let heads = self.store.heads(&self.cfg.context)?;
-        self.trace(&TraceEvent::LeaseStart, now)?;
+        let mut record = self.record()?;
+        if record.ended.is_none() && !record.started {
+            record.started = true;
+            self.book.put(&self.cfg.lease, &record)?;
+            self.trace(&TraceEvent::LeaseStart, now);
+        }
         Ok(format!(
             "You are a kudo worker under context {ctx}. {body}\n\nWork exactly one item per turn. Call \
              `pull` to claim an item (unless one was handed to you), do it, call \
@@ -119,12 +124,12 @@ impl<'a> Worker<'a> {
             // back after a few refusals instead.
             if record.refusals >= MAX_REFUSALS {
                 self.store.release(&open.id, now)?;
-                self.trace(&TraceEvent::Release(open.id.clone()), now)?;
+                self.trace(&TraceEvent::Release(open.id.clone()), now);
                 return self.end(record, LeaseEnd::Stuck, now);
             }
             record.refusals += 1;
             self.book.put(&self.cfg.lease, &record)?;
-            self.trace(&TraceEvent::Refused(open.id.clone()), now)?;
+            self.trace(&TraceEvent::Refused(open.id.clone()), now);
             return Ok(Stop::Block {
                 reason: format!(
                     "Claim {} (\"{}\") is still open: submit or release it before stopping.",
@@ -145,7 +150,7 @@ impl<'a> Worker<'a> {
         record.refusals = 0;
         record.submitted_this_turn = false;
         self.book.put(&self.cfg.lease, &record)?;
-        self.trace(&TraceEvent::Handoff(claim.id.clone()), now)?;
+        self.trace(&TraceEvent::Handoff(claim.id.clone()), now);
         Ok(Stop::Block {
             reason: format!("Next item. {}", self.claim_text(&claim)?),
         })
@@ -163,7 +168,7 @@ impl<'a> Worker<'a> {
                 .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
             {
                 Some(claim) => {
-                    self.trace(&TraceEvent::Pull(claim.id.clone()), now)?;
+                    self.trace(&TraceEvent::Pull(claim.id.clone()), now);
                     Pull::Claimed(claim)
                 }
                 None => Pull::Nothing,
@@ -178,6 +183,7 @@ impl<'a> Worker<'a> {
         submission: &Submission,
         now: Now,
     ) -> Result<Submitted, Error> {
+        self.own(claim)?;
         let done = self.store.submit(claim, submission, now)?;
         let mut record = self.record()?;
         record.submitted_this_turn = true;
@@ -188,14 +194,28 @@ impl<'a> Worker<'a> {
                 submission: done.id.clone(),
             },
             now,
-        )?;
+        );
         Ok(done)
     }
 
     /// The `release` tool: give the claim back unfinished.
     pub fn release(&self, claim: &ClaimId, now: Now) -> Result<(), Error> {
+        self.own(claim)?;
         self.store.release(claim, now)?;
-        self.trace(&TraceEvent::Release(claim.clone()), now)
+        self.trace(&TraceEvent::Release(claim.clone()), now);
+        Ok(())
+    }
+
+    /// Refuse a claim this lease did not take.
+    fn own(&self, claim: &ClaimId) -> Result<(), Error> {
+        let holder = self.store.claim_lease(claim)?;
+        if holder != self.cfg.lease {
+            return Err(Error::ClaimNotHeld {
+                claim: claim.0.clone(),
+                lease: self.cfg.lease.clone(),
+            });
+        }
+        Ok(())
     }
 
     /// PreCompact: the lease ends, and an open claim is released.
@@ -229,15 +249,21 @@ impl<'a> Worker<'a> {
     fn end(&self, mut record: LeaseRecord, why: LeaseEnd, now: Now) -> Result<Stop, Error> {
         record.ended = Some(why);
         self.book.put(&self.cfg.lease, &record)?;
-        self.trace(&TraceEvent::LeaseEnd(why.as_str().to_owned()), now)?;
+        self.trace(&TraceEvent::LeaseEnd(why.as_str().to_owned()), now);
         Ok(Stop::Allow(why))
     }
 
-    /// Record one loop event of this lease.
+    /// Record one loop event of this lease. Best effort: it runs after the
+    /// change it records has happened, so a failed write must not undo the
+    /// hook's answer — it is reported on stderr and the loop goes on.
     // implements: a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098@a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098
-    fn trace(&self, event: &TraceEvent, now: Now) -> Result<(), Error> {
-        self.store
+    fn trace(&self, event: &TraceEvent, now: Now) {
+        if let Err(e) = self
+            .store
             .record_trace(&self.cfg.context, &self.cfg.lease, event, now)
+        {
+            eprintln!("kudo: could not trace {event:?}: {e}");
+        }
     }
 
     fn record(&self) -> Result<LeaseRecord, Error> {

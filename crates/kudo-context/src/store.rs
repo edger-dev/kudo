@@ -257,9 +257,17 @@ impl ContextStore {
         submission: &Submission,
         now: Now,
     ) -> Result<(), Error> {
-        // Only ids the store has no kino for at all go to the repo ledgers:
-        // a bookkeeping id cited by mistake costs no ledger load.
+        // Only ids the store holds no kino or version for go to the repo
+        // ledgers (or ones another context cached): a bookkeeping id cited
+        // by mistake costs no ledger load.
         let known = view.known(ctx);
+        let held: std::collections::HashSet<&str> = view
+            .by_id
+            .iter()
+            .flat_map(|(id, events)| {
+                std::iter::once(id.as_str()).chain(events.iter().map(|e| e.hash.as_str()))
+            })
+            .collect();
         let wanted: Vec<String> = submission
             .established
             .iter()
@@ -267,7 +275,7 @@ impl ContextStore {
             .filter(|e| {
                 is_kino_id(e)
                     && !known.contains(e.as_str())
-                    && (!view.by_id.contains_key(e.as_str()) || view.cited_elsewhere(e))
+                    && (!held.contains(e.as_str()) || view.cited_elsewhere(e))
             })
             .collect();
         if wanted.is_empty() {
@@ -390,6 +398,19 @@ impl ContextStore {
                 seq_of(b),
             ))
         });
+        // Leases interleave by the clock, but a lease's own events keep its
+        // own order (seq): a clock that stepped back must not reorder them.
+        let mut by_lease: HashMap<&str, Vec<&Event>> = HashMap::new();
+        for e in &events {
+            by_lease.entry(field(e, LEASE)).or_default().push(e);
+        }
+        for own in by_lease.values_mut() {
+            own.sort_by_key(|e| std::cmp::Reverse(seq_of(e)));
+        }
+        let events: Vec<&Event> = events
+            .iter()
+            .filter_map(|e| by_lease.get_mut(field(e, LEASE)).and_then(Vec::pop))
+            .collect();
         Ok(events
             .into_iter()
             .filter_map(|e| {
@@ -681,6 +702,16 @@ impl ContextStore {
         let claim_event = view.live_claim(claim, now)?;
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
         self.settle(&ctx, claim, RELEASED, now)
+    }
+
+    /// The lease a claim was taken by.
+    pub fn claim_lease(&self, claim: &ClaimId) -> Result<String, Error> {
+        let view = self.view()?;
+        view.by_id
+            .get(&claim.0)
+            .and_then(|events| claim_birth(events))
+            .map(|e| field(e, LEASE).to_owned())
+            .ok_or_else(|| Error::UnknownClaim(claim.0.clone()))
     }
 
     /// The live claim `lease` holds under the context, if any.

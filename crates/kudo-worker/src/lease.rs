@@ -56,6 +56,9 @@ pub struct LeaseRecord {
     pub submitted_this_turn: bool,
     /// Set once the lease has ended.
     pub ended: Option<LeaseEnd>,
+    /// The lease's start is traced (SessionStart fires again on resume and
+    /// after compaction).
+    pub started: bool,
 }
 
 /// Lease records kept in a directory, one file per lease.
@@ -84,6 +87,7 @@ impl LeaseBook {
                 Some(("turns", n)) => record.turns = n.parse().unwrap_or(0),
                 Some(("refusals", n)) => record.refusals = n.parse().unwrap_or(0),
                 Some(("submitted_this_turn", b)) => record.submitted_this_turn = b == "true",
+                Some(("started", b)) => record.started = b == "true",
                 Some(("ended", why)) => record.ended = LeaseEnd::parse(why),
                 _ => {}
             }
@@ -95,8 +99,8 @@ impl LeaseBook {
     pub fn put(&self, lease: &str, record: &LeaseRecord) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
         let mut text = format!(
-            "turns={}\nrefusals={}\nsubmitted_this_turn={}\n",
-            record.turns, record.refusals, record.submitted_this_turn
+            "turns={}\nrefusals={}\nsubmitted_this_turn={}\nstarted={}\n",
+            record.turns, record.refusals, record.submitted_this_turn, record.started
         );
         if let Some(why) = record.ended {
             text.push_str(&format!("ended={}\n", why.as_str()));

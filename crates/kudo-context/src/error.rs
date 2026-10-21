@@ -26,6 +26,8 @@ pub enum Error {
     UnknownRepo { name: String, node: String },
     /// A repo declaration that cannot stand: why.
     InvalidRepo(String),
+    /// The claim is held by another lease.
+    ClaimNotHeld { claim: String, lease: String },
 }
 
 impl fmt::Display for Error {
@@ -49,6 +51,9 @@ impl fmt::Display for Error {
                 write!(f, "the context declares no repo {name} on {node}")
             }
             Self::InvalidRepo(why) => write!(f, "invalid repo: {why}"),
+            Self::ClaimNotHeld { claim, lease } => {
+                write!(f, "claim {claim} is not held by lease {lease}")
+            }
         }
     }
 }
