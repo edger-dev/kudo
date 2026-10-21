@@ -122,3 +122,25 @@ fn a_host_the_console_does_not_answer_to_is_refused() {
         );
     }
 }
+
+/// Behind an ingress the Host is the proxy's and the Origin the page's: both
+/// are accepted only when named.
+#[test]
+fn a_proxied_console_accepts_the_origin_it_is_told_of() {
+    let proxied = headers(&[
+        ("content-type", "application/json"),
+        ("host", "8080.yolo.incus"),
+        ("origin", "https://yolo-8080.pc.yjpark.org"),
+    ]);
+    let hosts = vec!["8080.yolo.incus".to_owned()];
+    let origins = vec!["https://yolo-8080.pc.yjpark.org".to_owned()];
+    assert!(kudo_console::guard::allowed_with(&Method::POST, &proxied, &hosts, &origins).is_ok());
+    assert!(
+        kudo_console::guard::allowed_with(&Method::POST, &proxied, &hosts, &[]).is_err(),
+        "an origin not named is refused"
+    );
+    assert!(
+        kudo_console::guard::allowed_with(&Method::POST, &proxied, &[], &origins).is_err(),
+        "a host not named is refused"
+    );
+}

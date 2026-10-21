@@ -24,6 +24,17 @@ fn answers_to(host: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// [`allowed`], with the named hosts and origins given (stub).
+pub fn allowed_with(
+    method: &Method,
+    headers: &HeaderMap,
+    hosts: &[String],
+    origins: &[String],
+) -> Result<(), String> {
+    let _ = (hosts, origins);
+    allowed(method, headers)
+}
+
 /// Whether a request may reach a server function. A page load (GET or HEAD,
 /// in which the page's own render runs them) writes nothing another site
 /// could aim; anything else must be JSON, and not from another origin.
