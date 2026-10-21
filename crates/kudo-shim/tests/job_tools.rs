@@ -88,6 +88,25 @@ async fn connected(addr: &str) -> HubClient {
     panic!("the node never registered");
 }
 
+/// The hub these tests run against, and the node they address: the hub's own
+/// in-process stand-in with one node (`alpha`) by default; a real hub and one
+/// of its nodes when `KUDO_HUB_TEST_ADDR` (and `KUDO_HUB_TEST_NODE`, default
+/// the hostname) name them — the same assertions on both sides.
+// implements: 482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae@482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae
+async fn hub_under_test() -> (HubClient, Target) {
+    if let Ok(addr) = std::env::var("KUDO_HUB_TEST_ADDR") {
+        let node = std::env::var("KUDO_HUB_TEST_NODE").unwrap_or_else(|_| {
+            std::fs::read_to_string("/proc/sys/kernel/hostname")
+                .map(|h| h.trim().to_owned())
+                .unwrap_or_default()
+        });
+        let client = HubClient::dial(&addr).await.expect("dial the named hub");
+        return (client, Target::node(node));
+    }
+    let (addr, _registry) = mesh().await;
+    (connected(&addr).await, alpha())
+}
+
 fn alpha() -> Target {
     Target::node("alpha")
 }
@@ -95,12 +114,11 @@ fn alpha() -> Target {
 /// Start a job through the shim, then read back exactly what it wrote.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_job_starts_and_its_output_reads_back() {
-    let (addr, _registry) = mesh().await;
-    let client = connected(&addr).await;
+    let (client, node) = hub_under_test().await;
 
     let started = jobs::start(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         StartRequest {
             argv: vec!["echo".into(), "from-the-shim".into()],
@@ -120,7 +138,7 @@ async fn a_job_starts_and_its_output_reads_back() {
     for _ in 0..100 {
         let tail = jobs::tail(
             &client,
-            alpha(),
+            node.clone(),
             DEFAULT_JOB_CONNECTOR,
             TailRequest {
                 id: started.id.clone(),
@@ -144,12 +162,11 @@ async fn a_job_starts_and_its_output_reads_back() {
 /// `next_offset` really resumes: a second read returns only what is new.
 #[tokio::test(flavor = "multi_thread")]
 async fn tailing_from_next_offset_returns_only_new_output() {
-    let (addr, _registry) = mesh().await;
-    let client = connected(&addr).await;
+    let (client, node) = hub_under_test().await;
 
     let started = jobs::start(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         StartRequest {
             argv: vec!["echo".into(), "first".into()],
@@ -165,7 +182,7 @@ async fn tailing_from_next_offset_returns_only_new_output() {
 
     let mut first = jobs::tail(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         TailRequest {
             id: started.id.clone(),
@@ -181,7 +198,7 @@ async fn tailing_from_next_offset_returns_only_new_output() {
         tokio::time::sleep(Duration::from_millis(50)).await;
         first = jobs::tail(
             &client,
-            alpha(),
+            node.clone(),
             DEFAULT_JOB_CONNECTOR,
             TailRequest {
                 id: started.id.clone(),
@@ -195,7 +212,7 @@ async fn tailing_from_next_offset_returns_only_new_output() {
 
     let second = jobs::tail(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         TailRequest {
             id: started.id.clone(),
@@ -216,12 +233,11 @@ async fn tailing_from_next_offset_returns_only_new_output() {
 /// start, since jobs outlive the session that created them.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_started_job_appears_in_the_listing() {
-    let (addr, _registry) = mesh().await;
-    let client = connected(&addr).await;
+    let (client, node) = hub_under_test().await;
 
     let started = jobs::start(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         StartRequest {
             argv: vec!["echo".into(), "listed".into()],
@@ -235,7 +251,7 @@ async fn a_started_job_appears_in_the_listing() {
     .await
     .expect("start");
 
-    let listing = jobs::list(&client, alpha(), DEFAULT_JOB_CONNECTOR)
+    let listing = jobs::list(&client, node.clone(), DEFAULT_JOB_CONNECTOR)
         .await
         .expect("list");
     assert!(
@@ -250,12 +266,11 @@ async fn a_started_job_appears_in_the_listing() {
 /// A long-running job can be stopped, and its record survives the stop.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_job_can_be_killed_and_still_be_listed() {
-    let (addr, _registry) = mesh().await;
-    let client = connected(&addr).await;
+    let (client, node) = hub_under_test().await;
 
     let started = jobs::start(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         StartRequest {
             argv: vec!["sleep".into(), "30".into()],
@@ -271,7 +286,7 @@ async fn a_job_can_be_killed_and_still_be_listed() {
 
     jobs::kill(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         KillRequest {
             id: started.id.clone(),
@@ -283,7 +298,7 @@ async fn a_job_can_be_killed_and_still_be_listed() {
     .await
     .expect("kill");
 
-    let listing = jobs::list(&client, alpha(), DEFAULT_JOB_CONNECTOR)
+    let listing = jobs::list(&client, node.clone(), DEFAULT_JOB_CONNECTOR)
         .await
         .expect("list");
     assert!(
@@ -295,12 +310,11 @@ async fn a_job_can_be_killed_and_still_be_listed() {
 /// The engine's refusal reaches the caller intact, still naming the binary.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unstartable_program_reports_the_engine_s_own_message() {
-    let (addr, _registry) = mesh().await;
-    let client = connected(&addr).await;
+    let (client, node) = hub_under_test().await;
 
     let err = jobs::start(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         StartRequest {
             argv: vec!["definitely-not-a-real-program-xyz".into()],
@@ -330,8 +344,7 @@ async fn an_unstartable_program_reports_the_engine_s_own_message() {
 /// answer comes back naming both workspaces.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_foreign_workspace_job_cannot_be_killed_through_the_shim() {
-    let (addr, _registry) = mesh().await;
-    let client = connected(&addr).await;
+    let (client, node) = hub_under_test().await;
 
     // Two distinct workspaces, neither of them the other.
     let theirs = std::env::temp_dir().join(format!("kudo-theirs-{}", std::process::id()));
@@ -344,7 +357,7 @@ async fn a_foreign_workspace_job_cannot_be_killed_through_the_shim() {
     // Started as if by a session in `theirs`.
     let started = jobs::start(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         StartRequest {
             argv: vec!["sleep".into(), "30".into()],
@@ -361,7 +374,7 @@ async fn a_foreign_workspace_job_cannot_be_killed_through_the_shim() {
     // And a session in `mine` tries to stop it.
     let err = jobs::kill(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         KillRequest {
             id: started.id.clone(),
@@ -388,7 +401,7 @@ async fn a_foreign_workspace_job_cannot_be_killed_through_the_shim() {
     // The job really was not stopped: the owning session can still stop it.
     jobs::kill(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         KillRequest {
             id: started.id,
@@ -513,12 +526,11 @@ fn no_samples_is_said_out_loud_and_not_shown_as_idle() {
 /// frame, not every frame it ever drew.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_redrawing_job_reads_back_as_one_screen_over_the_mesh() {
-    let (addr, _registry) = mesh().await;
-    let client = connected(&addr).await;
+    let (client, node) = hub_under_test().await;
 
     let started = jobs::start(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         StartRequest {
             argv: vec![
@@ -540,7 +552,7 @@ async fn a_redrawing_job_reads_back_as_one_screen_over_the_mesh() {
 
     let view = jobs::screen(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         moco_job::wire::ScreenRequest {
             id: started.id.clone(),
@@ -564,7 +576,7 @@ async fn a_redrawing_job_reads_back_as_one_screen_over_the_mesh() {
 
     let _ = jobs::kill(
         &client,
-        alpha(),
+        node.clone(),
         DEFAULT_JOB_CONNECTOR,
         KillRequest {
             id: started.id,

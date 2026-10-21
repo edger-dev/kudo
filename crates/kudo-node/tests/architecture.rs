@@ -155,3 +155,22 @@ fn the_home_module_installs_the_cli() {
         "packaging/home-module.nix must install the package for the user"
     );
 }
+
+/// A job is the user's own program: the daemon must find it on the user's
+/// PATH, not on systemd's bare one (seen live — a deployed node could not
+/// spawn `echo`, `sh` or `sleep`; its PATH held only systemd's bin).
+#[test]
+fn the_home_module_gives_the_daemon_the_users_path() {
+    let module = home_module();
+    for dir in [
+        "/run/wrappers/bin",
+        "%h/.nix-profile/bin",
+        "/etc/profiles/per-user/%u/bin",
+        "/run/current-system/sw/bin",
+    ] {
+        assert!(
+            module.contains(dir),
+            "packaging/home-module.nix must put {dir} on the daemon's PATH"
+        );
+    }
+}
