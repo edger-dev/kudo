@@ -1,0 +1,47 @@
+# The console
+
+`crates/kudo-console` is kudo's human surface: a Dioxus fullstack app. Its
+server links the context engine (with this machine's mirror) and the hub
+client; the page calls it through server functions. Three panes — *where*
+(nodes, contexts, the workers under them), the selected context's **head**,
+its **trace** — and a box to enqueue an ask under the selected context.
+
+## Running it
+
+In the dev shell (`nix develop`), from the repository root:
+
+```
+dx serve -p kudo-console --web --fullstack      # build, run, live-reload
+```
+
+or run a built server directly:
+
+```
+dx build -p kudo-console --web --fullstack
+cd target/dx/kudo-console/debug/web && ./server
+```
+
+It reads the same environment as `kudo-shim`: `KUDO_CONTEXT_STORE` (or the
+default store), `KUDO_CONTEXT_MIRROR` and `AWS_*` for a mirror, and
+`KUDO_HUB_ADDR` for nodes and live updates. It listens on `IP`:`PORT`,
+**`127.0.0.1:8080` by default**.
+
+## It has no login — keep it on localhost
+
+v1 has **no authentication**: anyone who can reach the server can read every
+context and enqueue asks that workers will act on. It refuses what another web
+page could make your browser send (a write that is not same-origin JSON), but
+nothing stops a person on the network. So:
+
+- leave `IP` unset (localhost), and reach it from another machine through an
+  SSH tunnel — `ssh -L 8080:127.0.0.1:8080 <host>`, then open
+  `http://127.0.0.1:8080`;
+- never bind it to a shared or public address.
+
+## Live updates
+
+The server subscribes to the hub's `kudo/` events and the page long-polls a
+version they bump, so it re-reads only when something moved (and at least
+every 25 seconds). A hub without the event channel (older than the
+`828a6b0` revision) still serves nodes; the page then refreshes on that
+25-second beat.

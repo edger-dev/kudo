@@ -20,19 +20,25 @@ fn headers(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
 #[test]
 fn same_origin_json_is_allowed() {
     assert!(
-        allowed(&Method::POST, &headers(&[
-            ("content-type", "application/json"),
-            ("host", "127.0.0.1:8099"),
-            ("origin", "http://127.0.0.1:8099"),
-        ]))
+        allowed(
+            &Method::POST,
+            &headers(&[
+                ("content-type", "application/json"),
+                ("host", "127.0.0.1:8099"),
+                ("origin", "http://127.0.0.1:8099"),
+            ])
+        )
         .is_ok()
     );
     // A tool on this machine sends no Origin at all.
     assert!(
-        allowed(&Method::POST, &headers(&[
-            ("content-type", "application/json"),
-            ("host", "127.0.0.1:8099")
-        ]))
+        allowed(
+            &Method::POST,
+            &headers(&[
+                ("content-type", "application/json"),
+                ("host", "127.0.0.1:8099")
+            ])
+        )
         .is_ok()
     );
 }
@@ -46,10 +52,10 @@ fn what_another_site_could_send_is_refused() {
         "multipart/form-data",
     ] {
         assert!(
-            allowed(&Method::POST, &headers(&[
-                ("content-type", ct),
-                ("host", "127.0.0.1:8099")
-            ]))
+            allowed(
+                &Method::POST,
+                &headers(&[("content-type", ct), ("host", "127.0.0.1:8099")])
+            )
             .is_err(),
             "{ct}"
         );
@@ -59,19 +65,25 @@ fn what_another_site_could_send_is_refused() {
         "no content type"
     );
     assert!(
-        allowed(&Method::POST, &headers(&[
-            ("content-type", "application/json"),
-            ("host", "127.0.0.1:8099"),
-            ("origin", "https://evil.example"),
-        ]))
+        allowed(
+            &Method::POST,
+            &headers(&[
+                ("content-type", "application/json"),
+                ("host", "127.0.0.1:8099"),
+                ("origin", "https://evil.example"),
+            ])
+        )
         .is_err()
     );
     assert!(
-        allowed(&Method::POST, &headers(&[
-            ("content-type", "application/json"),
-            ("host", "127.0.0.1:8099"),
-            ("sec-fetch-site", "cross-site"),
-        ]))
+        allowed(
+            &Method::POST,
+            &headers(&[
+                ("content-type", "application/json"),
+                ("host", "127.0.0.1:8099"),
+                ("sec-fetch-site", "cross-site"),
+            ])
+        )
         .is_err()
     );
 }

@@ -14,6 +14,7 @@
 # Contexts
 
 - [The context store mirror](./contexts/mirror.md)
+- [The console](./contexts/console.md)
 
 # RFCs
 

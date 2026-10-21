@@ -98,7 +98,7 @@ fn a_selection_that_does_not_resolve_still_lists_the_contexts() {
     let store = store("badsel");
     store.create_context("still here", "# s\n", T0).unwrap();
     let data = views::console(&store, Some("ffffffffffff".into()), T0);
-    assert_eq!(data.contexts.len(), 1);
+    assert_eq!(data.contexts.len(), 1, "{data:?}");
     assert!(data.selected.is_none());
     assert!(
         data.error

@@ -51,14 +51,22 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
         .collect()
 }
 
-/// Contexts and the selected one, never failing as a whole (stub).
-pub fn console(
-    store: &ContextStore,
-    selected: Option<String>,
-    now: Now,
-) -> crate::model::ConsoleData {
-    let _ = (store, selected, now);
-    crate::model::ConsoleData::default()
+/// Contexts and the selected one (the newest when none is), never failing as
+/// a whole: what could not be read is said in `error`, and the rest still
+/// shows — so the *where* pane, the way to a different selection, stays.
+pub fn console(store: &ContextStore, selected: Option<String>, now: Now) -> ConsoleData {
+    let mut data = ConsoleData::default();
+    match contexts(store, now) {
+        Ok(contexts) => data.contexts = contexts,
+        Err(e) => data.error = Some(e.to_string()),
+    }
+    if let Some(id) = selected.or_else(|| data.contexts.first().map(|c| c.id.clone())) {
+        match detail(store, &id) {
+            Ok(detail) => data.selected = Some(detail),
+            Err(e) => data.error = Some(format!("{id}: {e}")),
+        }
+    }
+    data
 }
 
 /// One context — by id or unique prefix — its head (the newest tip, flagged

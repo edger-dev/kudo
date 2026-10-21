@@ -40,9 +40,10 @@ fn now() -> i64 {
 
 /// Refuse what another web page could make a browser send.
 pub(crate) async fn guarded() -> Result<(), ServerFnError> {
-    let headers =
-        dioxus::fullstack::FullstackContext::extract::<dioxus::fullstack::HeaderMap, _>().await?;
-    crate::guard::allowed(&headers).map_err(ServerFnError::new)
+    use dioxus::fullstack::{FullstackContext, HeaderMap, Method};
+    let headers = FullstackContext::extract::<HeaderMap, _>().await?;
+    let method = FullstackContext::extract::<Method, _>().await?;
+    crate::guard::allowed(&method, &headers).map_err(ServerFnError::new)
 }
 
 fn store() -> Result<Arc<ContextStore>, String> {
