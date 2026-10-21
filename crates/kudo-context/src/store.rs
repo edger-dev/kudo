@@ -119,6 +119,9 @@ impl ContextStore {
     /// no other context shares (ids are all one length, so a full id is
     /// always unique).
     pub fn resolve_context(&self, id_or_prefix: &str) -> Result<ContextId, Error> {
+        if id_or_prefix.is_empty() {
+            return Err(Error::UnknownContext(String::new()));
+        }
         let view = self.view()?;
         let matches: Vec<&Event> = view
             .cards()

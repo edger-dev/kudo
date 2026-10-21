@@ -79,12 +79,12 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
         }
         ["list"] => {
             if !store_dir.join(".kinora").is_dir() {
-                return Ok("no contexts yet: kudo-shim context new <title>\n".to_owned());
+                return Ok(NO_CONTEXTS.to_owned());
             }
             let store = open(store_dir)?;
             let all = store.contexts().map_err(|e| e.to_string())?;
             if all.is_empty() {
-                return Ok("no contexts yet: kudo-shim context new <title>\n".to_owned());
+                return Ok(NO_CONTEXTS.to_owned());
             }
             let mut out = String::new();
             for c in &all {
@@ -101,6 +101,8 @@ pub fn context(store_dir: &Path, args: &[String], now: i64) -> Result<String, St
         _ => Err(USAGE.to_owned()),
     }
 }
+
+const NO_CONTEXTS: &str = "no contexts yet: kudo-shim context new <title>\n";
 
 /// How much of a context id `list` shows; any unique prefix is accepted back.
 const SHORT_ID: usize = 12;

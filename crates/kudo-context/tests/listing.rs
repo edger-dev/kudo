@@ -42,6 +42,10 @@ fn a_unique_prefix_names_a_context() {
 
     assert_eq!(store.resolve_context(&ctx.0).unwrap(), ctx);
     assert_eq!(store.resolve_context(&ctx.0[..6]).unwrap(), ctx);
+    assert!(
+        matches!(store.resolve_context(""), Err(Error::UnknownContext(_))),
+        "an empty prefix names nothing, even in a store of one"
+    );
     assert!(matches!(
         store.resolve_context("not-hex"),
         Err(Error::UnknownContext(_))
