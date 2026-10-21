@@ -8,9 +8,12 @@
       {
         pname = "kudo";
         src = ./.;
+        # The console (crates/kudo-console) is Dioxus fullstack: dx builds its
+        # wasm UI; wasm-bindgen matches the crate's own version.
+        extraDevPackages = pkgs: [ pkgs.dioxus-cli pkgs.wasm-bindgen-cli ];
       }
       {
-        rust = { };
+        rust = { wasm = true; };
         docs = { };
         kinora = { };
       }

@@ -1,0 +1,24 @@
+[package]
+name = "kudo-console"
+version = "0.1.0"
+edition = "2024"
+description = "kudo's console: a Dioxus fullstack face over the context engine and the hub"
+
+[lints]
+workspace = true
+
+[dependencies]
+dioxus = { version = "=0.7.4", features = ["fullstack"] }
+serde = { version = "1", features = ["derive"] }
+# Server side only: the engine and the hub client the server functions call.
+kudo-context = { path = "../kudo-context", optional = true }
+kudo-shim = { path = "../kudo-shim", optional = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+dioxus-ssr = "=0.7.4"
+
+[features]
+default = []
+web = ["dioxus/web"]
+server = ["dioxus/server", "dep:kudo-context", "dep:kudo-shim", "dep:tokio"]
