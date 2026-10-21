@@ -173,21 +173,53 @@ pub enum TraceEvent {
     LeaseEnd(String),
 }
 
+// implements: 03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d@03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d
 impl TraceEvent {
-    /// The event's name, as topics and trace kinos spell it (stub).
+    /// The event's name, as topics and trace kinos spell it.
     pub fn name(&self) -> &'static str {
-        ""
+        match self {
+            Self::LeaseStart => "lease-start",
+            Self::Handoff(_) => "handoff",
+            Self::Pull(_) => "pull",
+            Self::Refused(_) => "refused",
+            Self::Release(_) => "release",
+            Self::Submit { .. } => "submit",
+            Self::LeaseEnd(_) => "lease-end",
+        }
     }
 
-    /// The event as one line (stub).
+    /// The event as one line: its name, then what it names — the text a
+    /// trace kino holds and an event payload carries.
     pub fn to_line(&self) -> String {
-        String::new()
+        match self {
+            Self::LeaseStart => self.name().to_owned(),
+            Self::Handoff(c) | Self::Pull(c) | Self::Refused(c) | Self::Release(c) => {
+                format!("{} {}", self.name(), c.0)
+            }
+            Self::Submit { claim, submission } => {
+                format!("{} {} {}", self.name(), claim.0, submission.0)
+            }
+            Self::LeaseEnd(why) => format!("{} {why}", self.name()),
+        }
     }
 
-    /// An event back from its line (stub).
+    /// An event back from its line; `None` for a line that is not one.
     pub fn from_line(line: &str) -> Option<Self> {
-        let _ = line;
-        None
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let claim = |c: &&str| ClaimId((*c).to_owned());
+        Some(match words.as_slice() {
+            ["lease-start"] => Self::LeaseStart,
+            ["handoff", c] => Self::Handoff(claim(c)),
+            ["pull", c] => Self::Pull(claim(c)),
+            ["refused", c] => Self::Refused(claim(c)),
+            ["release", c] => Self::Release(claim(c)),
+            ["submit", c, s] => Self::Submit {
+                claim: claim(c),
+                submission: SubmissionId((*s).to_owned()),
+            },
+            ["lease-end", why] => Self::LeaseEnd((*why).to_owned()),
+            _ => return None,
+        })
     }
 }
 

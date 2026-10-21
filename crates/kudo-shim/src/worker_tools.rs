@@ -15,6 +15,16 @@ fn open(setup: &WorkerSetup) -> Result<ContextStore, String> {
     )
 }
 
+/// The worker for these tools, telling the hub of the loop's events when one
+/// is configured.
+fn worker<'a>(store: &'a ContextStore, book: &'a LeaseBook, setup: &WorkerSetup) -> Worker<'a> {
+    let worker = Worker::new(store, book, setup.config());
+    match crate::events::observer_from_env() {
+        Some(observer) => worker.with_observer(observer),
+        None => worker,
+    }
+}
+
 /// The bound context's head.
 pub fn context_read(setup: &WorkerSetup) -> Result<String, String> {
     let heads = open(setup)?
@@ -32,7 +42,7 @@ pub fn context_read(setup: &WorkerSetup) -> Result<String, String> {
 pub fn pull(setup: &WorkerSetup, now: Now) -> Result<String, String> {
     let store = open(setup)?;
     let book = LeaseBook::new(&setup.leases_dir());
-    let worker = Worker::new(&store, &book, setup.config());
+    let worker = worker(&store, &book, setup);
     let pulled = worker.pull(now).map_err(|e| e.to_string())?;
     Ok(match pulled {
         Pull::Claimed(c) => format!(
@@ -58,15 +68,12 @@ pub fn submit(
 ) -> Result<String, String> {
     let store = open(setup)?;
     let book = LeaseBook::new(&setup.leases_dir());
-    let done = match Worker::new(&store, &book, setup.config()).submit(
-        &ClaimId(claim.to_owned()),
-        submission,
-        now,
-    ) {
-        Ok(done) => done,
-        Err(Error::HeadMoved { current, .. }) => return Err(moved(&store, claim, &current)),
-        Err(e) => return Err(e.to_string()),
-    };
+    let done =
+        match worker(&store, &book, setup).submit(&ClaimId(claim.to_owned()), submission, now) {
+            Ok(done) => done,
+            Err(Error::HeadMoved { current, .. }) => return Err(moved(&store, claim, &current)),
+            Err(e) => return Err(e.to_string()),
+        };
     let mut reply = format!(
         "Submitted {} for claim {claim}; the head is superseded.",
         done.id.0
@@ -127,7 +134,7 @@ fn moved(store: &ContextStore, claim: &str, current: &[String]) -> String {
 pub fn release(setup: &WorkerSetup, claim: &str, now: Now) -> Result<String, String> {
     let store = open(setup)?;
     let book = LeaseBook::new(&setup.leases_dir());
-    Worker::new(&store, &book, setup.config())
+    worker(&store, &book, setup)
         .release(&ClaimId(claim.to_owned()), now)
         .map_err(|e| e.to_string())?;
     Ok(format!("Released claim {claim}; its item is ready again."))

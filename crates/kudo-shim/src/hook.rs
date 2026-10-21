@@ -69,7 +69,6 @@ pub fn run_with(
     now: Now,
     observer: Option<kudo_worker::Observer>,
 ) -> HookReply {
-    let _ = observer;
     let input: Value = serde_json::from_str(stdin).unwrap_or(Value::Null);
     let store = match crate::cli::open_store(
         &setup.store_dir,
@@ -80,7 +79,10 @@ pub fn run_with(
         Err(e) => return HookReply::failed(e),
     };
     let book = LeaseBook::new(&setup.leases_dir());
-    let worker = Worker::new(&store, &book, setup.config());
+    let mut worker = Worker::new(&store, &book, setup.config());
+    if let Some(observer) = observer {
+        worker = worker.with_observer(observer);
+    }
 
     let result = match event {
         "session-start" => worker.session_start(now).map(|text| {

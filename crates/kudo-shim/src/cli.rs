@@ -53,7 +53,6 @@ pub fn context_with(
     args: &[String],
     now: i64,
 ) -> Result<String, String> {
-    let _ = hub;
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
         ["new", title @ ..] if !title.is_empty() => {
@@ -74,6 +73,14 @@ pub fn context_with(
             let item = store
                 .enqueue(&ctx, &ask.join(" "), now)
                 .map_err(|e| e.to_string())?;
+            // No lease made it: the event goes under `enqueue`.
+            if let Some(hub) = hub {
+                let _ = crate::events::publish(
+                    hub,
+                    crate::events::topic(&ctx.0, "enqueue", "enqueued"),
+                    format!("enqueued {}", item.0).into_bytes(),
+                );
+            }
             Ok(format!("enqueued {}\n", item.0))
         }
         ["show", ctx] => {

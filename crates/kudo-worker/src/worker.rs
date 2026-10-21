@@ -69,7 +69,8 @@ impl<'a> Worker<'a> {
         }
     }
 
-    /// Tell `observer` of every loop event this worker traces (stub).
+    /// Tell `observer` of every loop event this worker traces, after the
+    /// trace records it.
     pub fn with_observer(mut self, observer: Observer) -> Self {
         self.observer = Some(observer);
         self
@@ -267,6 +268,10 @@ impl<'a> Worker<'a> {
             .record_trace(&self.cfg.context, &self.cfg.lease, event, now)
         {
             eprintln!("kudo: could not trace {event:?}: {e}");
+        }
+        // implements: 03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d@03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d
+        if let Some(observe) = &self.observer {
+            observe(&self.cfg.context, &self.cfg.lease, event);
         }
     }
 

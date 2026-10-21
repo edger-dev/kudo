@@ -536,11 +536,7 @@ impl ContextStore {
             }
             TraceEvent::LeaseEnd(why) => ("lease-end", "", "", why.as_str()),
         };
-        let line = [name, claim, submission, reason]
-            .into_iter()
-            .filter(|w| !w.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
+        let line = event.to_line();
         // The nonce keeps two equal events of one lease two kinos.
         let content = format!("<!-- kudo trace {lease} #{seq} {} -->\n{line}\n", nonce()?);
         self.put(
