@@ -4,7 +4,8 @@
 //!
 //! The shapes, all distinguished by `kudo::kind` metadata:
 //!
-//! - **context** — born as a card (title, creation time); every head is a
+//! - **context** — born as a card (a random marker, title, creation time —
+//!   the marker keeps two same-title, same-second contexts apart); every head is a
 //!   version of that identity, so the supersedes chain is the head history.
 //! - **item** — write-once; the ask as typed, under a one-line marker that
 //!   makes two identical asks two distinct kinos.
@@ -72,7 +73,12 @@ impl ContextStore {
 
     /// Birth a context whose first head is `head`.
     pub fn create_context(&self, title: &str, head: &str, now: Now) -> Result<ContextId, Error> {
-        let card = format!("# {title}\n\nkudo context, created {}\n", ts(now));
+        // The marker makes the card unique: a title and a second do not.
+        let card = format!(
+            "<!-- kudo context {} -->\n# {title}\n\nkudo context, created {}\n",
+            nonce()?,
+            ts(now)
+        );
         let born = self.put(
             "markdown",
             card.into_bytes(),
@@ -100,7 +106,7 @@ impl ContextStore {
             .into_iter()
             .map(|card| {
                 let content = self.read(&card.hash)?;
-                let title = content
+                let title = strip_marker(&content)
                     .lines()
                     .next()
                     .unwrap_or_default()
@@ -663,6 +669,14 @@ fn strip_marker(content: &str) -> String {
         Some((first, rest)) if first.starts_with("<!-- kudo ") => rest.to_owned(),
         _ => content.to_owned(),
     }
+}
+
+/// Sixteen random bytes as hex, from the kernel.
+fn nonce() -> Result<String, Error> {
+    use std::io::Read;
+    let mut bytes = [0u8; 16];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 fn meta<const N: usize>(pairs: [(&str, &str); N]) -> BTreeMap<String, String> {
