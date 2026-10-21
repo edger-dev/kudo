@@ -38,6 +38,7 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                         .parse::<jiff::Timestamp>()
                         .map(|t| now - t.as_second() > QUIET_AFTER)
                         .unwrap_or(false),
+                    pane: None,
                 })
                 .collect();
             Ok(ContextCard {

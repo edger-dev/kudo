@@ -35,7 +35,7 @@ use kinora::store::ContentStore;
 
 use crate::{
     Claim, ClaimId, ContextId, ContextSummary, Error, Head, InboxEntry, Item, ItemId, Now,
-    Provenance, Repo, Submission, SubmissionId, Submitted, TraceEntry, TraceEvent,
+    PaneRecord, Provenance, Repo, Submission, SubmissionId, Submitted, TraceEntry, TraceEvent,
 };
 
 const KIND: &str = "kudo::kind";
@@ -556,6 +556,25 @@ impl ContextStore {
             now,
         )?;
         Ok(())
+    }
+
+    /// Record that `lease` runs in the pane `job` on `node` (stub).
+    pub fn record_pane(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+        node: &str,
+        job: &str,
+        now: Now,
+    ) -> Result<(), Error> {
+        let _ = (ctx, lease, node, job, now);
+        Ok(())
+    }
+
+    /// The panes recorded under the context (stub).
+    pub fn panes(&self, ctx: &ContextId) -> Result<Vec<PaneRecord>, Error> {
+        let _ = ctx;
+        Ok(Vec::new())
     }
 
     /// The context's trace: every lease's events, in order.

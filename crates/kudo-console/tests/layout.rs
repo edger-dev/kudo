@@ -8,7 +8,7 @@
 use dioxus::prelude::*;
 use kudo_console::layout::{Direction, Layout, PaneKind, STACKED, THREE_PANES};
 use kudo_console::model::{
-    ConsoleData, ContextCard, ContextDetail, NodeView, TraceRow, WorkerView,
+    ConsoleData, ContextCard, ContextDetail, NodeView, PaneRef, TerminalView, TraceRow, WorkerView,
 };
 use kudo_console::shell::Shell;
 
@@ -27,6 +27,10 @@ fn sample() -> ConsoleData {
                 lease: "lease-1".into(),
                 last: "pull 1234".into(),
                 quiet: false,
+                pane: Some(PaneRef {
+                    node: "yolo".into(),
+                    job: "job-3".into(),
+                }),
             }],
         }],
         selected: Some(ContextDetail {
@@ -42,6 +46,13 @@ fn sample() -> ConsoleData {
             }],
         }),
         error: None,
+        terminal: Some(TerminalView {
+            pane: PaneRef {
+                node: "yolo".into(),
+                job: "job-3".into(),
+            },
+            screen: "claude> waiting for you".into(),
+        }),
     }
 }
 
@@ -52,7 +63,7 @@ fn render(layout: Layout) -> String {
 
 /// The order the panes appear in the rendered page.
 fn pane_order(html: &str) -> Vec<&'static str> {
-    let mut found: Vec<(usize, &'static str)> = ["where", "head", "trace"]
+    let mut found: Vec<(usize, &'static str)> = ["where", "head", "trace", "terminal"]
         .into_iter()
         .filter_map(|p| html.find(&format!("data-pane=\"{p}\"")).map(|i| (i, p)))
         .collect();
@@ -63,7 +74,19 @@ fn pane_order(html: &str) -> Vec<&'static str> {
 #[test]
 fn three_panes_put_where_head_and_trace_side_by_side() {
     let html = render(THREE_PANES);
-    assert_eq!(pane_order(&html), ["where", "head", "trace"], "{html}");
+    assert_eq!(
+        pane_order(&html),
+        ["where", "head", "trace", "terminal"],
+        "{html}"
+    );
+    assert!(
+        html.contains("claude&gt; waiting for you") || html.contains("claude> waiting for you"),
+        "{html}"
+    );
+    assert!(
+        html.contains("take over"),
+        "a worker with a pane offers it: {html}"
+    );
     assert!(html.contains("data-direction=\"row\""), "{html}");
     assert!(
         html.contains("first kudo") && html.contains("state: active"),

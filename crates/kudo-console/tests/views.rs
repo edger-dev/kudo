@@ -107,3 +107,21 @@ fn a_selection_that_does_not_resolve_still_lists_the_contexts() {
         "{data:?}"
     );
 }
+
+/// A worker the console started carries its pane: the node and job to show
+/// and type into.
+#[test]
+fn a_worker_started_in_a_pane_carries_it() {
+    let store = store("paned");
+    let ctx = store.create_context("paned", "# p\n", T0).unwrap();
+    store
+        .record_trace(&ctx, "lease-p", &TraceEvent::LeaseStart, T0)
+        .unwrap();
+    store
+        .record_pane(&ctx, "lease-p", "yolo", "job-3", T0)
+        .unwrap();
+    let cards = views::contexts(&store, T0 + 1).unwrap();
+    let pane = cards[0].workers[0].pane.clone().expect("a pane");
+    assert_eq!(pane.node, "yolo");
+    assert_eq!(pane.job, "job-3");
+}

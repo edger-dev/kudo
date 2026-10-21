@@ -278,6 +278,13 @@ fn init_if_missing(dir: &Path) -> Result<ContextStore, String> {
     ContextStore::init(dir).map_err(|e| e.to_string())
 }
 
+/// The lease a worker runs under: the one its launcher picked, or a fresh
+/// one (stub).
+pub fn lease_for(given: Option<String>) -> Result<String, String> {
+    let _ = given;
+    Err("not yet".to_owned())
+}
+
 /// The mirror settings to hand on by name, from these variables.
 pub fn mirror_settings_from(
     vars: impl IntoIterator<Item = (String, String)>,

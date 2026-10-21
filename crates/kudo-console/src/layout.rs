@@ -11,6 +11,8 @@ pub enum PaneKind {
     Head,
     /// The selected context's trace, newest first.
     Trace,
+    /// A worker's pane being taken over: its screen, and a way to type.
+    Terminal,
 }
 
 /// Which way the panes run.
@@ -50,6 +52,10 @@ pub const THREE_PANES: Layout = Layout {
             kind: PaneKind::Trace,
             grow: 2,
         },
+        Pane {
+            kind: PaneKind::Terminal,
+            grow: 2,
+        },
     ],
 };
 
@@ -67,6 +73,10 @@ pub const STACKED: Layout = Layout {
         },
         Pane {
             kind: PaneKind::Trace,
+            grow: 1,
+        },
+        Pane {
+            kind: PaneKind::Terminal,
             grow: 1,
         },
     ],

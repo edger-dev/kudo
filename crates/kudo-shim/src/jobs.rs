@@ -199,6 +199,17 @@ pub async fn screen(
     moco_job::wire::decode::<ScreenReply>(&bytes).map_err(decode_failed)
 }
 
+/// Type bytes into a terminal job, as the console (stub).
+pub async fn input(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: moco_job::wire::InputRequest,
+) -> Result<(), ShimError> {
+    let _ = (hub, target, connector, request);
+    Ok(())
+}
+
 /// Render a screen read, saying whether it was observed or reconstructed.
 ///
 /// The distinction is not pedantry: a reconstructed screen is blind to anything

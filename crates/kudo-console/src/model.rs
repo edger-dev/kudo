@@ -17,6 +17,22 @@ pub struct WorkerView {
     pub last: String,
     /// Silent for longer than a claim lives: likely dead, not working.
     pub quiet: bool,
+    /// The pane it runs in, when the console started it.
+    pub pane: Option<PaneRef>,
+}
+
+/// A pane on a node: the job that is a worker's terminal.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneRef {
+    pub node: String,
+    pub job: String,
+}
+
+/// The pane being taken over, and what it shows.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalView {
+    pub pane: PaneRef,
+    pub screen: String,
 }
 
 /// A context as the *where* pane lists it.
@@ -56,4 +72,6 @@ pub struct ConsoleData {
     pub selected: Option<ContextDetail>,
     /// What went wrong reading the selection, said beside the panes.
     pub error: Option<String>,
+    /// The pane being taken over, if any.
+    pub terminal: Option<TerminalView>,
 }

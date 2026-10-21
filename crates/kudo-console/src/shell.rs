@@ -38,6 +38,7 @@ fn pane_name(kind: PaneKind) -> &'static str {
         PaneKind::Where => "where",
         PaneKind::Head => "head",
         PaneKind::Trace => "trace",
+        PaneKind::Terminal => "terminal",
     }
 }
 
@@ -47,6 +48,7 @@ fn render(kind: PaneKind, data: &ConsoleData) -> Element {
         PaneKind::Where => rsx! { WherePane { data: data.clone() } },
         PaneKind::Head => rsx! { HeadPane { data: data.clone() } },
         PaneKind::Trace => rsx! { TracePane { data: data.clone() } },
+        PaneKind::Terminal => rsx! { div {} },
     }
 }
 

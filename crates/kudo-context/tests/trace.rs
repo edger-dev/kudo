@@ -149,3 +149,23 @@ fn an_event_round_trips_as_one_line() {
     }
     assert_eq!(TraceEvent::from_line("nonsense"), None);
 }
+
+/// A worker the console started in a node's pane is recorded with where it
+/// runs, so the console can show that pane and type into it.
+#[test]
+fn a_pane_records_where_a_lease_runs() {
+    let (dir, store) = store("panes");
+    let ctx = store.create_context("paned", "# p\n", T0).unwrap();
+    assert!(store.panes(&ctx).unwrap().is_empty());
+    store
+        .record_pane(&ctx, "lease-p", "yolo", "job-17", T0)
+        .unwrap();
+    let panes = store.panes(&ctx).unwrap();
+    assert_eq!(panes.len(), 1);
+    assert_eq!(panes[0].lease, "lease-p");
+    assert_eq!(panes[0].node, "yolo");
+    assert_eq!(panes[0].job, "job-17");
+    let other = store.create_context("other", "# o\n", T0).unwrap();
+    assert!(store.panes(&other).unwrap().is_empty());
+    let _ = std::fs::remove_dir_all(&dir);
+}

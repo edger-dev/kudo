@@ -244,3 +244,12 @@ pub struct Provenance {
     pub attempt: u32,
     pub lease: String,
 }
+
+/// Where a lease runs: a pane on a node, started by the console.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaneRecord {
+    pub lease: String,
+    pub node: String,
+    /// The job on that node that is the pane.
+    pub job: String,
+}

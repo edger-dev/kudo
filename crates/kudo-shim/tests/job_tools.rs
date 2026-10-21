@@ -603,3 +603,60 @@ async fn a_redrawing_job_reads_back_as_one_screen_over_the_mesh() {
     )
     .await;
 }
+
+/// Typing into a terminal job crosses the hub: what is typed reaches the job.
+#[tokio::test(flavor = "multi_thread")]
+async fn input_typed_through_the_hub_reaches_a_terminal_job() {
+    let (client, node) = hub_under_test().await;
+    let started = jobs::start(
+        &client,
+        node.clone(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec![
+                "sh".into(),
+                "-c".into(),
+                "read l; echo \"got:$l\"; sleep 2".into(),
+            ],
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Console,
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Terminal,
+        },
+    )
+    .await
+    .expect("start");
+    jobs::input(
+        &client,
+        node.clone(),
+        DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::InputRequest {
+            id: started.id.clone(),
+            bytes: b"through the hub\n".to_vec(),
+            caller: moco_job::wire::WireCaller::Console,
+        },
+    )
+    .await
+    .expect("input");
+    let mut text = String::new();
+    for _ in 0..100 {
+        if let Ok(screen) = jobs::screen(
+            &client,
+            node.clone(),
+            DEFAULT_JOB_CONNECTOR,
+            moco_job::wire::ScreenRequest {
+                id: started.id.clone(),
+            },
+        )
+        .await
+        {
+            text = String::from_utf8_lossy(&screen.bytes).into_owned();
+            if text.contains("got:through the hub") {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(text.contains("got:through the hub"), "{text}");
+}

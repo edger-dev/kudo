@@ -266,3 +266,14 @@ fn an_empty_ask_is_refused() {
     assert!(cli::context(&dir, &args(&["enqueue", ctx.trim(), "   "]), T0).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A launcher that picked the lease (the console, to record where it runs)
+/// hands it in; otherwise a fresh one is made.
+#[test]
+fn a_worker_takes_the_lease_it_is_given() {
+    let given = "6f1d0c9e-2b7a-4c3e-9f00-1234567890ab";
+    assert_eq!(cli::lease_for(Some(given.into())).unwrap(), given);
+    let fresh = cli::lease_for(None).unwrap();
+    assert_eq!(fresh.len(), 36);
+    assert!(cli::lease_for(Some("not/a lease".into())).is_err());
+}
