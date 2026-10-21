@@ -13,12 +13,13 @@ fn open(setup: &WorkerSetup) -> Result<ContextStore, String> {
 
 /// The bound context's head.
 pub fn context_read(setup: &WorkerSetup) -> Result<String, String> {
-    let head = open(setup)?
-        .head(&setup.context)
+    let heads = open(setup)?
+        .heads(&setup.context)
         .map_err(|e| e.to_string())?;
     Ok(format!(
-        "Head of context {} (version {}):\n\n{}",
-        setup.context.0, head.version, head.body
+        "Context {}. {}",
+        setup.context.0,
+        kudo_worker::render_heads(&heads)
     ))
 }
 
@@ -27,16 +28,13 @@ pub fn context_read(setup: &WorkerSetup) -> Result<String, String> {
 pub fn pull(setup: &WorkerSetup, now: Now) -> Result<String, String> {
     let store = open(setup)?;
     let book = LeaseBook::new(&setup.leases_dir());
-    let pulled = Worker::new(&store, &book, setup.config())
-        .pull(now)
-        .map_err(|e| e.to_string())?;
+    let worker = Worker::new(&store, &book, setup.config());
+    let pulled = worker.pull(now).map_err(|e| e.to_string())?;
     Ok(match pulled {
         Pull::Claimed(c) => format!(
-            "Claimed {} (attempt {}), live for {}s:\n\n{}\n\nSubmit with this claim id when done.",
-            c.id.0,
-            c.attempt,
+            "Claimed, live for {}s. {}",
             setup.claim_ttl,
-            c.item.ask.trim_end()
+            worker.claim_text(&c).map_err(|e| e.to_string())?
         ),
         Pull::Nothing => format!("Nothing ready under context {}.", setup.context.0),
         Pull::EndTurn => "You already submitted an item this turn: end your turn now. If \
@@ -62,7 +60,7 @@ pub fn submit(
         now,
     ) {
         Ok(done) => done,
-        Err(Error::HeadMoved { current, .. }) => return Err(moved(&store, setup, claim, &current)),
+        Err(Error::HeadMoved { current, .. }) => return Err(moved(&store, claim, &current)),
         Err(e) => return Err(e.to_string()),
     };
     let mut reply = format!(
@@ -91,8 +89,12 @@ pub fn submit(
 /// The refusal of a submit from a moved head: the head as it is now, and how
 /// to build on it.
 // implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
-fn moved(store: &ContextStore, setup: &WorkerSetup, claim: &str, current: &[String]) -> String {
-    let heads = match store.heads(&setup.context) {
+fn moved(store: &ContextStore, claim: &str, current: &[String]) -> String {
+    let heads = match current
+        .iter()
+        .map(|v| store.head_version(v))
+        .collect::<Result<Vec<_>, _>>()
+    {
         Ok(heads) => heads,
         Err(e) => return e.to_string(),
     };

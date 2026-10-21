@@ -95,7 +95,7 @@ impl ContextStore {
         let ctx = ContextId(born.id.clone());
         self.put(
             "markdown",
-            head.as_bytes().to_vec(),
+            head_content(&format!("{} new", ctx.0), head),
             meta([(KIND, "head")]),
             Some((born.id, vec![born.hash])),
             now,
@@ -166,7 +166,10 @@ impl ContextStore {
 
     /// One version of a head, by its hash.
     pub fn head_version(&self, version: &str) -> Result<Head, Error> {
-        Err(Error::Kinora(format!("no head version {version}")))
+        Ok(Head {
+            version: version.to_owned(),
+            body: strip_marker(&self.read(version)?),
+        })
     }
 
     /// Every version of the head, oldest first.
@@ -293,27 +296,29 @@ impl ContextStore {
         base.sort();
         let mut now_sorted = current.clone();
         now_sorted.sort();
-        if base != now_sorted {
+        // A claim taken before claims recorded their base has none (a live
+        // context always has a tip): there is nothing to check it against.
+        let recorded = !base.is_empty();
+        if recorded && base != now_sorted {
             return Err(Error::HeadMoved {
                 claim: claim.0.clone(),
                 current,
             });
         }
-        let unchanged = tips
-            .iter()
-            .map(|e| Ok((e, self.head_of(e)?.body == submission.head)))
-            .collect::<Result<Vec<_>, Error>>()?
-            .into_iter()
-            .find(|(_, same)| *same)
-            .map(|(e, _)| e.hash.clone());
+        // An unchanged head over a single tip needs no new version. Anything
+        // else is written: the claim's marker makes the bytes new, so a head
+        // that returns to an earlier version's text cannot loop the history,
+        // and a fork always closes.
+        let unchanged = match tips.as_slice() {
+            [only] if self.head_of(only)?.body == submission.head => Some(only.hash.clone()),
+            _ => None,
+        };
         let head_version = match unchanged {
-            // The same bytes as a tip: nothing to supersede it with (a fork
-            // stays open until a submit changes the head).
             Some(version) => version,
             None => {
                 self.put(
                     "markdown",
-                    submission.head.as_bytes().to_vec(),
+                    head_content(&claim.0, &submission.head),
                     meta([(KIND, "head"), (CLAIM, &claim.0)]),
                     Some((ctx.0.clone(), current)),
                     now,
@@ -529,10 +534,7 @@ impl ContextStore {
     }
 
     fn head_of(&self, event: &Event) -> Result<Head, Error> {
-        Ok(Head {
-            version: event.hash.clone(),
-            body: self.read(&event.hash)?,
-        })
+        self.head_version(&event.hash)
     }
 
     fn item_of(&self, event: &Event) -> Result<Item, Error> {
@@ -836,6 +838,12 @@ fn base_of(event: &Event) -> Vec<String> {
 
 fn deadline_of(event: &Event) -> Now {
     field(event, DEADLINE).parse().unwrap_or(0)
+}
+
+/// A head version's bytes: the body under a marker naming what wrote it, so
+/// no two versions share a hash.
+fn head_content(writer: &str, body: &str) -> Vec<u8> {
+    format!("<!-- kudo head {writer} -->\n{body}").into_bytes()
 }
 
 /// Drop the one-line `<!-- kudo … -->` marker that makes a kino unique.

@@ -60,10 +60,9 @@ impl<'a> Worker<'a> {
     /// SessionStart: the text injected into the session — the context's head
     /// and what a worker does.
     pub fn session_start(&self, _now: Now) -> Result<String, Error> {
-        let head = self.store.head(&self.cfg.context)?;
+        let heads = self.store.heads(&self.cfg.context)?;
         Ok(format!(
-            "You are a kudo worker under context {ctx}. Its head, as the last \
-             worker left it:\n\n{body}\n\nWork exactly one item per turn. Call \
+            "You are a kudo worker under context {ctx}. {body}\n\nWork exactly one item per turn. Call \
              `pull` to claim an item (unless one was handed to you), do it, call \
              `submit` with the claim id, the full new head (where / next / \
              established / open), a short log, and what you established — each \
@@ -72,7 +71,32 @@ impl<'a> Worker<'a> {
              what you could not see; then end your turn. Do not pull again in the \
              same turn: the next item is handed to you when you stop.",
             ctx = self.cfg.context.0,
-            body = head.body.trim_end(),
+            body = render_heads(&heads).trim_end(),
+        ))
+    }
+
+    /// A claim as the worker is handed it: the ask, and the head the claim
+    /// was taken from — what the new head must build on.
+    pub fn claim_text(&self, claim: &Claim) -> Result<String, Error> {
+        let heads = if claim.base.is_empty() {
+            self.store.heads(&self.cfg.context)?
+        } else {
+            claim
+                .base
+                .iter()
+                .map(|v| self.store.head_version(v))
+                .collect::<Result<Vec<_>, Error>>()?
+        };
+        Ok(format!(
+            "Claim {id} (attempt {attempt}) under context {ctx}:\n\n{ask}\n\n{heads}\n\n\
+             Work it, then call `submit` with claim id {id}, the full new head built \
+             on the one above, a short log and what you established with its \
+             evidence. Call `release` instead if you cannot finish it.",
+            id = claim.id.0,
+            attempt = claim.attempt,
+            ctx = claim.context.0,
+            ask = claim.item.ask.trim_end(),
+            heads = render_heads(&heads).trim_end(),
         ))
     }
 
@@ -117,7 +141,7 @@ impl<'a> Worker<'a> {
         record.submitted_this_turn = false;
         self.book.put(&self.cfg.lease, &record)?;
         Ok(Stop::Block {
-            reason: handoff(&claim),
+            reason: format!("Next item. {}", self.claim_text(&claim)?),
         })
     }
 
@@ -191,23 +215,29 @@ impl<'a> Worker<'a> {
     }
 }
 
-/// The next turn's prompt: the claimed item and how to hand it back.
-fn handoff(claim: &Claim) -> String {
-    format!(
-        "Next item under context {ctx} — claim {id} (attempt {attempt}):\n\n{ask}\n\n\
-         Work it, then call `submit` with claim id {id}, the full new head, a \
-         short log and what you established with its evidence. Call `release` \
-         instead if you cannot finish it.",
-        ctx = claim.context.0,
-        id = claim.id.0,
-        attempt = claim.attempt,
-        ask = claim.item.ask.trim_end(),
-    )
-}
-
 /// The head as a worker is shown it: every tip, newest first, each with its
 /// version.
 pub fn render_heads(heads: &[kudo_context::Head]) -> String {
-    let _ = heads;
-    String::new()
+    match heads {
+        [one] => format!(
+            "The context's head (version {}):\n\n{}\n",
+            one.version,
+            one.body.trim_end()
+        ),
+        many => {
+            let mut out = format!(
+                "The context's head is forked: two submits raced, leaving {} tips, \
+                 newest first. Your new head must fold them together.\n",
+                many.len()
+            );
+            for head in many {
+                out.push_str(&format!(
+                    "\n--- version {}\n{}\n",
+                    head.version,
+                    head.body.trim_end()
+                ));
+            }
+            out
+        }
+    }
 }
