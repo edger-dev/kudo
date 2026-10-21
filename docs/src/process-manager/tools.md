@@ -5,7 +5,11 @@ launched in the project directory — that directory is how the engine knows whi
 workspace a write belongs to, so nothing has to be configured.
 
 Set `KUDO_HUB_ADDR` to the hub's address. Every node is reached through the hub;
-there is no local listener to fall back on.
+there is no local listener to fall back on. A worker session is the exception:
+its worker tools (`context_read`, `pull`, `submit`, `release`, `inbox`) reach
+the context store directly, so it starts without a hub — the job and node tools
+are then not offered, or, if a hub address is set but the hub is down, answer
+"no hub" and are tried again on the next call.
 
 ## Reading
 

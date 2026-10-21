@@ -263,17 +263,20 @@ fn init_if_missing(dir: &Path) -> Result<ContextStore, String> {
 pub fn mirror_settings_from(
     vars: impl IntoIterator<Item = (String, String)>,
 ) -> Vec<(String, String)> {
+    // Only what is not secret: keys reach the worker by inheritance (the
+    // agent CLI hands its environment to MCP servers), never on a command line
+    // anyone on the machine can read.
     vars.into_iter()
-        .filter(|(k, _)| k == kudo_worker::env::MIRROR_ENV || k.starts_with("AWS_"))
+        .filter(|(k, _)| {
+            k == kudo_worker::env::MIRROR_ENV || k == "AWS_ENDPOINT" || k == "AWS_REGION"
+        })
         .collect()
 }
 
 /// The context store's mirror settings in this environment, to hand on to
 /// the worker: `KUDO_CONTEXT_MIRROR` and the `AWS_*` variables.
 fn mirror_settings() -> Vec<(String, String)> {
-    std::env::vars()
-        .filter(|(k, _)| k == kudo_worker::env::MIRROR_ENV || k.starts_with("AWS_"))
-        .collect()
+    mirror_settings_from(std::env::vars())
 }
 
 /// This machine's node name: `KUDO_NODE`, else its hostname.

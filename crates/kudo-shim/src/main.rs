@@ -9,13 +9,14 @@
 //! implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use rmcp::ServiceExt;
 use rmcp::transport::io::stdio;
 
 use kudo_worker::WorkerSetup;
 
-use kudo_shim::startup::{Startup, after_dial_failure, plan_startup};
+use kudo_shim::startup::{Startup, plan_startup};
 use kudo_shim::{HubClient, ShimServer, call_timeout_from_env, hub_addr_from_env};
 
 #[tokio::main]
@@ -67,23 +68,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // call.
     let worker = WorkerSetup::from_env();
     let server = match plan_startup(hub_addr_from_env(), worker.is_some()) {
-        Startup::Dial(addr) => match HubClient::dial(&addr).await {
-            Ok(hub) => ShimServer::new(Arc::new(match call_timeout_from_env() {
-                Some(timeout) => hub.with_timeout(timeout),
-                None => hub,
-            })),
-            Err(e) => match after_dial_failure(&e, worker.is_some()) {
-                Startup::WithoutHub(why) => {
-                    eprintln!("kudo-shim: {why}; serving the worker tools without it");
-                    ShimServer::without_hub(why)
-                }
-                _ => {
+        // A worker dials the hub when a job tool first needs it, so a hub that
+        // is down or slow never holds up its loop.
+        Startup::Dial(addr) if worker.is_some() => ShimServer::lazy(addr, call_timeout_from_env()),
+        Startup::Dial(addr) => {
+            match tokio::time::timeout(Duration::from_secs(3), HubClient::dial(&addr)).await {
+                Ok(Ok(hub)) => ShimServer::new(Arc::new(match call_timeout_from_env() {
+                    Some(timeout) => hub.with_timeout(timeout),
+                    None => hub,
+                })),
+                Ok(Err(e)) => {
                     eprintln!("{e}");
                     std::process::exit(1);
                 }
-            },
-        },
-        Startup::WithoutHub(why) => ShimServer::without_hub(why),
+                Err(_) => {
+                    eprintln!("the hub at {addr} did not answer within 3s");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Startup::WithoutHub(why) => {
+            eprintln!("kudo-shim: {why}; serving the worker tools without a hub");
+            ShimServer::without_hub(why)
+        }
         Startup::Refuse(why) => {
             eprintln!("{why}");
             std::process::exit(2);

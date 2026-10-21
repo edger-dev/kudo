@@ -17,6 +17,7 @@ pub enum Startup {
 
 /// The start for a hub address (if any) and whether this is a worker session.
 pub fn plan_startup(hub_addr: Option<String>, worker: bool) -> Startup {
+    let hub_addr = hub_addr.filter(|a| !a.trim().is_empty());
     match (hub_addr, worker) {
         (Some(addr), _) => Startup::Dial(addr),
         (None, true) => Startup::WithoutHub(format!("{} is not set", crate::HUB_ADDR_ENV)),

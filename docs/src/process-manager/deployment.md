@@ -72,7 +72,11 @@ hostname), `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]),
 `KUDO_JOB_CONNECTOR` (default `jobs-0`), `KUDO_PTY_HOLDER`, `MOCO_PORT_RANGE`
 (default `10000-19999`).
 
-**`kudo-shim`** — `KUDO_HUB_ADDR`, required.
+**`kudo-shim`** — `KUDO_HUB_ADDR`: required for a session that only offers
+the job tools; optional for a worker session (`KUDO_CONTEXT` set), which dials
+the hub when a job tool first needs it and serves its worker tools without
+one. The context store's mirror: see [The context store
+mirror](../contexts/mirror.md).
 
 ## Checking it works
 

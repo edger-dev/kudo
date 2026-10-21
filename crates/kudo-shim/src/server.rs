@@ -239,12 +239,34 @@ fn reply(result: Result<String, crate::ShimError>) -> Result<CallToolResult, Err
 
 /// The agent-facing server.
 ///
+/// How long a lazy dial of the hub may take before a job tool gives up.
+const DIAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The tools that work against the context store, with or without a hub.
+const WORKER_TOOLS: [&str; 5] = ["context_read", "pull", "submit", "release", "inbox"];
+
+/// Where the hub stands for this session.
+enum HubState {
+    /// Dialled before serving (a session that is only job tools).
+    Dialled(Arc<HubClient>),
+    /// Dialled when a job tool first needs it, and again after a failure (a
+    /// worker session: a hub that is down at start may be up later).
+    Lazy {
+        addr: String,
+        timeout: Option<std::time::Duration>,
+        dialled: tokio::sync::Mutex<Option<Arc<HubClient>>>,
+    },
+    /// No hub address: the job tools are not offered; why.
+    Absent(String),
+}
+
 /// Holds a hub connection and nothing else — no job state, no mesh cache.
 #[derive(Clone)]
 pub struct ShimServer {
     /// The hub, or why there is none (the job tools say so; the worker
     /// tools do not need it).
-    hub: Result<Arc<HubClient>, String>,
+    /// Shared by every clone, so a hub dialled once serves the session.
+    hub: Arc<HubState>,
     /// Set when this session is a worker (the launcher's environment says so).
     worker: Option<WorkerSetup>,
 }
@@ -256,25 +278,44 @@ impl ShimServer {
     // implements: 482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae@482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae
     pub fn without_hub(why: String) -> Self {
         Self {
-            hub: Err(why),
+            hub: Arc::new(HubState::Absent(why)),
             worker: None,
         }
     }
 
     /// A server that dials the hub at `addr` when a job tool first needs it,
     /// and again after a failure.
+    // implements: 482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae@482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae
     pub fn lazy(addr: String, timeout: Option<std::time::Duration>) -> Self {
-        let _ = timeout;
-        Self::without_hub(format!("not yet dialled ({addr})"))
+        Self {
+            hub: Arc::new(HubState::Lazy {
+                addr,
+                timeout,
+                dialled: tokio::sync::Mutex::new(None),
+            }),
+            worker: None,
+        }
     }
 
     /// The names of the tools this session lists.
     pub fn listed_tool_names(&self) -> Vec<String> {
-        Self::tool_router()
-            .list_all()
+        self.listed_tools()
             .into_iter()
             .map(|t| t.name.to_string())
             .collect()
+    }
+
+    /// The tools this session lists: with no hub address at all, only the
+    /// worker tools — the others could never work here.
+    fn listed_tools(&self) -> Vec<rmcp::model::Tool> {
+        let all = Self::tool_router().list_all();
+        match self.hub.as_ref() {
+            HubState::Absent(_) => all
+                .into_iter()
+                .filter(|t| WORKER_TOOLS.contains(&t.name.as_ref()))
+                .collect(),
+            _ => all,
+        }
     }
 
     /// The `nodes` tool, called directly (for tests and other faces).
@@ -285,20 +326,51 @@ impl ShimServer {
     }
 
     /// The hub, or the tool error a job tool answers without one.
-    fn need_hub(&self) -> Result<&HubClient, CallToolResult> {
-        match &self.hub {
-            Ok(hub) => Ok(hub),
-            Err(why) => Err(CallToolResult::error(vec![ContentBlock::text(format!(
+    async fn need_hub(&self) -> Result<Arc<HubClient>, CallToolResult> {
+        let no_hub = |why: String| {
+            CallToolResult::error(vec![ContentBlock::text(format!(
                 "no hub: {why}. This session's worker tools (context_read, pull, submit, \
                  release, inbox) work without one; the job and node tools need a hub."
-            ))])),
+            ))])
+        };
+        match self.hub.as_ref() {
+            HubState::Dialled(hub) => Ok(hub.clone()),
+            HubState::Absent(why) => Err(no_hub(why.clone())),
+            HubState::Lazy {
+                addr,
+                timeout,
+                dialled,
+            } => {
+                let mut held = dialled.lock().await;
+                if let Some(hub) = held.as_ref() {
+                    return Ok(hub.clone());
+                }
+                match tokio::time::timeout(DIAL_TIMEOUT, HubClient::dial(addr)).await {
+                    Ok(Ok(hub)) => {
+                        let hub = Arc::new(match timeout {
+                            Some(t) => hub.with_timeout(*t),
+                            None => hub,
+                        });
+                        *held = Some(hub.clone());
+                        Ok(hub)
+                    }
+                    Ok(Err(e)) => Err(no_hub(format!(
+                        "the hub did not answer ({e}); it is tried again on the next call"
+                    ))),
+                    Err(_) => Err(no_hub(format!(
+                        "the hub at {addr} did not answer within {}s; it is tried again on \
+                         the next call",
+                        DIAL_TIMEOUT.as_secs()
+                    ))),
+                }
+            }
         }
     }
 
     /// Build a server over an already-dialed hub connection.
     pub fn new(hub: Arc<HubClient>) -> Self {
         Self {
-            hub: Ok(hub),
+            hub: Arc::new(HubState::Dialled(hub)),
             worker: None,
         }
     }
@@ -387,11 +459,6 @@ impl ShimServer {
         self.worker_call(|s, now| worker_tools::release(s, &args.claim, now))
     }
 
-    /// The hub this server proxies to.
-    pub fn hub(&self) -> Option<&HubClient> {
-        self.hub.as_deref().ok()
-    }
-
     #[tool(
         name = "nodes",
         description = "List the machines currently reachable through the hub, each link they \
@@ -399,7 +466,7 @@ impl ShimServer {
                        this to find out what exists before addressing work to a node."
     )]
     async fn nodes(&self) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
@@ -428,13 +495,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<NodeArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::list(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
             )
@@ -455,13 +522,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<StartNamedArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::start_named(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 StartNamedRequest {
@@ -485,13 +552,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<RestartArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::restart(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 RestartRequest {
@@ -514,13 +581,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<NodeArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::ensure(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 EnsureRequest {
@@ -548,13 +615,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<NodeArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::clear(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 ClearRequest {
@@ -576,7 +643,7 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<StartArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
@@ -599,7 +666,7 @@ impl ShimServer {
 
         reply(
             jobs::start(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 StartRequest {
@@ -624,13 +691,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<TailArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::tail(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 TailRequest {
@@ -655,13 +722,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<TailArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::machine(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 MachineRequest {
@@ -685,13 +752,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<KillArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::screen(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 ScreenRequest { id: args.id },
@@ -711,13 +778,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<KillArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::stats(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 StatsRequest { id: args.id },
@@ -736,13 +803,13 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<KillArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let hub = match self.need_hub() {
+        let hub = match self.need_hub().await {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
         reply(
             jobs::kill(
-                hub,
+                &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 KillRequest {
@@ -779,7 +846,7 @@ impl ServerHandler for ShimServer {
         _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::ListToolsResult, ErrorData> {
-        Ok(tool_list(Self::tool_router().list_all()))
+        Ok(tool_list(self.listed_tools()))
     }
 
     fn get_info(&self) -> ServerInfo {
@@ -788,12 +855,14 @@ impl ServerHandler for ShimServer {
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.server_info.name = "kudo-shim".to_string();
         info.server_info.version = env!("CARGO_PKG_VERSION").to_string();
-        info.instructions = Some(match &self.hub {
-            Ok(_) => "Reaches capabilities running on machines in the kudo mesh, through the hub. \
+        info.instructions = Some(match self.hub.as_ref() {
+            HubState::Dialled(_) | HubState::Lazy { .. } => {
+                "Reaches capabilities running on machines in the kudo mesh, through the hub. \
                       Start with `nodes` to see which machines are connected and what each can \
                       do; address later work to a node by name."
-                .to_string(),
-            Err(why) => format!(
+                    .to_string()
+            }
+            HubState::Absent(why) => format!(
                 "This session has no hub ({why}): the worker tools — context_read, pull, \
                  submit, release, inbox — work against the context store directly; the job \
                  and node tools are unavailable."
