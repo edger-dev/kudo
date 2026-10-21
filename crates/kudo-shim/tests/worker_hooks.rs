@@ -316,8 +316,8 @@ checked
         log: "checked it".into(),
         established: vec![
             Established {
-                claim: "backed by the item".into(),
-                evidence: vec![claim.item.id.0.clone()],
+                claim: "backed by a page".into(),
+                evidence: vec!["https://example.org/page".into()],
             },
             Established {
                 claim: "backed by nothing".into(),
@@ -329,5 +329,5 @@ checked
     let reply = worker_tools::submit(&s, &claim.id.0, &sub, T0 + 1).unwrap();
     assert!(reply.contains("backed by nothing"), "{reply}");
     assert!(reply.contains("claimed"), "{reply}");
-    assert!(!reply.contains("backed by the item"), "{reply}");
+    assert!(!reply.contains("backed by a page"), "{reply}");
 }
