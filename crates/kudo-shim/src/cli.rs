@@ -259,6 +259,15 @@ fn init_if_missing(dir: &Path) -> Result<ContextStore, String> {
     ContextStore::init(dir).map_err(|e| e.to_string())
 }
 
+/// The mirror settings to hand on by name, from these variables.
+pub fn mirror_settings_from(
+    vars: impl IntoIterator<Item = (String, String)>,
+) -> Vec<(String, String)> {
+    vars.into_iter()
+        .filter(|(k, _)| k == kudo_worker::env::MIRROR_ENV || k.starts_with("AWS_"))
+        .collect()
+}
+
 /// The context store's mirror settings in this environment, to hand on to
 /// the worker: `KUDO_CONTEXT_MIRROR` and the `AWS_*` variables.
 fn mirror_settings() -> Vec<(String, String)> {

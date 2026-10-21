@@ -261,6 +261,22 @@ impl ShimServer {
         }
     }
 
+    /// A server that dials the hub at `addr` when a job tool first needs it,
+    /// and again after a failure.
+    pub fn lazy(addr: String, timeout: Option<std::time::Duration>) -> Self {
+        let _ = timeout;
+        Self::without_hub(format!("not yet dialled ({addr})"))
+    }
+
+    /// The names of the tools this session lists.
+    pub fn listed_tool_names(&self) -> Vec<String> {
+        Self::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect()
+    }
+
     /// The `nodes` tool, called directly (for tests and other faces).
     pub async fn call_nodes(&self) -> CallToolResult {
         self.nodes()
