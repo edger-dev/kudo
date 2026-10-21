@@ -166,12 +166,13 @@ fn the_body_reads_cold_in_fixed_sections() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The text under `## <heading>`, up to the next heading.
+/// The text under the line `## <heading>`, up to the next heading line.
 fn section<'a>(body: &'a str, heading: &str) -> &'a str {
+    let marker = format!("\n## {heading}\n");
     let start = body
-        .find(&format!("## {heading}\n"))
+        .find(&marker)
         .unwrap_or_else(|| panic!("no {heading} in {body}"));
-    let rest = &body[start + heading.len() + 4..];
+    let rest = &body[start + marker.len() - 1..];
     rest.find("\n## ").map_or(rest, |end| &rest[..end])
 }
 

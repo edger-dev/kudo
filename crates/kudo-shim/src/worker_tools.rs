@@ -70,7 +70,9 @@ pub fn submit(
     if !done.downgraded.is_empty() {
         reply.push_str(
             "\n\nThese established lines landed as claimed — none of their evidence \
-             resolved (a kino id this store holds, or an http(s) URL):",
+             resolved. Evidence is an http(s) URL, a kino in the ledger of a repo the \
+             context declares, or an earlier submission's id; the queue's own ids \
+             (claims, items, the context, heads) back nothing:",
         );
         for line in &done.downgraded {
             reply.push_str(&format!("\n- {line}"));

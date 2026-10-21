@@ -248,11 +248,11 @@ impl ContextStore {
         now: Now,
     ) -> Result<(), Error> {
         let known = view.known();
-        let wanted: Vec<&str> = submission
+        let wanted: Vec<String> = submission
             .established
             .iter()
-            .flat_map(|l| l.evidence.iter().map(|e| e.trim()))
-            .filter(|e| is_kino_id(e) && !known.contains(e))
+            .flat_map(|l| l.evidence.iter().map(|e| normalize(e)))
+            .filter(|e| is_kino_id(e) && !known.contains(e.as_str()))
             .collect();
         if wanted.is_empty() {
             return Ok(());
@@ -270,7 +270,7 @@ impl ContextStore {
                 if cached.contains(want) {
                     continue;
                 }
-                let found = match resolver.identities().get(*want) {
+                let found = match resolver.identities().get(want.as_str()) {
                     Some(identity) => identity
                         .heads
                         .iter()
@@ -280,7 +280,7 @@ impl ContextStore {
                         .identities()
                         .values()
                         .flat_map(|i| i.events.iter())
-                        .find(|e| e.hash == *want)
+                        .find(|e| e.hash == **want)
                         .cloned(),
                 };
                 let Some(event) = found else { continue };
@@ -302,7 +302,7 @@ impl ContextStore {
                     None,
                     now,
                 )?;
-                cached.insert(*want);
+                cached.insert(want.clone());
             }
         }
         Ok(())
@@ -782,11 +782,16 @@ impl View {
         Ok(chain)
     }
 
-    /// Every id this store can answer for: its identities, their versions,
-    /// and the origin ids of the kinos it cached from repo ledgers.
+    /// Every id that can back a fact: kinos cached from a declared repo's
+    /// ledger (by their own id and their origin's), earlier submissions, and
+    /// kinos kudo did not write. The queue's own records — contexts, heads,
+    /// items, claims, settles, repos, inbox lines — back nothing.
     fn known(&self) -> std::collections::HashSet<&str> {
         self.by_id
             .iter()
+            .filter(|(_, events)| {
+                birth(events).is_some_and(|b| matches!(field(b, KIND), "" | "cite" | "submission"))
+            })
             .flat_map(|(id, events)| {
                 std::iter::once(id.as_str())
                     .chain(events.iter().map(|e| e.hash.as_str()))
@@ -807,20 +812,28 @@ impl View {
         let known = self.known();
         let mut checked = Checked::default();
         for line in &submission.established {
-            let (good, bad): (Vec<&String>, Vec<&String>) = line
-                .evidence
-                .iter()
-                .partition(|e| is_url(e) || known.contains(e.trim()));
-            checked
-                .unresolved
-                .extend(bad.into_iter().map(|e| e.trim().to_owned()));
+            let claim = one_line(&line.claim);
+            if claim.is_empty() {
+                continue;
+            }
+            let mut evidence: Vec<String> = Vec::new();
+            for e in line.evidence.iter().map(|e| normalize(e)) {
+                if !e.is_empty() && !evidence.contains(&e) {
+                    evidence.push(e);
+                }
+            }
+            let (good, bad): (Vec<String>, Vec<String>) = evidence
+                .into_iter()
+                .partition(|e| is_url(e) || known.contains(e.as_str()));
+            for e in bad {
+                if !checked.unresolved.contains(&e) {
+                    checked.unresolved.push(e);
+                }
+            }
             if good.is_empty() {
-                checked.downgraded.push(line.claim.clone());
+                checked.downgraded.push(claim);
             } else {
-                checked.established.push((
-                    line.claim.clone(),
-                    good.into_iter().map(|e| e.trim().to_owned()).collect(),
-                ));
+                checked.established.push((claim, good));
             }
         }
         checked
@@ -929,11 +942,17 @@ struct Checked {
 impl Checked {
     /// The kino ids cited as evidence that resolved (URLs left out).
     fn kinos(&self) -> Vec<&str> {
-        self.established
+        let mut kinos: Vec<&str> = Vec::new();
+        for e in self
+            .established
             .iter()
             .flat_map(|(_, evidence)| evidence.iter().map(String::as_str))
-            .filter(|e| !is_url(e))
-            .collect()
+        {
+            if !is_url(e) && !kinos.contains(&e) {
+                kinos.push(e);
+            }
+        }
+        kinos
     }
 }
 
@@ -965,9 +984,49 @@ fn is_kino_id(evidence: &str) -> bool {
     evidence.len() == 64 && evidence.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// An http(s) URL with a host, and no whitespace anywhere.
 fn is_url(evidence: &str) -> bool {
+    let rest = evidence
+        .strip_prefix("https://")
+        .or_else(|| evidence.strip_prefix("http://"));
+    rest.is_some_and(|r| !r.is_empty() && !r.starts_with('/'))
+        && !evidence.chars().any(char::is_whitespace)
+}
+
+/// An evidence entry as checked: trimmed, a `kino://` link reduced to its id,
+/// an id lowercased.
+fn normalize(evidence: &str) -> String {
     let e = evidence.trim();
-    e.starts_with("https://") || e.starts_with("http://")
+    let e = e.strip_prefix("kino://").unwrap_or(e);
+    if is_kino_id(e) {
+        e.to_ascii_lowercase()
+    } else {
+        e.to_owned()
+    }
+}
+
+/// Free text as one list item: internal line breaks collapse, so no item can
+/// start a line of its own.
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The worker's log as the body's lead: a line that would read as one of the
+/// body's own markers (a heading, the head line) is escaped.
+fn lead(log: &str) -> String {
+    log.trim_end()
+        .lines()
+        .map(|line| {
+            if line.starts_with('#') {
+                format!("\\{line}")
+            } else if line.starts_with("Head as left:") {
+                format!(" {line}")
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// A submission's body, in fixed sections so it reads cold.
@@ -978,30 +1037,37 @@ fn render(submission: &Submission, checked: &Checked, head_version: &str) -> Str
             out.push_str("- none\n");
         }
         for line in lines {
-            out.push_str(&format!("- {}\n", line.trim()));
+            out.push_str(&format!("- {line}\n"));
         }
     }
-    let mut out = format!("{}\n", submission.log.trim_end());
+    let mut out = format!("{}\n", lead(&submission.log));
     let established: Vec<String> = checked
         .established
         .iter()
-        .map(|(claim, evidence)| format!("{} (evidence: {})", claim.trim(), evidence.join(", ")))
+        .map(|(claim, evidence)| format!("{claim} (evidence: {})", evidence.join(", ")))
         .collect();
     list(&mut out, "Established", &established);
     let claimed: Vec<String> = checked
         .downgraded
         .iter()
-        .map(|c| format!("{} (no evidence that resolved)", c.trim()))
-        .chain(submission.claimed.iter().cloned())
+        .map(|c| format!("{c} (no evidence that resolved)"))
+        .chain(submission.claimed.iter().map(|c| one_line(c)))
+        .filter(|c| !c.is_empty())
         .collect();
     list(&mut out, "Claimed", &claimed);
     let ruled_out: Vec<String> = submission
         .ruled_out
         .iter()
-        .map(|r| format!("{} — {}", r.candidate.trim(), r.because.trim()))
+        .map(|r| format!("{} — {}", one_line(&r.candidate), one_line(&r.because)))
         .collect();
     list(&mut out, "Ruled out", &ruled_out);
-    list(&mut out, "Gaps", &submission.gaps);
+    let gaps: Vec<String> = submission
+        .gaps
+        .iter()
+        .map(|g| one_line(g))
+        .filter(|g| !g.is_empty())
+        .collect();
+    list(&mut out, "Gaps", &gaps);
     out.push_str(&format!("\nHead as left: version {head_version}\n"));
     out
 }
