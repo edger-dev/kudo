@@ -772,12 +772,17 @@ impl ServerHandler for ShimServer {
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.server_info.name = "kudo-shim".to_string();
         info.server_info.version = env!("CARGO_PKG_VERSION").to_string();
-        info.instructions = Some(
-            "Reaches capabilities running on machines in the kudo mesh, through the hub. \
-             Start with `nodes` to see which machines are connected and what each can do; \
-             address later work to a node by name."
+        info.instructions = Some(match &self.hub {
+            Ok(_) => "Reaches capabilities running on machines in the kudo mesh, through the hub. \
+                      Start with `nodes` to see which machines are connected and what each can \
+                      do; address later work to a node by name."
                 .to_string(),
-        );
+            Err(why) => format!(
+                "This session has no hub ({why}): the worker tools — context_read, pull, \
+                 submit, release, inbox — work against the context store directly; the job \
+                 and node tools are unavailable."
+            ),
+        });
         info
     }
 }
