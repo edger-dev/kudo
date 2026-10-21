@@ -1,0 +1,21 @@
+// The full development topology, for an end-to-end run on one machine: a dev
+// S3, a dev hub, and a dev node that dials it. Daily work develops each layer
+// against the layer below or its shipped stand-in; these are for the rare
+// whole-stack check. Start them with job_start (dev-s3, dev-hub, dev-node).
+//
+// The dev node's settings go through `sh -c` because a manifest entry has no
+// environment of its own; its jobs take ports 20000-20999, away from the
+// deployed node's.
+proc (
+  {name dev-s3,
+   argv ("scripts/dev-s3"),
+   lifetime @Service, restart @OnFailure, port @Fixed{port 9100}},
+
+  {name dev-hub,
+   argv (nix run "github:edger-dev/hub/c3f6a240ac78c79c1c920299c0e2d59cff2c34fc#hub" "--" "127.0.0.1:15401"),
+   lifetime @Service, restart @OnFailure, port @Fixed{port 15401}},
+
+  {name dev-node,
+   argv (sh -c "HUB_ADDR=127.0.0.1:15401 NODE_ID=dev MOCO_DIR=.dev/node MOCO_PORT_RANGE=20000-20999 exec cargo run -q -p kudo-node --bin kudo-node"),
+   lifetime @Service, restart @OnFailure}
+)

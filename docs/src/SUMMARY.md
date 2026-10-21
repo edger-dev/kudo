@@ -1,6 +1,7 @@
 # Summary
 
 - [Introduction](./introduction.md)
+- [Developing kudo](./development.md)
 
 # The Process Manager
 

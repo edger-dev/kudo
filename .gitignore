@@ -20,3 +20,4 @@ result-*
 
 # jig skills symlinked into place by the nix devShell
 .claude/skills/jig
+/.dev
