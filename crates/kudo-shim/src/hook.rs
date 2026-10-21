@@ -14,7 +14,7 @@
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 
-use kudo_context::{ContextStore, Now};
+use kudo_context::Now;
 use kudo_worker::{LeaseBook, Stop, Worker, WorkerSetup};
 use serde_json::{Value, json};
 
@@ -59,7 +59,7 @@ impl HookReply {
 /// Answer one hook event for the worker `setup` describes.
 pub fn run(event: &str, stdin: &str, setup: &WorkerSetup, now: Now) -> HookReply {
     let input: Value = serde_json::from_str(stdin).unwrap_or(Value::Null);
-    let store = match ContextStore::open(&setup.store_dir) {
+    let store = match crate::cli::open_configured(&setup.store_dir) {
         Ok(store) => store,
         Err(e) => return HookReply::failed(e),
     };

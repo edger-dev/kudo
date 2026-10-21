@@ -206,18 +206,41 @@ fn named(store: &ContextStore, id_or_prefix: &str) -> Result<ContextId, String> 
 
 /// Open the store in `dir`, mirrored to `mirror` (a URL) when given. With a
 /// mirror, a store this machine has never held is created and filled from it.
+// implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
 pub fn open_store(dir: &Path, mirror: Option<&str>) -> Result<ContextStore, String> {
-    let _ = mirror;
-    open(dir)
+    let Some(url) = mirror else {
+        return ContextStore::open(dir).map_err(|e| e.to_string());
+    };
+    let mirror = kudo_context::Mirror::from_url(url).map_err(|e| e.to_string())?;
+    Ok(init_if_missing(dir)?.with_mirror(mirror))
+}
+
+/// The mirror this machine is configured with: `KUDO_CONTEXT_MIRROR`.
+pub fn mirror_from_env() -> Option<String> {
+    std::env::var(kudo_worker::env::MIRROR_ENV)
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+}
+
+/// Open the store in `dir` with this machine's mirror, if it has one.
+pub fn open_configured(dir: &Path) -> Result<ContextStore, String> {
+    open_store(dir, mirror_from_env().as_deref())
 }
 
 fn open(dir: &Path) -> Result<ContextStore, String> {
-    ContextStore::open(dir).map_err(|e| e.to_string())
+    open_configured(dir)
 }
 
 fn open_or_init(dir: &Path) -> Result<ContextStore, String> {
+    match mirror_from_env() {
+        Some(url) => open_store(dir, Some(&url)),
+        None => init_if_missing(dir),
+    }
+}
+
+fn init_if_missing(dir: &Path) -> Result<ContextStore, String> {
     if dir.join(".kinora").is_dir() {
-        return open(dir);
+        return ContextStore::open(dir).map_err(|e| e.to_string());
     }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     ContextStore::init(dir).map_err(|e| e.to_string())

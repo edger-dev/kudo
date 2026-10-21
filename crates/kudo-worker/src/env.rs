@@ -10,6 +10,8 @@ use kudo_context::ContextId;
 
 /// The context store's directory.
 pub const STORE_ENV: &str = "KUDO_CONTEXT_STORE";
+/// The context store's mirror, as a URL (`s3://bucket/prefix`, `file:///dir`).
+pub const MIRROR_ENV: &str = "KUDO_CONTEXT_MIRROR";
 /// The bound context's id.
 pub const CONTEXT_ENV: &str = "KUDO_CONTEXT";
 /// The lease id (also the CLI's session id).
