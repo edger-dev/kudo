@@ -206,6 +206,14 @@ fn key_bytes(key: &Key) -> Option<&'static [u8]> {
     KEYS.iter().find(|(l, _)| *l == label).map(|(_, b)| *b)
 }
 
+/// One send into a pane, queued: the bytes, and the typed line they carry
+/// (put back in the field if refused).
+struct Typed {
+    pane: crate::model::PaneRef,
+    bytes: Vec<u8>,
+    line: Option<String>,
+}
+
 /// A worker's pane, taken over: its screen, and keys to type into it.
 #[component]
 fn TerminalPane(data: ConsoleData) -> Element {
@@ -214,12 +222,25 @@ fn TerminalPane(data: ConsoleData) -> Element {
         return rsx! { p { "take over a worker to see its pane" } };
     };
     let mut typed = use_signal(String::new);
-    let pane = terminal.pane.clone();
-    let key = move |bytes: Vec<u8>| {
-        let pane = pane.clone();
-        async move {
-            let _ = type_all(pane, bytes).await;
+    // One queue for everything typed into the pane: each send waits for the
+    // one before, so quick keys (↓ ↓ Enter) reach the pane in order.
+    let sends = use_coroutine(move |mut rx: UnboundedReceiver<Typed>| async move {
+        use futures_util::StreamExt;
+        while let Some(send) = rx.next().await {
+            let went = type_all(send.pane, send.bytes).await;
+            // A refused line is not lost: it goes back in the field.
+            if let (false, Some(line)) = (went, send.line) {
+                typed.set(line);
+            }
         }
+    });
+    let pane = terminal.pane.clone();
+    let key = move |bytes: &[u8]| {
+        sends.send(Typed {
+            pane: pane.clone(),
+            bytes: bytes.to_vec(),
+            line: None,
+        });
     };
     let direct = key.clone();
     let line_pane = terminal.pane.clone();
@@ -239,15 +260,15 @@ fn TerminalPane(data: ConsoleData) -> Element {
         form {
             onsubmit: move |e: FormEvent| {
                 e.prevent_default();
-                let pane = line_pane.clone();
-                let mut line = typed().into_bytes();
-                line.push(b'\r');
-                async move {
-                    // Kept until it went: a refused line is not lost.
-                    if type_all(pane, line).await {
-                        typed.set(String::new());
-                    }
-                }
+                let line = typed();
+                let mut bytes = line.clone().into_bytes();
+                bytes.push(b'\r');
+                typed.set(String::new());
+                sends.send(Typed {
+                    pane: line_pane.clone(),
+                    bytes,
+                    line: Some(line),
+                });
             },
             input {
                 style: "width:60%;",
@@ -258,7 +279,7 @@ fn TerminalPane(data: ConsoleData) -> Element {
                     let bytes = typed().is_empty().then(|| key_bytes(&e.key())).flatten();
                     if let Some(bytes) = bytes {
                         e.prevent_default();
-                        spawn(direct(bytes.to_vec()));
+                        direct(bytes);
                     }
                 },
             }
@@ -270,7 +291,7 @@ fn TerminalPane(data: ConsoleData) -> Element {
                     key: "{label}",
                     onclick: {
                         let key = key.clone();
-                        move |_| key(bytes.to_vec())
+                        move |_| key(bytes)
                     },
                     "{label}"
                 }
