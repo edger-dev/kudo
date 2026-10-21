@@ -19,6 +19,9 @@ pub enum Error {
     ClaimSettled(String),
     /// The claim's deadline passed; its item may already be claimed again.
     ClaimExpired(String),
+    /// The head moved since the submission's base: build on `current` (the
+    /// head's versions now) and submit again. The claim stays live.
+    HeadMoved { claim: String, current: Vec<String> },
 }
 
 impl fmt::Display for Error {
@@ -33,6 +36,11 @@ impl fmt::Display for Error {
             Self::UnknownClaim(id) => write!(f, "no claim {id}"),
             Self::ClaimSettled(id) => write!(f, "claim {id} is already settled"),
             Self::ClaimExpired(id) => write!(f, "claim {id} is past its deadline"),
+            Self::HeadMoved { claim, current } => write!(
+                f,
+                "the head moved since claim {claim} was taken: it is now {}",
+                current.join(", ")
+            ),
         }
     }
 }

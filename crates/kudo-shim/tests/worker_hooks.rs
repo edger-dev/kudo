@@ -89,6 +89,7 @@ fn stop_blocks_with_the_next_item_and_allows_when_the_queue_is_empty() {
         &claim.id.0,
         "# shim\nstate: done\n",
         "did the item",
+        None,
         T0 + 1,
     )
     .unwrap();
@@ -171,7 +172,7 @@ fn the_tools_pull_submit_and_release() {
     assert!(pulled.contains("pulled by tool"), "{pulled}");
     let claim = store.held_by(&s.context, &s.lease, T0).unwrap().unwrap();
     assert!(pulled.contains(&claim.id.0), "names the claim: {pulled}");
-    worker_tools::submit(&s, &claim.id.0, "new head\n", "log", T0 + 1).unwrap();
+    worker_tools::submit(&s, &claim.id.0, "new head\n", "log", None, T0 + 1).unwrap();
     assert_eq!(store.head(&s.context).unwrap().body, "new head\n");
 
     // The next item comes with the Stop handoff, not from a second pull.
@@ -199,7 +200,7 @@ fn pull_on_an_empty_queue_says_so_and_a_bad_claim_is_an_error() {
             .to_lowercase()
             .contains("nothing")
     );
-    assert!(worker_tools::submit(&s, "no-such-claim", "h", "l", T0).is_err());
+    assert!(worker_tools::submit(&s, "no-such-claim", "h", "l", None, T0).is_err());
 }
 
 #[test]
@@ -210,7 +211,7 @@ fn after_a_submit_pull_says_to_end_the_turn_and_the_stop_hands_over_the_next() {
 
     let _ = worker_tools::pull(&s, T0).unwrap();
     let claim = store.held_by(&s.context, &s.lease, T0).unwrap().unwrap();
-    worker_tools::submit(&s, &claim.id.0, "h1\n", "one", T0 + 1).unwrap();
+    worker_tools::submit(&s, &claim.id.0, "h1\n", "one", None, T0 + 1).unwrap();
 
     let again = worker_tools::pull(&s, T0 + 2).unwrap();
     assert!(again.contains("end your turn"), "{again}");
@@ -232,4 +233,55 @@ fn the_inbox_tool_files_a_line_under_the_bound_context() {
     let entries = store.inbox(&s.context).unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].lease, s.lease);
+}
+
+// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
+#[test]
+fn a_submit_from_a_moved_head_hands_back_the_head_as_it_is_now() {
+    let (s, store) = setup();
+    store.enqueue(&s.context, "mine", T0).unwrap();
+    store.enqueue(&s.context, "theirs", T0).unwrap();
+    let _ = worker_tools::pull(&s, T0).unwrap();
+    let mine = store.held_by(&s.context, &s.lease, T0).unwrap().unwrap();
+
+    // Another worker takes the second item and submits first.
+    let theirs = store.pull(&s.context, "lease-2", T0, 600).unwrap().unwrap();
+    store
+        .submit(
+            &theirs.id,
+            &kudo_context::Submission {
+                head: "# shim\ntheirs landed\n".into(),
+                log: "theirs".into(),
+                base: None,
+            },
+            T0 + 1,
+        )
+        .unwrap();
+    let now = store.head(&s.context).unwrap();
+
+    let refused =
+        worker_tools::submit(&s, &mine.id.0, "# shim\nmine\n", "mine", None, T0 + 2).unwrap_err();
+    assert!(
+        refused.contains("theirs landed"),
+        "the head as it is: {refused}"
+    );
+    assert!(
+        refused.contains(&now.version),
+        "the version to build on: {refused}"
+    );
+    assert!(refused.contains("base"), "how to resubmit: {refused}");
+
+    worker_tools::submit(
+        &s,
+        &mine.id.0,
+        "# shim\ntheirs landed\nmine\n",
+        "mine",
+        Some(&now.version),
+        T0 + 3,
+    )
+    .unwrap();
+    assert_eq!(
+        store.head(&s.context).unwrap().body,
+        "# shim\ntheirs landed\nmine\n"
+    );
 }

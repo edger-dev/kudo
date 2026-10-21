@@ -72,6 +72,9 @@ pub struct Claim {
     /// The lease (session) that holds the claim.
     pub lease: String,
     pub deadline: Now,
+    /// The head versions current when the claim was taken (one, unless the
+    /// head was forked): a submit must build on them, or name what it built on.
+    pub base: Vec<String>,
 }
 
 /// What a worker hands back for the item it claimed.
@@ -81,6 +84,9 @@ pub struct Submission {
     pub head: String,
     /// The log entry: what was established, with its evidence.
     pub log: String,
+    /// The head versions the new head builds on, when not the claim's own
+    /// base — after a refusal, the versions it handed back.
+    pub base: Option<Vec<String>>,
 }
 
 /// A rough edge filed from inside the work.

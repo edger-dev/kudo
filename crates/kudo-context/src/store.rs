@@ -151,6 +151,12 @@ impl ContextStore {
         self.head_of(last)
     }
 
+    /// The head's current versions, newest first: one, unless two submits
+    /// raced and forked it.
+    pub fn heads(&self, ctx: &ContextId) -> Result<Vec<Head>, Error> {
+        Ok(vec![self.head(ctx)?])
+    }
+
     /// Every version of the head, oldest first.
     pub fn head_history(&self, ctx: &ContextId) -> Result<Vec<Head>, Error> {
         let view = self.view()?;
@@ -244,6 +250,7 @@ impl ContextStore {
             attempt,
             lease: lease.to_owned(),
             deadline,
+            base: Vec::new(),
         }))
     }
 
@@ -330,6 +337,7 @@ impl ContextStore {
             attempt: field(claim, ATTEMPT).parse().unwrap_or(1),
             lease: lease.to_owned(),
             deadline: deadline_of(claim),
+            base: Vec::new(),
         }))
     }
 
@@ -738,6 +746,53 @@ mod tests {
 
         assert!(store.confirm(&claim.id, "lease-a").unwrap());
         assert!(!store.confirm(&claim.id, "lease-b").unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two submits raced past the moved-head check: the head forked. A claim
+    /// taken now builds on both tips, and its submit closes the fork.
+    // implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
+    #[test]
+    fn a_forked_head_closes_on_the_next_submit() {
+        let dir = std::env::temp_dir().join(format!("kudo-context-fork-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ContextStore::init(&dir).unwrap();
+        let ctx = store.create_context("fork", "h0\n", T0).unwrap();
+        let root = store.head(&ctx).unwrap().version;
+        for (body, at) in [("left\n", T0 + 1), ("right\n", T0 + 2)] {
+            store
+                .put(
+                    "markdown",
+                    body.as_bytes().to_vec(),
+                    meta([(KIND, "head")]),
+                    Some((ctx.0.clone(), root.clone())),
+                    at,
+                )
+                .unwrap();
+        }
+        let heads = store.heads(&ctx).unwrap();
+        assert_eq!(heads.len(), 2, "{heads:?}");
+        assert_eq!(heads[0].body, "right\n", "newest first");
+        assert_eq!(store.head(&ctx).unwrap().body, "right\n");
+
+        store.enqueue(&ctx, "merge", T0 + 3).unwrap();
+        let claim = store.pull(&ctx, "lease-a", T0 + 3, 600).unwrap().unwrap();
+        let mut base = claim.base.clone();
+        base.sort();
+        let mut tips: Vec<String> = heads.iter().map(|h| h.version.clone()).collect();
+        tips.sort();
+        assert_eq!(base, tips);
+
+        let merged = Submission {
+            head: "left\nright\n".into(),
+            log: "merged".into(),
+            base: None,
+        };
+        store.submit(&claim.id, &merged, T0 + 4).unwrap();
+        let heads = store.heads(&ctx).unwrap();
+        assert_eq!(heads.len(), 1, "the fork is closed: {heads:?}");
+        assert_eq!(heads[0].body, "left\nright\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

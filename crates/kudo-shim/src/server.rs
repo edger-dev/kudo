@@ -235,7 +235,9 @@ impl ShimServer {
         &self,
         Parameters(args): Parameters<SubmitArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.worker_call(|s, now| worker_tools::submit(s, &args.claim, &args.head, &args.log, now))
+        self.worker_call(|s, now| {
+            worker_tools::submit(s, &args.claim, &args.head, &args.log, None, now)
+        })
     }
 
     #[tool(

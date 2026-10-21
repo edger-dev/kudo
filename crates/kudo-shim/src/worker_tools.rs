@@ -51,13 +51,16 @@ pub fn submit(
     claim: &str,
     head: &str,
     log: &str,
+    base: Option<&str>,
     now: Now,
 ) -> Result<String, String> {
+    let _ = base;
     let store = open(setup)?;
     let book = LeaseBook::new(&setup.leases_dir());
     let submission = Submission {
         head: head.to_owned(),
         log: log.to_owned(),
+        base: None,
     };
     let id = Worker::new(&store, &book, setup.config())
         .submit(&ClaimId(claim.to_owned()), &submission, now)
