@@ -1,1 +1,0 @@
-{"event_kind":"assign","kind":"kin::assign","id":"35e0ccd93acf733faaacad05140d9932384b173b1a02353b7145c879441b2c6a","hash":"35e0ccd93acf733faaacad05140d9932384b173b1a02353b7145c879441b2c6a","parents":[],"ts":"2026-10-21T14:51:56.250317626Z","author":"YJ Park","provenance":"a worker found kudo-shim has no --version","metadata":{"kin::target_root":"specs"}}

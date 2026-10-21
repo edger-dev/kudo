@@ -1,0 +1,3 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"assign","kind":"kin::assign","id":"dc8be8fb61cad3cbcea18b5bbd5ec08e4d26798d66297a3fc66fda1555954fde","hash":"dc8be8fb61cad3cbcea18b5bbd5ec08e4d26798d66297a3fc66fda1555954fde","parents":[],"ts":"2026-10-21T14:57:58.896901964Z","author":"YJ Park","provenance":"seen building the console, 21 Oct","metadata":{"kin::target_root":"inbox"}}
+{"event_kind":"store","kind":"markdown","id":"dc8be8fb61cad3cbcea18b5bbd5ec08e4d26798d66297a3fc66fda1555954fde","hash":"dc8be8fb61cad3cbcea18b5bbd5ec08e4d26798d66297a3fc66fda1555954fde","parents":[],"ts":"2026-10-21T14:57:58.896901964Z","author":"YJ Park","provenance":"seen building the console, 21 Oct","metadata":{"name":"finding: wasm-opt aborts on the console release build"}}
