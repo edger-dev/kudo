@@ -11,19 +11,24 @@ use crate::HubClient;
 use crate::jobs::{DEFAULT_JOB_CONNECTOR, kill, start as start_job};
 use crate::route::Target;
 
-/// The nodes the console may start workers on, comma-separated (stub).
-pub const WORKER_NODES_ENV: &str = "";
+/// The nodes the console may start workers on, comma-separated.
+// implements: 2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5@2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5
+pub const WORKER_NODES_ENV: &str = "KUDO_CONSOLE_WORKER_NODES";
 
-/// The nodes named in [`WORKER_NODES_ENV`] (stub).
+/// The nodes named in [`WORKER_NODES_ENV`]; `None` when it is unset (any
+/// node).
 pub fn worker_nodes_from(lookup: impl Fn(&str) -> Option<String>) -> Option<Vec<String>> {
-    let _ = lookup;
-    None
+    lookup(WORKER_NODES_ENV).map(|list| {
+        list.split(',')
+            .map(|n| n.trim().to_owned())
+            .filter(|n| !n.is_empty())
+            .collect()
+    })
 }
 
-/// Whether a worker may start on `node` (stub).
+/// Whether a worker may start on `node`: any node when none are named.
 pub fn may_start(node: &str, named: Option<&[String]>) -> bool {
-    let _ = (node, named);
-    true
+    named.is_none_or(|named| named.iter().any(|n| n == node))
 }
 
 /// The start request for a worker pane: `kudo-shim worker <context>` (in its
@@ -83,6 +88,13 @@ pub async fn start(
     node: &str,
     now: i64,
 ) -> Result<PaneRecord, String> {
+    let named = worker_nodes_from(|k| std::env::var(k).ok());
+    if !may_start(node, named.as_deref()) {
+        return Err(format!(
+            "workers start only on {} (set in {WORKER_NODES_ENV})",
+            named.unwrap_or_default().join(", ")
+        ));
+    }
     let (ctx, repo) = {
         let (store, context, node) = (store.clone(), context.to_owned(), node.to_owned());
         tokio::task::spawn_blocking(move || {

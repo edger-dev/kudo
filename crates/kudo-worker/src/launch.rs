@@ -19,8 +19,18 @@ pub struct LaunchPlan {
 }
 
 impl LaunchPlan {
-    /// The same plan, with the CLI in bypass-permissions mode (stub).
-    pub fn bypassing(self) -> Self {
+    /// The same plan, with the CLI in bypass-permissions mode: its tools
+    /// run unasked.
+    // implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8
+    pub fn bypassing(mut self) -> Self {
+        let at = self.argv.len().min(1);
+        self.argv.splice(
+            at..at,
+            [
+                "--permission-mode".to_owned(),
+                "bypassPermissions".to_owned(),
+            ],
+        );
         self
     }
 }

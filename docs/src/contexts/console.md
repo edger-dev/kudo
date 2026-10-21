@@ -49,13 +49,32 @@ for that context as a terminal job on that node (in the context's repo there,
 when it declares one — otherwise in `/tmp`, where the agent CLI first asks to
 trust the folder). The console picks the worker's lease, records the pane,
 and selects it: the **terminal** pane shows its screen (re-read every second)
-and takes typing — a line with Enter, or Enter / Ctrl-C / Esc alone. A worker
+and takes typing — a line with Enter, or a key alone (the arrows, Tab, Enter,
+Esc, Ctrl-C; the arrows and Esc also work from the empty line field), sent in
+order. A worker
 whose CLI has not started its session yet shows as *starting*, and can be
 taken over all the same — which is how you answer a startup prompt.
 
 Only panes the console started can be typed into, and only by the console
 (the node refuses input from anyone else). A node too old to start a worker
 pane is refused, and the job it started is stopped.
+
+### Which nodes run workers, and how
+
+`KUDO_CONSOLE_WORKER_NODES` (comma-separated node ids) limits where the
+console starts workers: only those nodes are offered, and a start on any other
+is refused. Unset, every node is offered.
+
+Whether a worker's CLI asks before running tools is the **node's** decision,
+never the console's: a node whose own environment has `KUDO_WORKER_BYPASS=1`
+runs its workers with `--permission-mode bypassPermissions`. Set it only on a
+sandboxed node — yolo, whose outbound traffic goes through OneCLI:
+
+```nix
+services.kudo-node.environment.KUDO_WORKER_BYPASS = "1";
+```
+
+and run the console with `KUDO_CONSOLE_WORKER_NODES=yolo`.
 
 To reach the console by a name other than localhost (through a tunnel that
 keeps a hostname), list it in `KUDO_CONSOLE_HOSTS` (comma-separated); any

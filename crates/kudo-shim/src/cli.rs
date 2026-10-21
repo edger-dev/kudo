@@ -404,7 +404,12 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
             .unwrap_or(kudo_worker::DEFAULT_MAX_TURNS),
     };
     let cli = std::env::var("KUDO_AGENT_CLI").unwrap_or_else(|_| "claude".to_owned());
-    let plan = kudo_worker::plan(&setup, &cli, &shim, hub.as_deref(), &mirror_settings());
+    let mut plan = kudo_worker::plan(&setup, &cli, &shim, hub.as_deref(), &mirror_settings());
+    // The node's own decision, from its own environment.
+    if kudo_worker::env::bypass_from(|k| std::env::var(k).ok()) {
+        eprintln!("kudo: this node runs workers bypassing permissions");
+        plan = plan.bypassing();
+    }
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
     };

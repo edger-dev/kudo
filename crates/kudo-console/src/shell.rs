@@ -99,7 +99,7 @@ fn WherePane(data: ConsoleData) -> Element {
                         }
                     }
                 }
-                for node in data.nodes.iter() {
+                for node in data.nodes.iter().filter(|n| n.may_start) {
                     button {
                         key: "start-{node.id}",
                         style: "margin:2px;",

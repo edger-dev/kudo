@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 pub struct NodeView {
     pub id: String,
     pub links: Vec<String>,
+    /// Whether the console may start a worker here.
+    pub may_start: bool,
 }
 
 /// A lease still running under a context, and the last thing it did.

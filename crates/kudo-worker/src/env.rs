@@ -26,13 +26,13 @@ pub const CLAIM_TTL_ENV: &str = "KUDO_CLAIM_TTL";
 pub const MAX_TURNS_ENV: &str = "KUDO_MAX_TURNS";
 
 /// Set to `1` in a node's own environment: its workers run the agent CLI in
-/// bypass-permissions mode (stub).
-pub const BYPASS_ENV: &str = "";
+/// bypass-permissions mode. The node's decision — no launcher can send it.
+// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8
+pub const BYPASS_ENV: &str = "KUDO_WORKER_BYPASS";
 
-/// Whether this node's workers bypass permissions (stub).
+/// Whether this node's workers bypass permissions: only `1` says so.
 pub fn bypass_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
-    let _ = lookup;
-    false
+    lookup(BYPASS_ENV).is_some_and(|v| v.trim() == "1")
 }
 
 pub const DEFAULT_CLAIM_TTL: i64 = 1800;

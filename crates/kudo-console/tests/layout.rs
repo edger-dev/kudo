@@ -14,10 +14,18 @@ use kudo_console::shell::Shell;
 
 fn sample() -> ConsoleData {
     ConsoleData {
-        nodes: vec![NodeView {
-            id: "yolo".into(),
-            links: vec!["stable".into()],
-        }],
+        nodes: vec![
+            NodeView {
+                id: "yolo".into(),
+                links: vec!["stable".into()],
+                may_start: true,
+            },
+            NodeView {
+                id: "pc".into(),
+                links: vec!["stable".into()],
+                may_start: false,
+            },
+        ],
         contexts: vec![ContextCard {
             id: "c".repeat(64),
             title: "first kudo".into(),
@@ -130,4 +138,14 @@ fn a_taken_over_pane_offers_arrow_keys() {
             "{label}: {html}"
         );
     }
+}
+
+/// "Start a worker" is offered only on the nodes the console may start one
+/// on.
+// implements: 2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5@2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5
+#[test]
+fn a_worker_is_offered_only_on_the_nodes_allowed() {
+    let html = render(THREE_PANES);
+    assert!(html.contains("start a worker on yolo"), "{html}");
+    assert!(!html.contains("start a worker on pc"), "{html}");
 }

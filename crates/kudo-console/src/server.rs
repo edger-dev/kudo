@@ -187,14 +187,18 @@ async fn nodes() -> Vec<NodeView> {
         hub.topology().await.ok()
     };
     match tokio::time::timeout(Duration::from_secs(2), ask).await {
-        Ok(Some(snapshot)) => snapshot
-            .nodes
-            .into_iter()
-            .map(|n| NodeView {
-                id: n.node.0,
-                links: n.links.into_iter().map(|l| l.link.0).collect(),
-            })
-            .collect(),
+        Ok(Some(snapshot)) => {
+            let named = kudo_shim::panes::worker_nodes_from(|k| std::env::var(k).ok());
+            snapshot
+                .nodes
+                .into_iter()
+                .map(|n| NodeView {
+                    may_start: kudo_shim::panes::may_start(&n.node.0, named.as_deref()),
+                    id: n.node.0,
+                    links: n.links.into_iter().map(|l| l.link.0).collect(),
+                })
+                .collect()
+        }
         _ => Vec::new(),
     }
 }
