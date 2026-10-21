@@ -608,3 +608,17 @@ fn stop_waiting_ends_the_turn_when_the_window_passes() {
     assert_eq!(trace_of(&f), [T::Wait, T::Wait]);
     assert!(clock.get() >= T0 + 30 && clock.get() < T0 + 60);
 }
+
+/// An item the model claims itself (the `pull` tool, in an idle turn) resets
+/// the idle count like a handoff does.
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+#[test]
+fn an_item_pulled_by_the_tool_resets_the_idle_count() {
+    let f = Fixture::new();
+    let w = f.waiting_worker(10, 100);
+    assert_eq!(w.stop(T0).unwrap(), Stop::Wait);
+    f.store.enqueue(&f.ctx, "pulled by hand", T0 + 50).unwrap();
+    assert!(matches!(w.pull(T0 + 60).unwrap(), kudo_worker::Pull::Claimed(_)));
+    f.submit_held(T0 + 70);
+    assert_eq!(w.stop(T0 + 120).unwrap(), Stop::Wait, "not ended: it just worked");
+}
