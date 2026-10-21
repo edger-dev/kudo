@@ -36,11 +36,15 @@ pub fn bypass_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
     lookup(BYPASS_ENV).is_some_and(|v| v.trim() == "1")
 }
 
-/// Seconds a lease may wait in a row with nothing handed over (stub).
+/// Seconds a lease may wait in a row with nothing handed over before it
+/// ends; `0` ends it as soon as nothing is ready.
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
 pub const IDLE_LIMIT_ENV: &str = "KUDO_IDLE_LIMIT";
 pub const DEFAULT_IDLE_LIMIT: i64 = 7200;
-/// Seconds one Stop hook call waits for work (stub).
+/// Seconds one Stop hook call waits for work: inside the hook's timeout.
 pub const WAIT_WINDOW: i64 = 540;
+/// Seconds between looks at the store while waiting.
+pub const WAIT_POLL: u64 = 3;
 
 pub const DEFAULT_CLAIM_TTL: i64 = 1800;
 pub const DEFAULT_MAX_TURNS: u32 = 20;
@@ -74,7 +78,9 @@ impl WorkerSetup {
             max_turns: lookup(MAX_TURNS_ENV)
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(DEFAULT_MAX_TURNS),
-            idle_limit: 0,
+            idle_limit: lookup(IDLE_LIMIT_ENV)
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_IDLE_LIMIT),
         })
     }
 
@@ -91,6 +97,7 @@ impl WorkerSetup {
             (LEASE_ENV, self.lease.clone()),
             (CLAIM_TTL_ENV, self.claim_ttl.to_string()),
             (MAX_TURNS_ENV, self.max_turns.to_string()),
+            (IDLE_LIMIT_ENV, self.idle_limit.to_string()),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v))

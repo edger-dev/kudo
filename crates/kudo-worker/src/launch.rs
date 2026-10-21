@@ -58,10 +58,13 @@ pub fn plan(
         .iter()
         .map(|(event, arg)| {
             let command = format!("{} hook {arg}", shell_quote(&shim_str));
-            (
-                (*event).to_owned(),
-                json!([{ "hooks": [{ "type": "command", "command": command }] }]),
-            )
+            let mut hook = json!({ "type": "command", "command": command });
+            // The Stop hook waits for work: its timeout covers the window.
+            // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+            if *event == "Stop" {
+                hook["timeout"] = json!(crate::env::WAIT_WINDOW + 60);
+            }
+            ((*event).to_owned(), json!([{ "hooks": [hook] }]))
         })
         .collect();
     let settings = json!({ "hooks": hooks });

@@ -641,6 +641,7 @@ impl ContextStore {
                 let claim = || ClaimId(field(e, CLAIM).to_owned());
                 let event = match field(e, EVENT) {
                     "lease-start" => TraceEvent::LeaseStart,
+                    "wait" => TraceEvent::Wait,
                     "handoff" => TraceEvent::Handoff(claim()),
                     "pull" => TraceEvent::Pull(claim()),
                     "refused" => TraceEvent::Refused(claim()),

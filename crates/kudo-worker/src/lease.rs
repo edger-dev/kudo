@@ -59,6 +59,8 @@ pub struct LeaseRecord {
     /// The lease's start is traced (SessionStart fires again on resume and
     /// after compaction).
     pub started: bool,
+    /// When the lease began waiting with nothing ready; cleared by a handoff.
+    pub idle_since: Option<i64>,
 }
 
 /// Lease records kept in a directory, one file per lease.
@@ -89,6 +91,7 @@ impl LeaseBook {
                 Some(("submitted_this_turn", b)) => record.submitted_this_turn = b == "true",
                 Some(("started", b)) => record.started = b == "true",
                 Some(("ended", why)) => record.ended = LeaseEnd::parse(why),
+                Some(("idle_since", t)) => record.idle_since = t.parse().ok(),
                 _ => {}
             }
         }
@@ -102,6 +105,9 @@ impl LeaseBook {
             "turns={}\nrefusals={}\nsubmitted_this_turn={}\nstarted={}\n",
             record.turns, record.refusals, record.submitted_this_turn, record.started
         );
+        if let Some(t) = record.idle_since {
+            text.push_str(&format!("idle_since={t}\n"));
+        }
         if let Some(why) = record.ended {
             text.push_str(&format!("ended={}\n", why.as_str()));
         }

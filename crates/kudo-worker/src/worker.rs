@@ -23,7 +23,8 @@ pub struct WorkerConfig {
     pub claim_ttl: i64,
     /// Items the Stop hook may hand over before the lease ends.
     pub max_turns: u32,
-    /// Seconds the lease may wait in a row with nothing ready (stub).
+    /// Seconds the lease may wait in a row with nothing ready; `0` ends it
+    /// as soon as nothing is.
     pub idle_limit: i64,
 }
 
@@ -34,7 +35,7 @@ pub enum Stop {
     Block { reason: String },
     /// Let the session end; the lease has ended for this reason.
     Allow(LeaseEnd),
-    /// Nothing is ready; wait and ask again (stub).
+    /// Nothing is ready, and the lease may wait: ask again shortly.
     Wait,
 }
 
@@ -165,8 +166,19 @@ impl<'a> Worker<'a> {
             self.store
                 .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
         else {
-            return self.end(record, LeaseEnd::QueueEmpty, now);
+            // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+            let since = record.idle_since.unwrap_or(now);
+            if now - since >= self.cfg.idle_limit {
+                return self.end(record, LeaseEnd::QueueEmpty, now);
+            }
+            if record.idle_since.is_none() {
+                record.idle_since = Some(now);
+                self.book.put(&self.cfg.lease, &record)?;
+                self.trace(&TraceEvent::Wait, now);
+            }
+            return Ok(Stop::Wait);
         };
+        record.idle_since = None;
         record.turns += 1;
         record.refusals = 0;
         record.submitted_this_turn = false;
@@ -177,15 +189,37 @@ impl<'a> Worker<'a> {
         })
     }
 
-    /// Stop, waiting up to `window` seconds for work (stub).
+    /// The Stop hook's answer, waiting up to `window` seconds for an item
+    /// (`pause` between looks): never [`Stop::Wait`]. A window with nothing
+    /// ends the turn with a short idle reply, so the next Stop waits again.
+    // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
     pub fn stop_waiting(
         &self,
         clock: impl Fn() -> Now,
         pause: impl Fn(),
         window: i64,
     ) -> Result<Stop, Error> {
-        let _ = (pause, window);
-        self.stop(clock())
+        let deadline = clock() + window;
+        loop {
+            match self.stop(clock())? {
+                Stop::Wait if clock() >= deadline => return Ok(self.idle_turn(clock())),
+                Stop::Wait => pause(),
+                other => return Ok(other),
+            }
+        }
+    }
+
+    /// A turn with nothing to do: traced as a wait (a live waiter never
+    /// looks quiet), and a reply asked for in one line.
+    fn idle_turn(&self, now: Now) -> Stop {
+        self.trace(&TraceEvent::Wait, now);
+        Stop::Block {
+            reason: format!(
+                "Nothing is ready under context {} yet. Reply with one short line and end \
+                 your turn; the next item is handed to you when it is queued.",
+                self.cfg.context.0
+            ),
+        }
     }
 
     /// The `pull` tool: claim the next item, unless this turn already

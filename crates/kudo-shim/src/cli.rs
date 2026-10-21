@@ -402,7 +402,8 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
             .unwrap_or(i64::from(kudo_worker::DEFAULT_MAX_TURNS))
             .try_into()
             .unwrap_or(kudo_worker::DEFAULT_MAX_TURNS),
-        idle_limit: 0,
+        idle_limit: env_num(kudo_worker::env::IDLE_LIMIT_ENV)
+            .unwrap_or(kudo_worker::env::DEFAULT_IDLE_LIMIT),
     };
     let cli = std::env::var("KUDO_AGENT_CLI").unwrap_or_else(|_| "claude".to_owned());
     let mut plan = kudo_worker::plan(&setup, &cli, &shim, hub.as_deref(), &mirror_settings());

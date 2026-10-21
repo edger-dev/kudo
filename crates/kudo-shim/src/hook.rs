@@ -93,7 +93,15 @@ pub fn run_with(
                 }
             }))
         }),
-        "stop" => worker.stop(now).map(|stop| match stop {
+        // Waits for work: the clock runs on from `now`.
+        "stop" => {
+            let started = std::time::Instant::now();
+            let clock = || now + i64::try_from(started.elapsed().as_secs()).unwrap_or(0);
+            let pause =
+                || std::thread::sleep(std::time::Duration::from_secs(kudo_worker::env::WAIT_POLL));
+            worker.stop_waiting(clock, pause, kudo_worker::env::WAIT_WINDOW)
+        }
+        .map(|stop| match stop {
             Stop::Block { reason } => HookReply::json(&json!({
                 "decision": "block",
                 "reason": reason,

@@ -212,6 +212,7 @@ impl TraceEvent {
         let claim = |c: &&str| ClaimId((*c).to_owned());
         Some(match words.as_slice() {
             ["lease-start"] => Self::LeaseStart,
+            ["wait"] => Self::Wait,
             ["handoff", c] => Self::Handoff(claim(c)),
             ["pull", c] => Self::Pull(claim(c)),
             ["refused", c] => Self::Refused(claim(c)),

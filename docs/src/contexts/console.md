@@ -59,6 +59,14 @@ Only panes the console started can be typed into, and only by the console
 (the node refuses input from anyone else). A node too old to start a worker
 pane is refused, and the job it started is stopped.
 
+A worker with nothing ready **waits** for the next item instead of ending: it
+shows as `wait` in the *where* pane, and an item queued later is handed to it.
+About every nine minutes of waiting it replies one idle line (a cheap turn)
+and waits again; after `KUDO_IDLE_LIMIT` seconds in a row with nothing
+(default 7200, on the node) its lease ends. `KUDO_IDLE_LIMIT=0` ends it as
+soon as nothing is ready. To take over a waiting worker, interrupt (Esc) and
+type.
+
 ### Which nodes run workers, and how
 
 `KUDO_CONSOLE_WORKER_NODES` (comma-separated node ids) limits where the
