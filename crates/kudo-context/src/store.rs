@@ -32,8 +32,8 @@ use kinora::resolve::Resolver;
 use kinora::store::ContentStore;
 
 use crate::{
-    Claim, ClaimId, ContextId, ContextSummary, Error, Head, InboxEntry, Item, ItemId, Now, Repo,
-    Submission, SubmissionId, Submitted,
+    Claim, ClaimId, ContextId, ContextSummary, Error, Head, InboxEntry, Item, ItemId, Now,
+    Provenance, Repo, Submission, SubmissionId, Submitted, TraceEntry, TraceEvent,
 };
 
 const KIND: &str = "kudo::kind";
@@ -306,6 +306,30 @@ impl ContextStore {
             }
         }
         Ok(())
+    }
+
+    /// Record one loop event for `lease` under the context.
+    pub fn record_trace(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+        event: &TraceEvent,
+        now: Now,
+    ) -> Result<(), Error> {
+        let _ = (ctx, lease, event, now);
+        Ok(())
+    }
+
+    /// The context's trace: every lease's events, in order.
+    pub fn trace(&self, ctx: &ContextId) -> Result<Vec<TraceEntry>, Error> {
+        let _ = ctx;
+        Ok(Vec::new())
+    }
+
+    /// What produced the head version `version`; `None` for the first head.
+    pub fn provenance(&self, ctx: &ContextId, version: &str) -> Result<Option<Provenance>, Error> {
+        let _ = (ctx, version);
+        Ok(None)
     }
 
     /// The context's current head.

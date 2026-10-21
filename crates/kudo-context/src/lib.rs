@@ -149,3 +149,47 @@ pub struct Repo {
     /// Absolute.
     pub path: std::path::PathBuf,
 }
+
+/// One event of the pull loop, as the hooks and tools record it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TraceEvent {
+    /// The session started under the context.
+    LeaseStart,
+    /// The Stop hook handed over an item.
+    Handoff(ClaimId),
+    /// The `pull` tool claimed an item.
+    Pull(ClaimId),
+    /// A stop was refused while the claim was open.
+    Refused(ClaimId),
+    /// The claim was given back.
+    Release(ClaimId),
+    /// The claim's work was submitted.
+    Submit {
+        claim: ClaimId,
+        submission: SubmissionId,
+    },
+    /// The lease ended, and why.
+    LeaseEnd(String),
+}
+
+/// A recorded trace event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceEntry {
+    pub lease: String,
+    /// Order within the lease, from 1.
+    pub seq: u64,
+    /// When, as an RFC 3339 timestamp.
+    pub at: String,
+    pub event: TraceEvent,
+}
+
+/// What produced a head version: the submission, its claim and item, and the
+/// lease that held the claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Provenance {
+    pub submission: SubmissionId,
+    pub claim: ClaimId,
+    pub item: Item,
+    pub attempt: u32,
+    pub lease: String,
+}

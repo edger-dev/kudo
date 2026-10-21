@@ -124,3 +124,43 @@ fn a_worker_starts_in_a_declared_repo_on_this_node() {
     assert!(err.contains("repo add"), "says how to declare it: {err}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// implements: a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098@a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098
+#[test]
+fn trace_lists_the_loop_events_and_why_names_what_wrote_the_head() {
+    use kudo_context::{ContextId, ContextStore, Submission, TraceEvent};
+    let dir = std::env::temp_dir().join(format!("kudo-shim-cli-trace-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let ctx = cli::context(&dir, &args(&["new", "traced"]), T0).unwrap();
+    let ctx = ctx.trim().to_owned();
+
+    let why = cli::context(&dir, &args(&["why", &ctx]), T0).unwrap();
+    assert!(why.contains("no submission"), "the first head: {why}");
+
+    let store = ContextStore::open(&dir).unwrap();
+    let id = ContextId(ctx.clone());
+    store.enqueue(&id, "the ask", T0).unwrap();
+    let claim = store.pull(&id, "lease-abc", T0, 600).unwrap().unwrap();
+    store
+        .record_trace(&id, "lease-abc", &TraceEvent::Pull(claim.id.clone()), T0)
+        .unwrap();
+    let sub = Submission {
+        head: "# traced\nanswered\n".into(),
+        log: "answered".into(),
+        ..Default::default()
+    };
+    let done = store.submit(&claim.id, &sub, T0 + 1).unwrap();
+
+    let trace = cli::context(&dir, &args(&["trace", &ctx[..8]]), T0 + 2).unwrap();
+    assert!(
+        trace.contains("lease-ab") && trace.contains("pull"),
+        "{trace}"
+    );
+    assert!(trace.contains(&claim.id.0[..12]), "{trace}");
+
+    let why = cli::context(&dir, &args(&["why", &ctx]), T0 + 2).unwrap();
+    for part in [&done.id.0[..12], &claim.id.0[..12], "the ask", "lease-abc"] {
+        assert!(why.contains(part), "{part} in {why}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -321,3 +321,89 @@ fn a_forked_head_is_shown_whole() {
     let one = kudo_worker::render_heads(&heads[..1]);
     assert!(!one.to_lowercase().contains("fork"), "{one}");
 }
+
+fn trace_of(f: &Fixture) -> Vec<kudo_context::TraceEvent> {
+    f.store
+        .trace(&f.ctx)
+        .unwrap()
+        .into_iter()
+        .filter(|t| t.lease == LEASE)
+        .map(|t| t.event)
+        .collect()
+}
+
+/// The hooks write the loop's events as they happen.
+// implements: a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098@a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098
+#[test]
+fn a_lease_writes_its_trace_start_handoff_submit_end() {
+    use kudo_context::TraceEvent as T;
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "one", T0).unwrap();
+    let w = f.worker(10);
+    w.session_start(T0).unwrap();
+    let _ = block_reason(w.stop(T0 + 1).unwrap());
+    let claim = f.store.held_by(&f.ctx, LEASE, T0 + 1).unwrap().unwrap();
+    let sub = Submission {
+        head: "# hooks\ndone\n".into(),
+        log: "done".into(),
+        ..Default::default()
+    };
+    let done = w.submit(&claim.id, &sub, T0 + 2).unwrap();
+    assert_eq!(w.stop(T0 + 3).unwrap(), Stop::Allow(LeaseEnd::QueueEmpty));
+
+    assert_eq!(
+        trace_of(&f),
+        [
+            T::LeaseStart,
+            T::Handoff(claim.id.clone()),
+            T::Submit {
+                claim: claim.id,
+                submission: done.id
+            },
+            T::LeaseEnd("queue-empty".into()),
+        ]
+    );
+}
+
+#[test]
+fn refusals_a_stuck_release_and_a_takeover_are_traced() {
+    use kudo_context::TraceEvent as T;
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "stuck", T0).unwrap();
+    let w = f.worker(10);
+    let _ = block_reason(w.stop(T0).unwrap());
+    let claim = f.store.held_by(&f.ctx, LEASE, T0).unwrap().unwrap();
+    for n in 1..=3 {
+        let _ = block_reason(w.stop(T0 + n).unwrap());
+    }
+    assert_eq!(w.stop(T0 + 4).unwrap(), Stop::Allow(LeaseEnd::Stuck));
+    assert_eq!(
+        trace_of(&f),
+        [
+            T::Handoff(claim.id.clone()),
+            T::Refused(claim.id.clone()),
+            T::Refused(claim.id.clone()),
+            T::Refused(claim.id.clone()),
+            T::Release(claim.id.clone()),
+            T::LeaseEnd("stuck".into()),
+        ]
+    );
+
+    // A second lease on the same context: a human takes over mid-item.
+    let g = Fixture::new();
+    g.store.enqueue(&g.ctx, "mine now", T0).unwrap();
+    let w = g.worker(10);
+    let pulled = match w.pull(T0).unwrap() {
+        kudo_worker::Pull::Claimed(c) => c,
+        other => panic!("{other:?}"),
+    };
+    w.user_prompt("let me drive", T0 + 1).unwrap();
+    assert_eq!(
+        trace_of(&g),
+        [
+            T::Pull(pulled.id.clone()),
+            T::Release(pulled.id),
+            T::LeaseEnd("takeover".into()),
+        ]
+    );
+}
