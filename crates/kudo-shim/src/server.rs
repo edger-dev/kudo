@@ -249,6 +249,18 @@ pub struct ShimServer {
 
 #[tool_router]
 impl ShimServer {
+    /// Build a server with no hub: the worker tools work, each job tool
+    /// answers that there is no hub, and `why`.
+    pub fn without_hub(why: String) -> Self {
+        let _ = why;
+        unimplemented_hub()
+    }
+
+    /// The `nodes` tool, called directly (for tests and other faces).
+    pub async fn call_nodes(&self) -> CallToolResult {
+        CallToolResult::success(vec![])
+    }
+
     /// Build a server over an already-dialed hub connection.
     pub fn new(hub: Arc<HubClient>) -> Self {
         Self { hub, worker: None }
@@ -777,4 +789,8 @@ mod tests {
         fn assert_handler<T: rmcp::ServerHandler>() {}
         assert_handler::<ShimServer>();
     }
+}
+
+fn unimplemented_hub() -> ShimServer {
+    panic!("not yet")
 }

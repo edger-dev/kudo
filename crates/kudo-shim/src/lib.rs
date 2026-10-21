@@ -21,6 +21,7 @@ pub mod jobs;
 pub mod mesh;
 pub mod route;
 pub mod server;
+pub mod startup;
 pub mod worker_tools;
 
 pub use error::ShimError;
