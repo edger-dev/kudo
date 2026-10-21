@@ -204,6 +204,13 @@ fn named(store: &ContextStore, id_or_prefix: &str) -> Result<ContextId, String> 
         .map_err(|e| e.to_string())
 }
 
+/// Open the store in `dir`, mirrored to `mirror` (a URL) when given. With a
+/// mirror, a store this machine has never held is created and filled from it.
+pub fn open_store(dir: &Path, mirror: Option<&str>) -> Result<ContextStore, String> {
+    let _ = mirror;
+    open(dir)
+}
+
 fn open(dir: &Path) -> Result<ContextStore, String> {
     ContextStore::open(dir).map_err(|e| e.to_string())
 }

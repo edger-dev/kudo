@@ -202,3 +202,31 @@ fn a_declared_repo_missing_on_this_node_is_named_in_the_error() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// With a mirror, a machine that has never held the store opens it and
+/// finds what another machine wrote.
+// implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
+#[test]
+fn a_mirrored_store_opens_on_a_new_machine_with_what_the_other_wrote() {
+    let root = std::env::temp_dir().join(format!("kudo-shim-cli-mirror-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let url = format!("file://{}", root.join("bucket").display());
+
+    let pc = cli::open_store(&root.join("pc"), Some(&url)).unwrap();
+    let ctx = pc.create_context("crosses machines", "# x\n", T0).unwrap();
+
+    let edger = cli::open_store(&root.join("edger"), Some(&url)).unwrap();
+    let seen: Vec<_> = edger
+        .contexts()
+        .unwrap()
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(seen, std::slice::from_ref(&ctx));
+
+    assert!(
+        cli::open_store(&root.join("nowhere"), None).is_err(),
+        "without a mirror, a missing store is an error"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
