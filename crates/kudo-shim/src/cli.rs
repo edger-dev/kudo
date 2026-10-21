@@ -346,7 +346,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
             .unwrap_or(kudo_worker::DEFAULT_MAX_TURNS),
     };
     let cli = std::env::var("KUDO_AGENT_CLI").unwrap_or_else(|_| "claude".to_owned());
-    let plan = kudo_worker::plan(&setup, &cli, &shim, &hub);
+    let plan = kudo_worker::plan(&setup, &cli, &shim, Some(&hub), &[]);
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
     };

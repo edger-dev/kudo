@@ -36,7 +36,8 @@ fn the_cli_starts_under_the_lease_with_the_kickoff_prompt() {
         &setup(&lease),
         "claude",
         Path::new("/bin/kudo-shim"),
-        "10.100.0.1:15400",
+        Some("10.100.0.1:15400"),
+        &[],
     );
     assert_eq!(p.argv[0], "claude");
     assert_eq!(flag(&p.argv, "--session-id"), lease);
@@ -49,7 +50,8 @@ fn the_settings_install_all_four_hooks_through_the_shim() {
         &setup("l"),
         "claude",
         Path::new("/opt/kudo shim/kudo-shim"),
-        "h:1",
+        Some("h:1"),
+        &[],
     );
     let settings: Value = serde_json::from_str(flag(&p.argv, "--settings")).unwrap();
     for (event, arg) in [
@@ -77,7 +79,8 @@ fn the_mcp_config_runs_the_shim_with_the_worker_environment() {
         &setup("lease-x"),
         "claude",
         Path::new("/bin/kudo-shim"),
-        "h:1",
+        Some("h:1"),
+        &[],
     );
     let mcp: Value = serde_json::from_str(flag(&p.argv, "--mcp-config")).unwrap();
     let server = &mcp["mcpServers"]["kudo"];
@@ -93,7 +96,8 @@ fn the_process_environment_carries_the_setup_for_the_hooks() {
         &setup("lease-x"),
         "claude",
         Path::new("/bin/kudo-shim"),
-        "h:1",
+        Some("h:1"),
+        &[],
     );
     let env: std::collections::HashMap<_, _> = p.env.into_iter().collect();
     let back = WorkerSetup::from_lookup(|k| env.get(k).cloned()).unwrap();
@@ -117,4 +121,50 @@ fn lease_ids_are_distinct_v4_uuids() {
         "RFC 4122 variant: {a}"
     );
     assert!(a.chars().all(|c| c == '-' || c.is_ascii_hexdigit()));
+}
+
+/// Without a hub the worker still launches: no hub address is passed, and the
+/// shim serves the worker tools on its own.
+// implements: 482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae@482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae
+#[test]
+fn a_worker_launches_without_a_hub() {
+    let p = plan(
+        &setup("l"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &[],
+    );
+    let mcp: Value = serde_json::from_str(flag(&p.argv, "--mcp-config")).unwrap();
+    assert!(
+        mcp["mcpServers"]["kudo"]["env"]
+            .get("KUDO_HUB_ADDR")
+            .is_none()
+    );
+    assert!(p.env.iter().all(|(k, _)| k != "KUDO_HUB_ADDR"));
+}
+
+/// The context store's mirror reaches the worker's MCP server and its hooks
+/// whatever the agent CLI passes on of its own environment.
+#[test]
+fn the_mirror_settings_are_forwarded_to_the_shim() {
+    let forward = [
+        ("KUDO_CONTEXT_MIRROR".to_owned(), "s3://b/p".to_owned()),
+        (
+            "AWS_ENDPOINT".to_owned(),
+            "http://127.0.0.1:9100".to_owned(),
+        ),
+    ];
+    let p = plan(
+        &setup("l"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &forward,
+    );
+    let mcp: Value = serde_json::from_str(flag(&p.argv, "--mcp-config")).unwrap();
+    let env = &mcp["mcpServers"]["kudo"]["env"];
+    assert_eq!(env["KUDO_CONTEXT_MIRROR"], "s3://b/p");
+    assert_eq!(env["AWS_ENDPOINT"], "http://127.0.0.1:9100");
+    assert!(p.env.contains(&forward[0]));
 }

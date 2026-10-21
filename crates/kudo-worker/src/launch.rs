@@ -28,7 +28,15 @@ const HOOKS: [(&str, &str); 4] = [
 
 /// Plan a worker session: `cli` is the agent CLI, `shim` the kudo-shim binary
 /// the hooks and the MCP server run as, `hub_addr` the hub the MCP server dials.
-pub fn plan(setup: &WorkerSetup, cli: &str, shim: &Path, hub_addr: &str) -> LaunchPlan {
+pub fn plan(
+    setup: &WorkerSetup,
+    cli: &str,
+    shim: &Path,
+    hub_addr: Option<&str>,
+    forward: &[(String, String)],
+) -> LaunchPlan {
+    let _ = forward;
+    let hub_addr = hub_addr.unwrap_or_default();
     let shim_str = shim.display().to_string();
 
     let hooks: Map<String, Value> = HOOKS
