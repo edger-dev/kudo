@@ -91,3 +91,12 @@ pub struct InboxEntry {
     /// The lease (session) that filed it.
     pub lease: String,
 }
+
+/// A context as a list shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextSummary {
+    pub id: ContextId,
+    pub title: String,
+    /// When it was created, as an RFC 3339 timestamp.
+    pub created: String,
+}

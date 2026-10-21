@@ -9,6 +9,7 @@ use kudo_context::{ContextId, ContextStore};
 const USAGE: &str = "usage: kudo-shim context new <title>\n       \
                      kudo-shim context enqueue <context> <ask>\n       \
                      kudo-shim context show <context>\n       \
+                     kudo-shim context list\n       \
                      kudo-shim worker <context>";
 
 /// Where the context store lives: `KUDO_CONTEXT_STORE`, else

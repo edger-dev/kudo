@@ -11,6 +11,8 @@ pub enum Error {
     Kinora(String),
     /// No context with this id exists in the store.
     UnknownContext(String),
+    /// The prefix names more than one context: (the prefix, how many).
+    AmbiguousContext(String, usize),
     /// No claim with this id exists in the store.
     UnknownClaim(String),
     /// The claim was already settled (submitted or released).
@@ -25,6 +27,9 @@ impl fmt::Display for Error {
             Self::Io(e) => write!(f, "context store i/o: {e}"),
             Self::Kinora(m) => write!(f, "context store: {m}"),
             Self::UnknownContext(id) => write!(f, "no context {id}"),
+            Self::AmbiguousContext(prefix, n) => {
+                write!(f, "{prefix} names {n} contexts: give more of the id")
+            }
             Self::UnknownClaim(id) => write!(f, "no claim {id}"),
             Self::ClaimSettled(id) => write!(f, "claim {id} is already settled"),
             Self::ClaimExpired(id) => write!(f, "claim {id} is past its deadline"),

@@ -27,7 +27,8 @@ use kinora::resolve::Resolver;
 use kinora::store::ContentStore;
 
 use crate::{
-    Claim, ClaimId, ContextId, Error, Head, InboxEntry, Item, ItemId, Now, Submission, SubmissionId,
+    Claim, ClaimId, ContextId, ContextSummary, Error, Head, InboxEntry, Item, ItemId, Now,
+    Submission, SubmissionId,
 };
 
 const KIND: &str = "kudo::kind";
@@ -88,6 +89,17 @@ impl ContextStore {
             now,
         )?;
         Ok(ctx)
+    }
+
+    /// Every context in the store, newest first.
+    pub fn contexts(&self) -> Result<Vec<ContextSummary>, Error> {
+        Ok(Vec::new())
+    }
+
+    /// The context `id_or_prefix` names: its full id, or a prefix of it that
+    /// no other context shares.
+    pub fn resolve_context(&self, id_or_prefix: &str) -> Result<ContextId, Error> {
+        Err(Error::UnknownContext(id_or_prefix.to_owned()))
     }
 
     /// The context's current head.
