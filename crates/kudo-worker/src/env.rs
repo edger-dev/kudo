@@ -38,13 +38,16 @@ pub fn bypass_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
 
 /// Seconds a lease may wait in a row with nothing handed over before it
 /// ends; `0` ends it as soon as nothing is ready.
-// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
 pub const IDLE_LIMIT_ENV: &str = "KUDO_IDLE_LIMIT";
 pub const DEFAULT_IDLE_LIMIT: i64 = 7200;
 /// Seconds one Stop hook call waits for work: inside the hook's timeout.
 pub const WAIT_WINDOW: i64 = 540;
 /// Seconds between looks at the store while waiting.
 pub const WAIT_POLL: u64 = 3;
+/// Seconds between mirror syncs while waiting: the local looks stay cheap,
+/// and an item queued on another machine arrives within this.
+pub const WAIT_SYNC: u64 = 30;
 
 pub const DEFAULT_CLAIM_TTL: i64 = 1800;
 pub const DEFAULT_MAX_TURNS: u32 = 20;

@@ -78,6 +78,13 @@ pub fn run_with(
         Ok(store) => store,
         Err(e) => return HookReply::failed(e),
     };
+    // A waiting Stop looks every few seconds: its mirror syncs at a wider
+    // spacing (claims and submits still force theirs).
+    let store = if event == "stop" {
+        store.with_sync_spacing(std::time::Duration::from_secs(kudo_worker::env::WAIT_SYNC))
+    } else {
+        store
+    };
     let book = LeaseBook::new(&setup.leases_dir());
     let mut worker = Worker::new(&store, &book, setup.config());
     if let Some(observer) = observer {

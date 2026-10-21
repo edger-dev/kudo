@@ -61,7 +61,8 @@ pane is refused, and the job it started is stopped.
 
 A worker with nothing ready **waits** for the next item instead of ending: it
 shows as `wait` in the *where* pane, and an item queued later is handed to it.
-About every nine minutes of waiting it replies one idle line (a cheap turn)
+It looks locally every 3 s and syncs the mirror every 30 s. About every nine
+minutes of waiting it replies one idle line (a cheap turn)
 and waits again; after `KUDO_IDLE_LIMIT` seconds in a row with nothing
 (default 7200, on the node) its lease ends. `KUDO_IDLE_LIMIT=0` ends it as
 soon as nothing is ready. To take over a waiting worker, interrupt (Esc) and

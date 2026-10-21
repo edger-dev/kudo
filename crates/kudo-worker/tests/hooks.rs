@@ -532,7 +532,7 @@ fn an_event_the_trace_did_not_take_is_not_observed() {
     );
 }
 
-// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
 #[test]
 fn a_worker_with_nothing_ready_waits_and_takes_the_next_item_queued() {
     use kudo_context::TraceEvent as T;
@@ -552,7 +552,7 @@ fn a_worker_with_nothing_ready_waits_and_takes_the_next_item_queued() {
     assert_eq!(w.stop(T0 + 50 + 3599).unwrap(), Stop::Wait);
 }
 
-// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
 #[test]
 fn a_worker_idle_past_its_limit_ends_its_lease() {
     let f = Fixture::new();
@@ -563,7 +563,7 @@ fn a_worker_idle_past_its_limit_ends_its_lease() {
 }
 
 /// The hook's wait: an item queued while it waits is handed over.
-// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
 #[test]
 fn stop_waiting_hands_over_an_item_queued_mid_wait() {
     use std::cell::Cell;
@@ -592,7 +592,7 @@ fn stop_waiting_hands_over_an_item_queued_mid_wait() {
 
 /// A window with nothing: the turn ends with a short idle reply, the wait
 /// traced again so a live waiter never looks quiet.
-// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
 #[test]
 fn stop_waiting_ends_the_turn_when_the_window_passes() {
     use kudo_context::TraceEvent as T;
@@ -611,14 +611,21 @@ fn stop_waiting_ends_the_turn_when_the_window_passes() {
 
 /// An item the model claims itself (the `pull` tool, in an idle turn) resets
 /// the idle count like a handoff does.
-// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
 #[test]
 fn an_item_pulled_by_the_tool_resets_the_idle_count() {
     let f = Fixture::new();
     let w = f.waiting_worker(10, 100);
     assert_eq!(w.stop(T0).unwrap(), Stop::Wait);
     f.store.enqueue(&f.ctx, "pulled by hand", T0 + 50).unwrap();
-    assert!(matches!(w.pull(T0 + 60).unwrap(), kudo_worker::Pull::Claimed(_)));
+    assert!(matches!(
+        w.pull(T0 + 60).unwrap(),
+        kudo_worker::Pull::Claimed(_)
+    ));
     f.submit_held(T0 + 70);
-    assert_eq!(w.stop(T0 + 120).unwrap(), Stop::Wait, "not ended: it just worked");
+    assert_eq!(
+        w.stop(T0 + 120).unwrap(),
+        Stop::Wait,
+        "not ended: it just worked"
+    );
 }

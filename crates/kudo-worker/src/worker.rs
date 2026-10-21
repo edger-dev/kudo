@@ -166,18 +166,31 @@ impl<'a> Worker<'a> {
             self.store
                 .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
         else {
-            // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+            // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
             let since = record.idle_since.unwrap_or(now);
             if now - since >= self.cfg.idle_limit {
                 return self.end(record, LeaseEnd::QueueEmpty, now);
             }
             if record.idle_since.is_none() {
-                record.idle_since = Some(now);
-                self.book.put(&self.cfg.lease, &record)?;
+                // Re-read: a takeover written meanwhile must not be undone.
+                let mut fresh = self.record()?;
+                if let Some(why) = fresh.ended {
+                    return Ok(Stop::Allow(why));
+                }
+                fresh.idle_since = Some(now);
+                self.book.put(&self.cfg.lease, &fresh)?;
                 self.trace(&TraceEvent::Wait, now);
             }
             return Ok(Stop::Wait);
         };
+        // Re-read: a takeover written while the pull ran ends the lease, and
+        // the item goes back.
+        let mut record = self.record()?;
+        if let Some(why) = record.ended {
+            self.store.release_as(&self.cfg.lease, &claim.id, now)?;
+            self.trace(&TraceEvent::Release(claim.id.clone()), now);
+            return Ok(Stop::Allow(why));
+        }
         record.idle_since = None;
         record.turns += 1;
         record.refusals = 0;
@@ -192,7 +205,7 @@ impl<'a> Worker<'a> {
     /// The Stop hook's answer, waiting up to `window` seconds for an item
     /// (`pause` between looks): never [`Stop::Wait`]. A window with nothing
     /// ends the turn with a short idle reply, so the next Stop waits again.
-    // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+    // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
     pub fn stop_waiting(
         &self,
         clock: impl Fn() -> Now,
@@ -200,11 +213,27 @@ impl<'a> Worker<'a> {
         window: i64,
     ) -> Result<Stop, Error> {
         let deadline = clock() + window;
+        let first = self.stop(clock())?;
+        if first != Stop::Wait {
+            return Ok(first);
+        }
+        // Between looks only cheap reads: the lease record, and whether
+        // anything is ready (the store syncs its mirror at its own spacing).
+        // A full stop runs again only when something is.
         loop {
-            match self.stop(clock())? {
-                Stop::Wait if clock() >= deadline => return Ok(self.idle_turn(clock())),
-                Stop::Wait => pause(),
-                other => return Ok(other),
+            pause();
+            if let Some(why) = self.record()?.ended {
+                return Ok(Stop::Allow(why));
+            }
+            let now = clock();
+            if self.store.ready_count(&self.cfg.context, now)? > 0 {
+                match self.stop(now)? {
+                    Stop::Wait => {}
+                    other => return Ok(other),
+                }
+            }
+            if clock() >= deadline {
+                return Ok(self.idle_turn(clock()));
             }
         }
     }
@@ -234,6 +263,11 @@ impl<'a> Worker<'a> {
                 .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
             {
                 Some(claim) => {
+                    // A claim is work: the idle count starts over.
+                    let mut record = self.record()?;
+                    if record.idle_since.take().is_some() {
+                        self.book.put(&self.cfg.lease, &record)?;
+                    }
                     self.trace(&TraceEvent::Pull(claim.id.clone()), now);
                     Pull::Claimed(claim)
                 }

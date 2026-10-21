@@ -73,7 +73,7 @@ fn the_settings_install_all_four_hooks_through_the_shim() {
         );
     }
     // The Stop hook waits for work: its timeout covers the wait window.
-    // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+    // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99
     let timeout = settings["hooks"]["Stop"][0]["hooks"][0]["timeout"]
         .as_i64()
         .unwrap_or(0);
