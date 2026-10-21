@@ -35,8 +35,6 @@ pub fn plan(
     hub_addr: Option<&str>,
     forward: &[(String, String)],
 ) -> LaunchPlan {
-    let _ = forward;
-    let hub_addr = hub_addr.unwrap_or_default();
     let shim_str = shim.display().to_string();
 
     let hooks: Map<String, Value> = HOOKS
@@ -56,16 +54,22 @@ pub fn plan(
         .into_iter()
         .map(|(k, v)| (k, Value::String(v)))
         .collect();
-    server_env.insert(
-        "KUDO_HUB_ADDR".to_owned(),
-        Value::String(hub_addr.to_owned()),
-    );
+    // Passed explicitly: what the agent CLI hands an MCP server of its own
+    // environment is the CLI's business, and a worker must not lose its hub
+    // or its store's mirror to it.
+    let mut passed: Vec<(String, String)> = forward.to_vec();
+    if let Some(addr) = hub_addr {
+        passed.push(("KUDO_HUB_ADDR".to_owned(), addr.to_owned()));
+    }
+    for (k, v) in &passed {
+        server_env.insert(k.clone(), Value::String(v.clone()));
+    }
     let mcp = json!({
         "mcpServers": { "kudo": { "command": shim_str, "args": [], "env": server_env } }
     });
 
     let mut env = setup.to_env();
-    env.push(("KUDO_HUB_ADDR".to_owned(), hub_addr.to_owned()));
+    env.extend(passed);
 
     LaunchPlan {
         argv: vec![

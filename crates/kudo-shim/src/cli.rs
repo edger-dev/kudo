@@ -259,6 +259,14 @@ fn init_if_missing(dir: &Path) -> Result<ContextStore, String> {
     ContextStore::init(dir).map_err(|e| e.to_string())
 }
 
+/// The context store's mirror settings in this environment, to hand on to
+/// the worker: `KUDO_CONTEXT_MIRROR` and the `AWS_*` variables.
+fn mirror_settings() -> Vec<(String, String)> {
+    std::env::vars()
+        .filter(|(k, _)| k == kudo_worker::env::MIRROR_ENV || k.starts_with("AWS_"))
+        .collect()
+}
+
 /// This machine's node name: `KUDO_NODE`, else its hostname.
 pub fn node_name() -> String {
     if let Ok(node) = std::env::var("KUDO_NODE")
@@ -312,12 +320,9 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
     let store_dir = store_dir.as_path();
     use std::os::unix::process::CommandExt;
 
-    let Ok(hub) = std::env::var(crate::HUB_ADDR_ENV) else {
-        return format!(
-            "{} is not set: the worker's MCP server dials the hub",
-            crate::HUB_ADDR_ENV
-        );
-    };
+    // Optional: without a hub the worker's MCP server serves the worker tools
+    // alone.
+    let hub = crate::hub_addr_from_env();
     let ctx = match open(store_dir).and_then(|s| named(&s, ctx)) {
         Ok(ctx) => ctx,
         Err(e) => return e,
@@ -346,7 +351,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
             .unwrap_or(kudo_worker::DEFAULT_MAX_TURNS),
     };
     let cli = std::env::var("KUDO_AGENT_CLI").unwrap_or_else(|_| "claude".to_owned());
-    let plan = kudo_worker::plan(&setup, &cli, &shim, Some(&hub), &[]);
+    let plan = kudo_worker::plan(&setup, &cli, &shim, hub.as_deref(), &mirror_settings());
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
     };
