@@ -178,6 +178,9 @@ async fn type_all(pane: crate::model::PaneRef, bytes: Vec<u8>) -> bool {
     true
 }
 
+/// The keys a taken-over pane offers, as the bytes a terminal sends (stub).
+pub const KEYS: &[(&str, &[u8])] = &[];
+
 /// A worker's pane, taken over: its screen, and keys to type into it.
 #[component]
 fn TerminalPane(data: ConsoleData) -> Element {

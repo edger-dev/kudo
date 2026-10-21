@@ -109,3 +109,25 @@ fn a_second_arrangement_is_only_a_different_value() {
         "a different arrangement"
     );
 }
+
+/// A taken-over pane offers the keys a CLI's menus need (Claude Code's trust
+/// prompt is answered with the arrows and Enter), each as the bytes a
+/// terminal sends.
+#[test]
+fn a_taken_over_pane_offers_arrow_keys() {
+    use kudo_console::shell::KEYS;
+    let bytes = |label: &str| KEYS.iter().find(|(l, _)| *l == label).map(|(_, b)| *b);
+    assert_eq!(bytes("↑"), Some(&b"\x1b[A"[..]));
+    assert_eq!(bytes("↓"), Some(&b"\x1b[B"[..]));
+    assert_eq!(bytes("→"), Some(&b"\x1b[C"[..]));
+    assert_eq!(bytes("←"), Some(&b"\x1b[D"[..]));
+    assert_eq!(bytes("Tab"), Some(&b"\t"[..]));
+    assert_eq!(bytes("Enter"), Some(&b"\r"[..]));
+    let html = render(THREE_PANES);
+    for (label, _) in KEYS {
+        assert!(
+            html.contains(&format!(">{label}</button>")),
+            "{label}: {html}"
+        );
+    }
+}
