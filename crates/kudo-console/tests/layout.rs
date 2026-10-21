@@ -1,7 +1,7 @@
 //! The arrangement is a value: the same shell, the same panes and data, two
 //! layout values, two arrangements — no component changes.
 //!
-//! implements: ed06836e3296e0ea5caad3e2ca7a972c911743ad1a4f87f149c069132dadac35@ed06836e3296e0ea5caad3e2ca7a972c911743ad1a4f87f149c069132dadac35
+//! implements: ed06836e3296e0ea5caad3e2ca7a972c911743ad1a4f87f149c069132dadac35@115b689ab32e5a9a4ace6a21d50e463c4927e1f41c42513e2b0de4a21166cd97
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
