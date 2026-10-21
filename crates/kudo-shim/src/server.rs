@@ -121,12 +121,71 @@ pub struct SubmitArgs {
     /// first), the next action and who takes it, what is established with its
     /// evidence, and what is still open. It replaces the old head whole.
     pub head: String,
-    /// The log entry: what you established, with evidence, and what you ruled out.
+    /// A few lines on what you did, in your own words.
     pub log: String,
+    /// What you established, each with its evidence: kino ids or http(s)
+    /// URLs. A line none of whose evidence resolves lands as claimed.
+    #[serde(default)]
+    pub established: Vec<EstablishedArg>,
+    /// What you believe but cannot back with evidence.
+    #[serde(default)]
+    pub claimed: Vec<String>,
+    /// What you ruled out, and why.
+    #[serde(default)]
+    pub ruled_out: Vec<RuledOutArg>,
+    /// What you could not see or check.
+    #[serde(default)]
+    pub gaps: Vec<String>,
     /// Only after a refused submit: the head version(s) the refusal gave you,
     /// which your new head builds on.
     #[serde(default)]
     pub base: Option<String>,
+}
+
+/// One established line.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct EstablishedArg {
+    /// The fact, in one line.
+    pub claim: String,
+    /// What backs it: kino ids or http(s) URLs.
+    #[serde(default)]
+    pub evidence: Vec<String>,
+}
+
+/// One candidate ruled out.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct RuledOutArg {
+    pub candidate: String,
+    pub because: String,
+}
+
+impl SubmitArgs {
+    /// The typed submission this call hands the engine.
+    fn submission(&self) -> kudo_context::Submission {
+        kudo_context::Submission {
+            head: self.head.clone(),
+            log: self.log.clone(),
+            established: self
+                .established
+                .iter()
+                .map(|e| kudo_context::Established {
+                    claim: e.claim.clone(),
+                    evidence: e.evidence.clone(),
+                })
+                .collect(),
+            claimed: self.claimed.clone(),
+            ruled_out: self
+                .ruled_out
+                .iter()
+                .map(|r| kudo_context::RuledOut {
+                    candidate: r.candidate.clone(),
+                    because: r.because.clone(),
+                })
+                .collect(),
+            gaps: self.gaps.clone(),
+            base: self.base.as_deref().map(split_versions),
+        }
+    }
 }
 
 /// Head versions as a refusal gives them: comma-separated.
@@ -240,23 +299,17 @@ impl ShimServer {
 
     #[tool(
         name = "submit",
-        description = "Hand back the work for a claim: the full new head of the context and a \
-                       log entry citing your evidence. The head is superseded, never edited; \
-                       the claim is settled."
+        description = "Hand back the work for a claim: the full new head of the context, a \
+                       short log, and what you established (each line with evidence: kino \
+                       ids or http(s) URLs), claimed, ruled out and could not see. A line \
+                       whose evidence does not resolve lands as claimed. The head is \
+                       superseded, never edited; the claim is settled."
     )]
     async fn submit(
         &self,
         Parameters(args): Parameters<SubmitArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.worker_call(|s, now| {
-            let submission = kudo_context::Submission {
-                head: args.head.clone(),
-                log: args.log.clone(),
-                base: args.base.as_deref().map(split_versions),
-                ..Default::default()
-            };
-            worker_tools::submit(s, &args.claim, &submission, now)
-        })
+        self.worker_call(|s, now| worker_tools::submit(s, &args.claim, &args.submission(), now))
     }
 
     #[tool(

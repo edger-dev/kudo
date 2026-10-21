@@ -12,11 +12,14 @@
 //! - **claim** — write-once, its content `(item, attempt)` only, so the same
 //!   attempt can be claimed once; lease and deadline ride in metadata.
 //! - **settle** — write-once, one per claim: `submitted` or `released`.
-//! - **submission** — write-once; the log entry, linked to its claim and item.
+//! - **submission** — write-once; the typed submission rendered in fixed
+//!   sections (established lines whose evidence did not resolve land as
+//!   claimed), linked to its claim, item, head and cited kinos.
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 //! implements: 6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd@6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd
 //! implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
+//! implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -44,6 +47,7 @@ const DEADLINE: &str = "kudo::deadline";
 const OUTCOME: &str = "kudo::outcome";
 const HEAD: &str = "kudo::head";
 const BASE: &str = "kudo::base";
+const EVIDENCE: &str = "kudo::evidence";
 
 const SUBMITTED: &str = "submitted";
 const RELEASED: &str = "released";
@@ -313,8 +317,14 @@ impl ContextStore {
             }
         };
 
+        let checked = view.check_evidence(submission);
         let seq = (view.of_kind_in("submission", &ctx).len() + 1).to_string();
-        let content = format!("<!-- kudo submission {} -->\n{}", claim.0, submission.log);
+        let content = format!(
+            "<!-- kudo submission {} -->\n{}",
+            claim.0,
+            render(submission, &checked, &head_version)
+        );
+        let cited = checked.kinos().join(",");
         let born = self.put(
             "markdown",
             content.into_bytes(),
@@ -325,6 +335,7 @@ impl ContextStore {
                 (CLAIM, &claim.0),
                 (SEQ, &seq),
                 (HEAD, &head_version),
+                (EVIDENCE, &cited),
             ]),
             None,
             now,
@@ -332,8 +343,8 @@ impl ContextStore {
         self.settle(&ctx, claim, SUBMITTED, now)?;
         Ok(Submitted {
             id: SubmissionId(born.id),
-            downgraded: Vec::new(),
-            unresolved: Vec::new(),
+            downgraded: checked.downgraded,
+            unresolved: checked.unresolved,
         })
     }
 
@@ -601,6 +612,37 @@ impl View {
         Ok(chain)
     }
 
+    /// Sort a submission's established lines by whether their evidence
+    /// resolves: a kino id this store holds, or a URL.
+    fn check_evidence(&self, submission: &Submission) -> Checked {
+        let known: std::collections::HashSet<&str> = self
+            .by_id
+            .iter()
+            .flat_map(|(id, events)| {
+                std::iter::once(id.as_str()).chain(events.iter().map(|e| e.hash.as_str()))
+            })
+            .collect();
+        let mut checked = Checked::default();
+        for line in &submission.established {
+            let (good, bad): (Vec<&String>, Vec<&String>) = line
+                .evidence
+                .iter()
+                .partition(|e| is_url(e) || known.contains(e.trim()));
+            checked
+                .unresolved
+                .extend(bad.into_iter().map(|e| e.trim().to_owned()));
+            if good.is_empty() {
+                checked.downgraded.push(line.claim.clone());
+            } else {
+                checked.established.push((
+                    line.claim.clone(),
+                    good.into_iter().map(|e| e.trim().to_owned()).collect(),
+                ));
+            }
+        }
+        checked
+    }
+
     /// The head versions nothing supersedes, newest first: one, unless two
     /// submits raced.
     fn tips(&self, ctx: &ContextId) -> Result<Vec<&Event>, Error> {
@@ -687,6 +729,69 @@ impl View {
         }
         Ok(event)
     }
+}
+
+/// A submission's established lines after the evidence check.
+#[derive(Default)]
+struct Checked {
+    /// Lines kept as established, with the evidence that resolved.
+    established: Vec<(String, Vec<String>)>,
+    /// Lines moved to claimed: none of their evidence resolved.
+    downgraded: Vec<String>,
+    /// Evidence entries that did not resolve.
+    unresolved: Vec<String>,
+}
+
+impl Checked {
+    /// The kino ids cited as evidence that resolved (URLs left out).
+    fn kinos(&self) -> Vec<&str> {
+        self.established
+            .iter()
+            .flat_map(|(_, evidence)| evidence.iter().map(String::as_str))
+            .filter(|e| !is_url(e))
+            .collect()
+    }
+}
+
+fn is_url(evidence: &str) -> bool {
+    let e = evidence.trim();
+    e.starts_with("https://") || e.starts_with("http://")
+}
+
+/// A submission's body, in fixed sections so it reads cold.
+fn render(submission: &Submission, checked: &Checked, head_version: &str) -> String {
+    fn list(out: &mut String, heading: &str, lines: &[String]) {
+        out.push_str(&format!("\n## {heading}\n\n"));
+        if lines.is_empty() {
+            out.push_str("- none\n");
+        }
+        for line in lines {
+            out.push_str(&format!("- {}\n", line.trim()));
+        }
+    }
+    let mut out = format!("{}\n", submission.log.trim_end());
+    let established: Vec<String> = checked
+        .established
+        .iter()
+        .map(|(claim, evidence)| format!("{} (evidence: {})", claim.trim(), evidence.join(", ")))
+        .collect();
+    list(&mut out, "Established", &established);
+    let claimed: Vec<String> = checked
+        .downgraded
+        .iter()
+        .map(|c| format!("{} (no evidence that resolved)", c.trim()))
+        .chain(submission.claimed.iter().cloned())
+        .collect();
+    list(&mut out, "Claimed", &claimed);
+    let ruled_out: Vec<String> = submission
+        .ruled_out
+        .iter()
+        .map(|r| format!("{} — {}", r.candidate.trim(), r.because.trim()))
+        .collect();
+    list(&mut out, "Ruled out", &ruled_out);
+    list(&mut out, "Gaps", &submission.gaps);
+    out.push_str(&format!("\nHead as left: version {head_version}\n"));
+    out
 }
 
 fn birth(events: &[Event]) -> Option<&Event> {

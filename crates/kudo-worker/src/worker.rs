@@ -66,9 +66,11 @@ impl<'a> Worker<'a> {
              worker left it:\n\n{body}\n\nWork exactly one item per turn. Call \
              `pull` to claim an item (unless one was handed to you), do it, call \
              `submit` with the claim id, the full new head (where / next / \
-             established / open) and a log entry citing your evidence — then end \
-             your turn. Do not pull again in the same turn: the next item is \
-             handed to you when you stop.",
+             established / open), a short log, and what you established — each \
+             line with its evidence (kino ids or http(s) URLs; a line without \
+             evidence that resolves lands as claimed) — what you ruled out and \
+             what you could not see; then end your turn. Do not pull again in the \
+             same turn: the next item is handed to you when you stop.",
             ctx = self.cfg.context.0,
             body = head.body.trim_end(),
         ))
@@ -193,8 +195,9 @@ impl<'a> Worker<'a> {
 fn handoff(claim: &Claim) -> String {
     format!(
         "Next item under context {ctx} — claim {id} (attempt {attempt}):\n\n{ask}\n\n\
-         Work it, then call `submit` with claim id {id}, the full new head and a \
-         log entry. Call `release` instead if you cannot finish it.",
+         Work it, then call `submit` with claim id {id}, the full new head, a \
+         short log and what you established with its evidence. Call `release` \
+         instead if you cannot finish it.",
         ctx = claim.context.0,
         id = claim.id.0,
         attempt = claim.attempt,

@@ -95,7 +95,10 @@ fn items_are_pulled_oldest_first_and_submits_supersede_the_head() {
             "head after 2\n"
         ]
     );
-    assert_eq!(store.log(&ctx).unwrap(), vec!["read it", "wrote it"]);
+    let log = store.log(&ctx).unwrap();
+    assert_eq!(log.len(), 2);
+    assert!(log[0].starts_with("read it\n"), "{log:?}");
+    assert!(log[1].starts_with("wrote it\n"), "{log:?}");
 }
 
 #[test]

@@ -46,6 +46,8 @@ pub fn pull(setup: &WorkerSetup, now: Now) -> Result<String, String> {
 }
 
 /// Submit the work for a claim: the typed submission, with the full new head.
+/// The reply names any established line that landed as claimed.
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
 pub fn submit(
     setup: &WorkerSetup,
     claim: &str,
@@ -63,11 +65,27 @@ pub fn submit(
         Err(Error::HeadMoved { current, .. }) => return Err(moved(&store, setup, claim, &current)),
         Err(e) => return Err(e.to_string()),
     };
-    Ok(format!(
-        "Submitted {} for claim {claim}; the head is superseded. End your turn now: \
-         the next item, if any, is handed to you when you stop.",
+    let mut reply = format!(
+        "Submitted {} for claim {claim}; the head is superseded.",
         done.id.0
-    ))
+    );
+    if !done.downgraded.is_empty() {
+        reply.push_str(
+            "\n\nThese established lines landed as claimed — none of their evidence \
+             resolved (a kino id this store holds, or an http(s) URL):",
+        );
+        for line in &done.downgraded {
+            reply.push_str(&format!("\n- {line}"));
+        }
+    }
+    if !done.unresolved.is_empty() {
+        reply.push_str(&format!(
+            "\n\nEvidence that did not resolve: {}.",
+            done.unresolved.join(", ")
+        ));
+    }
+    reply.push_str("\n\nEnd your turn now: the next item, if any, is handed to you when you stop.");
+    Ok(reply)
 }
 
 /// The refusal of a submit from a moved head: the head as it is now, and how
