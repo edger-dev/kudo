@@ -11,6 +11,21 @@ use crate::HubClient;
 use crate::jobs::{DEFAULT_JOB_CONNECTOR, kill, start as start_job};
 use crate::route::Target;
 
+/// The nodes the console may start workers on, comma-separated (stub).
+pub const WORKER_NODES_ENV: &str = "";
+
+/// The nodes named in [`WORKER_NODES_ENV`] (stub).
+pub fn worker_nodes_from(lookup: impl Fn(&str) -> Option<String>) -> Option<Vec<String>> {
+    let _ = lookup;
+    None
+}
+
+/// Whether a worker may start on `node` (stub).
+pub fn may_start(node: &str, named: Option<&[String]>) -> bool {
+    let _ = (node, named);
+    true
+}
+
 /// The start request for a worker pane: `kudo-shim worker <context>` (in its
 /// repo when the context declares one on that node), in a terminal, bound by
 /// the lease the launcher picked, the node's name as the hub knows it, and

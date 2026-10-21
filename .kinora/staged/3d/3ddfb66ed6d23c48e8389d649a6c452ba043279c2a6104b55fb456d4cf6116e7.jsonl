@@ -1,0 +1,1 @@
+{"event_kind":"assign","kind":"kin::assign","id":"2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5","hash":"2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5","parents":[],"ts":"2026-10-21T14:06:49.115902393Z","author":"YJ Park","provenance":"user request: start workers on yolo only","metadata":{"kin::target_root":"specs"}}

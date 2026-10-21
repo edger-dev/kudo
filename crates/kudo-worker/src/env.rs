@@ -25,6 +25,16 @@ pub const CLAIM_TTL_ENV: &str = "KUDO_CLAIM_TTL";
 /// Items the Stop hook may hand over before the lease ends.
 pub const MAX_TURNS_ENV: &str = "KUDO_MAX_TURNS";
 
+/// Set to `1` in a node's own environment: its workers run the agent CLI in
+/// bypass-permissions mode (stub).
+pub const BYPASS_ENV: &str = "";
+
+/// Whether this node's workers bypass permissions (stub).
+pub fn bypass_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
+    let _ = lookup;
+    false
+}
+
 pub const DEFAULT_CLAIM_TTL: i64 = 1800;
 pub const DEFAULT_MAX_TURNS: u32 = 20;
 

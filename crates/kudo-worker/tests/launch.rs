@@ -168,3 +168,39 @@ fn the_mirror_settings_are_forwarded_to_the_shim() {
     assert_eq!(env["AWS_ENDPOINT"], "http://127.0.0.1:9100");
     assert!(p.env.contains(&forward[0]));
 }
+
+/// A node that says so runs its workers' CLI in bypass-permissions mode; any
+/// other node, or any other value, leaves the CLI asking.
+// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8
+#[test]
+fn a_worker_bypasses_permissions_only_where_its_node_says_so() {
+    use kudo_worker::env::{BYPASS_ENV, bypass_from};
+    let p = plan(
+        &setup("l"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &[],
+    );
+    assert!(
+        !p.argv.iter().any(|a| a == "--permission-mode"),
+        "{:?}",
+        p.argv
+    );
+    let bypassing = p.clone().bypassing();
+    assert_eq!(
+        flag(&bypassing.argv, "--permission-mode"),
+        "bypassPermissions"
+    );
+    assert_eq!(bypassing.argv[0], "claude");
+    assert_eq!(bypassing.argv.last().unwrap(), KICKOFF);
+
+    assert_eq!(BYPASS_ENV, "KUDO_WORKER_BYPASS");
+    let given = |v: Option<&str>| {
+        bypass_from(|k| (k == BYPASS_ENV).then(|| v.map(str::to_owned)).flatten())
+    };
+    assert!(given(Some("1")));
+    assert!(!given(None));
+    assert!(!given(Some("0")));
+    assert!(!given(Some("yes")));
+}

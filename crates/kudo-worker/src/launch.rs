@@ -18,6 +18,13 @@ pub struct LaunchPlan {
     pub env: Vec<(String, String)>,
 }
 
+impl LaunchPlan {
+    /// The same plan, with the CLI in bypass-permissions mode (stub).
+    pub fn bypassing(self) -> Self {
+        self
+    }
+}
+
 /// The hooks a worker installs, as (CLI event name, `kudo-shim hook` argument).
 const HOOKS: [(&str, &str); 4] = [
     ("SessionStart", "session-start"),

@@ -78,3 +78,18 @@ fn an_inherited_lease_is_never_reused() {
     .unwrap();
     assert_eq!(lease, given);
 }
+
+/// The console starts workers only on the nodes it is told of; told of none,
+/// on any.
+// implements: 2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5@2f073c122047d13470407233fd0095dd86408b1ebc66ed6f136c3f3b7027b2c5
+#[test]
+fn workers_start_only_on_the_nodes_named() {
+    let named =
+        panes::worker_nodes_from(|k| (k == panes::WORKER_NODES_ENV).then(|| " yolo , ".to_owned()));
+    assert_eq!(named, Some(vec!["yolo".to_owned()]));
+    assert!(panes::may_start("yolo", named.as_deref()));
+    assert!(!panes::may_start("pc", named.as_deref()));
+    assert!(panes::may_start("pc", None));
+    assert_eq!(panes::worker_nodes_from(|_| None), None);
+    assert_eq!(panes::WORKER_NODES_ENV, "KUDO_CONSOLE_WORKER_NODES");
+}
