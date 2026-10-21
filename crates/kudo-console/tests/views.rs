@@ -75,3 +75,35 @@ fn the_detail_is_the_head_and_the_trace_newest_first() {
     let lines: Vec<&str> = detail.trace.iter().map(|t| t.line.as_str()).collect();
     assert_eq!(lines, ["lease-end budget", "lease-start"]);
 }
+
+/// A lease that died without its end (killed, crashed, slept) shows as quiet
+/// once it has said nothing for longer than a claim lives — never as working.
+#[test]
+fn a_lease_silent_past_a_claims_life_is_quiet() {
+    let store = store("quiet");
+    let ctx = store.create_context("quiet", "# q\n", T0).unwrap();
+    store
+        .record_trace(&ctx, "lease-gone", &TraceEvent::LeaseStart, T0)
+        .unwrap();
+    let fresh = views::contexts(&store, T0 + 60).unwrap();
+    assert!(!fresh[0].workers[0].quiet);
+    let later = views::contexts(&store, T0 + kudo_worker::DEFAULT_CLAIM_TTL + 1).unwrap();
+    assert!(later[0].workers[0].quiet, "{later:?}");
+}
+
+/// A selection that does not resolve leaves the console usable: the contexts
+/// are still listed, and the error is said beside them.
+#[test]
+fn a_selection_that_does_not_resolve_still_lists_the_contexts() {
+    let store = store("badsel");
+    store.create_context("still here", "# s\n", T0).unwrap();
+    let data = views::console(&store, Some("ffffffffffff".into()), T0);
+    assert_eq!(data.contexts.len(), 1);
+    assert!(data.selected.is_none());
+    assert!(
+        data.error
+            .as_deref()
+            .is_some_and(|e| e.contains("ffffffffffff")),
+        "{data:?}"
+    );
+}

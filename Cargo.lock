@@ -4150,6 +4150,7 @@ dependencies = [
  "hub-protocol",
  "kudo-context",
  "kudo-shim",
+ "kudo-worker",
  "serde",
  "tokio",
  "vox",

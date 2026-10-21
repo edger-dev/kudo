@@ -27,6 +27,7 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                 .map(|(lease, event)| WorkerView {
                     lease,
                     last: event.to_line(),
+                    quiet: false,
                 })
                 .collect();
             Ok(ContextCard {
@@ -38,6 +39,16 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
             })
         })
         .collect()
+}
+
+/// Contexts and the selected one, never failing as a whole (stub).
+pub fn console(
+    store: &ContextStore,
+    selected: Option<String>,
+    now: Now,
+) -> crate::model::ConsoleData {
+    let _ = (store, selected, now);
+    crate::model::ConsoleData::default()
 }
 
 /// One context — by id or unique prefix — its head (the newest tip, flagged

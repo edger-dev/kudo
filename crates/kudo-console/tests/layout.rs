@@ -26,6 +26,7 @@ fn sample() -> ConsoleData {
             workers: vec![WorkerView {
                 lease: "lease-1".into(),
                 last: "pull 1234".into(),
+                quiet: false,
             }],
         }],
         selected: Some(ContextDetail {
@@ -40,6 +41,7 @@ fn sample() -> ConsoleData {
                 line: "lease-start".into(),
             }],
         }),
+        error: None,
     }
 }
 

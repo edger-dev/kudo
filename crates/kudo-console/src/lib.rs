@@ -5,6 +5,8 @@
 
 pub mod api;
 pub mod app;
+#[cfg(feature = "server")]
+pub mod guard;
 pub mod layout;
 pub mod model;
 pub mod selection;

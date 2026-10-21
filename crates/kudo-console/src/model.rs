@@ -15,6 +15,8 @@ pub struct NodeView {
 pub struct WorkerView {
     pub lease: String,
     pub last: String,
+    /// Silent for longer than a claim lives: likely dead (stub).
+    pub quiet: bool,
 }
 
 /// A context as the *where* pane lists it.
@@ -52,4 +54,6 @@ pub struct ConsoleData {
     pub nodes: Vec<NodeView>,
     pub contexts: Vec<ContextCard>,
     pub selected: Option<ContextDetail>,
+    /// What went wrong reading the selection, said beside the panes.
+    pub error: Option<String>,
 }

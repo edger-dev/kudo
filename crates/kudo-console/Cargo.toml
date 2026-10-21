@@ -19,6 +19,7 @@ vox = { workspace = true, optional = true }
 
 [dev-dependencies]
 dioxus-ssr = "=0.7.4"
+kudo-worker = { path = "../kudo-worker" }
 
 [features]
 default = []

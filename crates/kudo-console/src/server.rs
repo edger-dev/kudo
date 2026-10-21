@@ -49,6 +49,7 @@ pub(crate) async fn console_data(selected: Option<String>) -> Result<ConsoleData
         nodes: nodes().await,
         contexts,
         selected,
+        error: None,
     })
 }
 

@@ -257,3 +257,12 @@ fn list_on_a_new_machine_with_a_mirror_shows_the_other_machines_contexts() {
     assert!(listed.starts_with(&made.trim()[..12]), "{listed}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn an_empty_ask_is_refused() {
+    let dir = std::env::temp_dir().join(format!("kudo-shim-cli-empty-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let ctx = cli::context(&dir, &args(&["new", "e"]), T0).unwrap();
+    assert!(cli::context(&dir, &args(&["enqueue", ctx.trim(), "   "]), T0).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
