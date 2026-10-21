@@ -88,7 +88,7 @@ pub fn submit(
 
 /// The refusal of a submit from a moved head: the head as it is now, and how
 /// to build on it.
-// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
+// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@aaddfc2e7ee067ea5780ce6ee2dfe4587bfb47b0c067b2670a31308c019a7e21
 fn moved(store: &ContextStore, claim: &str, current: &[String]) -> String {
     let heads = match current
         .iter()

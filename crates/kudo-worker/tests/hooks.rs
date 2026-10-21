@@ -260,7 +260,7 @@ fn a_submit_between_refusals_resets_the_guard() {
 
 /// The claim records the head the worker is shown with it: a worker on its
 /// second turn must see what another worker established meanwhile.
-// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
+// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@aaddfc2e7ee067ea5780ce6ee2dfe4587bfb47b0c067b2670a31308c019a7e21
 #[test]
 fn the_handoff_carries_the_head_as_it_is_now() {
     let f = Fixture::new();

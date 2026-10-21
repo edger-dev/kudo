@@ -243,7 +243,7 @@ fn the_inbox_tool_files_a_line_under_the_bound_context() {
     assert_eq!(entries[0].lease, s.lease);
 }
 
-// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab
+// implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@aaddfc2e7ee067ea5780ce6ee2dfe4587bfb47b0c067b2670a31308c019a7e21
 #[test]
 fn a_submit_from_a_moved_head_hands_back_the_head_as_it_is_now() {
     let (s, store) = setup();
