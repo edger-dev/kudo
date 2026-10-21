@@ -2906,7 +2906,7 @@ dependencies = [
 [[package]]
 name = "kinora"
 version = "0.0.1"
-source = "git+https://github.com/edger-dev/kinora?rev=d4eaf5627860aa6356a6da151823d497185dbaf1#d4eaf5627860aa6356a6da151823d497185dbaf1"
+source = "git+https://github.com/edger-dev/kinora?rev=36d3956e302e15d2bf401c01386d629703544771#36d3956e302e15d2bf401c01386d629703544771"
 dependencies = [
  "blake3",
  "facet 0.46.5",
@@ -2922,7 +2922,7 @@ dependencies = [
 [[package]]
 name = "kinora-remote"
 version = "0.0.1"
-source = "git+https://github.com/edger-dev/kinora?rev=d4eaf5627860aa6356a6da151823d497185dbaf1#d4eaf5627860aa6356a6da151823d497185dbaf1"
+source = "git+https://github.com/edger-dev/kinora?rev=36d3956e302e15d2bf401c01386d629703544771#36d3956e302e15d2bf401c01386d629703544771"
 dependencies = [
  "futures",
  "kinora",
@@ -2945,9 +2945,12 @@ dependencies = [
 name = "kudo-context"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "futures",
  "jiff",
  "kinora",
  "kinora-remote",
+ "object_store",
 ]
 
 [[package]]

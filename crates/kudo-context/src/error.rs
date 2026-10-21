@@ -26,6 +26,9 @@ pub enum Error {
     UnknownRepo { name: String, node: String },
     /// A repo declaration that cannot stand: why.
     InvalidRepo(String),
+    /// The mirror refused this machine (credentials, permissions): a
+    /// misconfiguration to fix, not an outage to work around.
+    Mirror(String),
     /// The claim is held by another lease.
     ClaimNotHeld { claim: String, lease: String },
 }
@@ -51,6 +54,7 @@ impl fmt::Display for Error {
                 write!(f, "the context declares no repo {name} on {node}")
             }
             Self::InvalidRepo(why) => write!(f, "invalid repo: {why}"),
+            Self::Mirror(why) => write!(f, "the context store mirror refused this machine: {why}"),
             Self::ClaimNotHeld { claim, lease } => {
                 write!(f, "claim {claim} is not held by lease {lease}")
             }

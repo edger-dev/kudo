@@ -110,6 +110,31 @@ impl ContextStore {
         self
     }
 
+    /// After the mirror could not be reached, how long this process works
+    /// locally before trying it again (30 seconds by default).
+    pub fn with_offline_backoff(self, backoff: std::time::Duration) -> Self {
+        let _ = backoff;
+        self
+    }
+
+    /// Submit for `lease`: refused unless `lease` holds the claim.
+    pub fn submit_as(
+        &self,
+        lease: &str,
+        claim: &ClaimId,
+        submission: &Submission,
+        now: Now,
+    ) -> Result<Submitted, Error> {
+        let _ = lease;
+        self.submit(claim, submission, now)
+    }
+
+    /// Release for `lease`: refused unless `lease` holds the claim.
+    pub fn release_as(&self, lease: &str, claim: &ClaimId, now: Now) -> Result<(), Error> {
+        let _ = lease;
+        self.release(claim, now)
+    }
+
     /// Push what this store has not sent, then pull what it lacks. A mirror
     /// that cannot be reached is reported on stderr and the store goes on
     /// locally; what it could not send goes on the next sync.

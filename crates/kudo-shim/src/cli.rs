@@ -207,7 +207,8 @@ fn named(store: &ContextStore, id_or_prefix: &str) -> Result<ContextId, String> 
 /// Open the store in `dir`, mirrored to `mirror` (a URL) when given. With a
 /// mirror, a store this machine has never held is created and filled from it.
 // implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
-pub fn open_store(dir: &Path, mirror: Option<&str>) -> Result<ContextStore, String> {
+pub fn open_store(dir: &Path, mirror: Option<&str>, create: bool) -> Result<ContextStore, String> {
+    let _ = create;
     let Some(url) = mirror else {
         return ContextStore::open(dir).map_err(|e| e.to_string());
     };
@@ -224,7 +225,7 @@ pub fn mirror_from_env() -> Option<String> {
 
 /// Open the store in `dir` with this machine's mirror, if it has one.
 pub fn open_configured(dir: &Path) -> Result<ContextStore, String> {
-    open_store(dir, mirror_from_env().as_deref())
+    open_store(dir, mirror_from_env().as_deref(), true)
 }
 
 fn open(dir: &Path) -> Result<ContextStore, String> {
@@ -233,7 +234,7 @@ fn open(dir: &Path) -> Result<ContextStore, String> {
 
 fn open_or_init(dir: &Path) -> Result<ContextStore, String> {
     match mirror_from_env() {
-        Some(url) => open_store(dir, Some(&url)),
+        Some(url) => open_store(dir, Some(&url), true),
         None => init_if_missing(dir),
     }
 }

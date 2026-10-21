@@ -212,10 +212,10 @@ fn a_mirrored_store_opens_on_a_new_machine_with_what_the_other_wrote() {
     let _ = std::fs::remove_dir_all(&root);
     let url = format!("file://{}", root.join("bucket").display());
 
-    let pc = cli::open_store(&root.join("pc"), Some(&url)).unwrap();
+    let pc = cli::open_store(&root.join("pc"), Some(&url), true).unwrap();
     let ctx = pc.create_context("crosses machines", "# x\n", T0).unwrap();
 
-    let edger = cli::open_store(&root.join("edger"), Some(&url)).unwrap();
+    let edger = cli::open_store(&root.join("edger"), Some(&url), true).unwrap();
     let seen: Vec<_> = edger
         .contexts()
         .unwrap()
@@ -225,8 +225,13 @@ fn a_mirrored_store_opens_on_a_new_machine_with_what_the_other_wrote() {
     assert_eq!(seen, std::slice::from_ref(&ctx));
 
     assert!(
-        cli::open_store(&root.join("nowhere"), None).is_err(),
+        cli::open_store(&root.join("nowhere"), None, true).is_err(),
         "without a mirror, a missing store is an error"
     );
+    assert!(
+        cli::open_store(&root.join("typo"), Some(&url), false).is_err(),
+        "a hook never creates a store, mirror or not"
+    );
+    assert!(!root.join("typo").exists());
     let _ = std::fs::remove_dir_all(&root);
 }

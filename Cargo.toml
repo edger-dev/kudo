@@ -58,7 +58,7 @@ serde_json = "1"
 # The context store is a kinora store, written through kinora's library. A
 # third facet line (kinora is on 0.46) joins the graph; nothing facet-derived
 # crosses between kinora and the hub, only strings and bytes.
-kinora = { git = "https://github.com/edger-dev/kinora", rev = "d4eaf5627860aa6356a6da151823d497185dbaf1" }
+kinora = { git = "https://github.com/edger-dev/kinora", rev = "36d3956e302e15d2bf401c01386d629703544771" }
 # The context store's mirror (object store sync), from the same revision.
-kinora-remote = { git = "https://github.com/edger-dev/kinora", rev = "d4eaf5627860aa6356a6da151823d497185dbaf1" }
+kinora-remote = { git = "https://github.com/edger-dev/kinora", rev = "36d3956e302e15d2bf401c01386d629703544771" }
 jiff = "0.2.23"
