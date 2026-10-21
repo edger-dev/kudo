@@ -3,9 +3,13 @@
 // against the layer below or its shipped stand-in; these are for the rare
 // whole-stack check. Start them with job_start (dev-s3, dev-hub, dev-node).
 //
-// The dev node's settings go through `sh -c` because a manifest entry has no
-// environment of its own; its jobs take ports 20000-20999, away from the
-// deployed node's.
+// The dev node builds and runs inside this repository's dev shell (a node's
+// own PATH has no toolchain), in a target directory of its own (.dev/target, so
+// it never contends with bacon or your builds), with this build's pty holder.
+// Its settings go through `sh -c` because a manifest entry has no environment
+// of its own; its jobs take ports 20000-20999, away from the deployed node's.
+// These jobs must be started through a node on the machine holding this
+// checkout: the manifest and the jobs' working directory are the checkout.
 proc (
   {name dev-s3,
    argv ("scripts/dev-s3"),
@@ -16,6 +20,6 @@ proc (
    lifetime @Service, restart @OnFailure, port @Fixed{port 15401}},
 
   {name dev-node,
-   argv (sh -c "HUB_ADDR=127.0.0.1:15401 NODE_ID=dev MOCO_DIR=.dev/node MOCO_PORT_RANGE=20000-20999 exec cargo run -q -p kudo-node --bin kudo-node"),
+   argv (nix develop "-c" sh -c "export CARGO_TARGET_DIR=.dev/target && cargo build -q -p kudo-node && exec env -u KUDO_PTY_HOLDER HUB_ADDR=127.0.0.1:15401 NODE_ID=dev MOCO_DIR=.dev/node MOCO_PORT_RANGE=20000-20999 .dev/target/debug/kudo-node"),
    lifetime @Service, restart @OnFailure}
 )

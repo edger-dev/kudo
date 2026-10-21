@@ -16,6 +16,16 @@ The same assertions run on both sides, so a stand-in cannot quietly drift from
 what it stands in for. Their first run against the deployed hub found a real
 fault: the node's user service could not spawn any program.
 
+Two limits of the hub's real side:
+
+- **Same host.** The tests create workspaces and job directories under the
+  test machine's temporary directory and the node resolves them on its own
+  filesystem, so `KUDO_HUB_TEST_NODE` must name a node on the machine running
+  the tests.
+- **It leaves records.** Each run starts a handful of short jobs, and a node
+  keeps every job's record (no eviction yet). Point it at the dev hub below,
+  not at the hub your real sessions use.
+
 A worker needs no hub: `kudo-shim worker <context>` with `KUDO_HUB_ADDR`
 unset serves the worker tools on their own.
 
@@ -23,11 +33,16 @@ unset serves the worker tools on their own.
 
 `moco-processes.styx` at the repository root declares a dev S3 (`dev-s3`), a
 dev hub on `127.0.0.1:15401` (`dev-hub`) and a dev node dialing it
-(`dev-node`, state in `.dev/node`, job ports 20000-20999). Start them through
-any node's job tools (`job_start dev-hub`, …), then run the shared suite
-against them:
+(`dev-node`: built and run inside this repository's dev shell, in its own
+target directory `.dev/target`, state in `.dev/node`, job ports
+20000-20999). Start them through the job tools of a node **on the machine that
+holds this checkout** — the manifest and the jobs' working directory are the
+checkout — e.g. `job_start dev-hub`, then run the shared suite against them:
 
 ```
 KUDO_HUB_TEST_ADDR=127.0.0.1:15401 KUDO_HUB_TEST_NODE=dev \
   cargo test -p kudo-shim --test job_tools
 ```
+
+`dev-s3` is `scripts/dev-s3`: the same port (9100) and data directory as running
+the script by hand, so run one or the other, not both.

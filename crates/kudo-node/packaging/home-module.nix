@@ -62,7 +62,9 @@ in
           "HUB_ADDR=${cfg.hubAddr}"
           # A job is the user's own program, found as their shell would find
           # it — not on systemd's bare PATH, where nothing but systemd lives.
-          "PATH=/run/wrappers/bin:%h/.nix-profile/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin"
+          # Wrappers first (setuid), then home-manager's profile, NixOS's
+          # profiles, and a distribution's own bins when not on NixOS.
+          "PATH=/run/wrappers/bin:${config.home.profileDirectory}/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin"
         ]
         ++ lib.optional (cfg.nodeId != null) "NODE_ID=${cfg.nodeId}"
         ++ lib.mapAttrsToList (k: v: "${k}=${v}") cfg.environment;

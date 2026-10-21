@@ -91,7 +91,9 @@ async fn connected(addr: &str) -> HubClient {
 /// The hub these tests run against, and the node they address: the hub's own
 /// in-process stand-in with one node (`alpha`) by default; a real hub and one
 /// of its nodes when `KUDO_HUB_TEST_ADDR` (and `KUDO_HUB_TEST_NODE`, default
-/// the hostname) name them — the same assertions on both sides.
+/// the hostname) name them — the same assertions on both sides. The named
+/// node must be on this machine (the tests' workspaces and job directories are
+/// local paths), and each run leaves job records on it: aim it at a dev hub.
 // implements: 482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae@482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae
 async fn hub_under_test() -> (HubClient, Target) {
     if let Ok(addr) = std::env::var("KUDO_HUB_TEST_ADDR") {
