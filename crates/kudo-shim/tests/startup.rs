@@ -63,3 +63,14 @@ async fn without_a_hub_a_job_tool_says_so() {
         "{text}"
     );
 }
+
+/// The server's own description to the model says when this session has no
+/// hub, rather than promising one.
+#[test]
+fn without_a_hub_the_instructions_say_so() {
+    use rmcp::ServerHandler;
+    let info = ShimServer::without_hub("KUDO_HUB_ADDR is not set".into()).get_info();
+    let text = info.instructions.unwrap_or_default();
+    assert!(text.contains("no hub"), "{text}");
+    assert!(text.contains("pull") && text.contains("submit"), "{text}");
+}
