@@ -77,13 +77,22 @@ pub struct Claim {
     pub base: Vec<String>,
 }
 
-/// What a worker hands back for the item it claimed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What a worker hands back for the item it claimed: one typed input, from
+/// which the submission's body is rendered.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Submission {
     /// The full new head body, as the worker leaves it.
     pub head: String,
-    /// The log entry: what was established, with its evidence.
+    /// A few lines on what was done, in the worker's words.
     pub log: String,
+    /// What the worker established, each with its evidence.
+    pub established: Vec<Established>,
+    /// What the worker only claims.
+    pub claimed: Vec<String>,
+    /// What the worker ruled out, and why.
+    pub ruled_out: Vec<RuledOut>,
+    /// What the worker could not see.
+    pub gaps: Vec<String>,
     /// The head versions the new head builds on, when not the claim's own
     /// base — after a refusal, the versions it handed back.
     pub base: Option<Vec<String>>,
@@ -105,4 +114,28 @@ pub struct ContextSummary {
     pub title: String,
     /// When it was created, as an RFC 3339 timestamp.
     pub created: String,
+}
+
+/// One established line and its evidence: kino ids, or URLs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Established {
+    pub claim: String,
+    pub evidence: Vec<String>,
+}
+
+/// A candidate the worker ruled out, and why.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RuledOut {
+    pub candidate: String,
+    pub because: String,
+}
+
+/// What a submit stored, and what it could not take as given.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Submitted {
+    pub id: SubmissionId,
+    /// Established lines moved to claimed: none of their evidence resolved.
+    pub downgraded: Vec<String>,
+    /// Evidence entries that did not resolve.
+    pub unresolved: Vec<String>,
 }

@@ -39,7 +39,7 @@ fn sub(head: &str, log: &str) -> Submission {
     Submission {
         head: head.into(),
         log: log.into(),
-        base: None,
+        ..Default::default()
     }
 }
 

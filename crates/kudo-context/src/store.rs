@@ -30,7 +30,7 @@ use kinora::store::ContentStore;
 
 use crate::{
     Claim, ClaimId, ContextId, ContextSummary, Error, Head, InboxEntry, Item, ItemId, Now,
-    Submission, SubmissionId,
+    Submission, SubmissionId, Submitted,
 };
 
 const KIND: &str = "kudo::kind";
@@ -267,7 +267,7 @@ impl ContextStore {
         claim: &ClaimId,
         submission: &Submission,
         now: Now,
-    ) -> Result<SubmissionId, Error> {
+    ) -> Result<Submitted, Error> {
         let view = self.view()?;
         let claim_event = view.live_claim(claim, now)?;
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
@@ -330,7 +330,11 @@ impl ContextStore {
             now,
         )?;
         self.settle(&ctx, claim, SUBMITTED, now)?;
-        Ok(SubmissionId(born.id))
+        Ok(Submitted {
+            id: SubmissionId(born.id),
+            downgraded: Vec::new(),
+            unresolved: Vec::new(),
+        })
     }
 
     /// Give a live claim back: its item is ready again, as the next attempt.
@@ -840,7 +844,7 @@ mod tests {
         let merged = Submission {
             head: "left\nright\n".into(),
             log: "merged".into(),
-            base: None,
+            ..Default::default()
         };
         store.submit(&claim.id, &merged, T0 + 4).unwrap();
         let heads = store.heads(&ctx).unwrap();

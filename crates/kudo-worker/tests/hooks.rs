@@ -69,7 +69,7 @@ impl Fixture {
         let sub = Submission {
             head: format!("head after {}\n", claim.item.ask),
             log: "done".into(),
-            base: None,
+            ..Default::default()
         };
         self.store.submit(&claim.id, &sub, now).unwrap();
     }

@@ -45,41 +45,28 @@ pub fn pull(setup: &WorkerSetup, now: Now) -> Result<String, String> {
     })
 }
 
-/// Submit the work for a claim: the full new head and a log entry.
+/// Submit the work for a claim: the typed submission, with the full new head.
 pub fn submit(
     setup: &WorkerSetup,
     claim: &str,
-    head: &str,
-    log: &str,
-    base: Option<&str>,
+    submission: &Submission,
     now: Now,
 ) -> Result<String, String> {
     let store = open(setup)?;
     let book = LeaseBook::new(&setup.leases_dir());
-    let submission = Submission {
-        head: head.to_owned(),
-        log: log.to_owned(),
-        base: base.map(|b| {
-            b.split(',')
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .map(str::to_owned)
-                .collect()
-        }),
-    };
-    let id = match Worker::new(&store, &book, setup.config()).submit(
+    let done = match Worker::new(&store, &book, setup.config()).submit(
         &ClaimId(claim.to_owned()),
-        &submission,
+        submission,
         now,
     ) {
-        Ok(id) => id,
+        Ok(done) => done,
         Err(Error::HeadMoved { current, .. }) => return Err(moved(&store, setup, claim, &current)),
         Err(e) => return Err(e.to_string()),
     };
     Ok(format!(
         "Submitted {} for claim {claim}; the head is superseded. End your turn now: \
          the next item, if any, is handed to you when you stop.",
-        id.0
+        done.id.0
     ))
 }
 

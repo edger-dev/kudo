@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use kudo_context::ContextStore;
+use kudo_context::{ContextStore, Established, Submission};
 use kudo_shim::hook::{self, HookReply};
 use kudo_shim::worker_tools;
 use kudo_worker::{KICKOFF, WorkerSetup};
@@ -36,6 +36,16 @@ fn setup() -> (WorkerSetup, ContextStore) {
         max_turns: 10,
     };
     (setup, store)
+}
+
+/// A submission with just a head and a log line.
+fn plain(head: &str, log: &str, base: Option<Vec<String>>) -> Submission {
+    Submission {
+        head: head.into(),
+        log: log.into(),
+        base,
+        ..Default::default()
+    }
 }
 
 /// The JSON the CLI sends a hook: the fields the hooks read, plus noise.
@@ -87,9 +97,7 @@ fn stop_blocks_with_the_next_item_and_allows_when_the_queue_is_empty() {
     worker_tools::submit(
         &s,
         &claim.id.0,
-        "# shim\nstate: done\n",
-        "did the item",
-        None,
+        &plain("# shim\nstate: done\n", "did the item", None),
         T0 + 1,
     )
     .unwrap();
@@ -172,7 +180,7 @@ fn the_tools_pull_submit_and_release() {
     assert!(pulled.contains("pulled by tool"), "{pulled}");
     let claim = store.held_by(&s.context, &s.lease, T0).unwrap().unwrap();
     assert!(pulled.contains(&claim.id.0), "names the claim: {pulled}");
-    worker_tools::submit(&s, &claim.id.0, "new head\n", "log", None, T0 + 1).unwrap();
+    worker_tools::submit(&s, &claim.id.0, &plain("new head\n", "log", None), T0 + 1).unwrap();
     assert_eq!(store.head(&s.context).unwrap().body, "new head\n");
 
     // The next item comes with the Stop handoff, not from a second pull.
@@ -200,7 +208,7 @@ fn pull_on_an_empty_queue_says_so_and_a_bad_claim_is_an_error() {
             .to_lowercase()
             .contains("nothing")
     );
-    assert!(worker_tools::submit(&s, "no-such-claim", "h", "l", None, T0).is_err());
+    assert!(worker_tools::submit(&s, "no-such-claim", &plain("h", "l", None), T0).is_err());
 }
 
 #[test]
@@ -211,7 +219,7 @@ fn after_a_submit_pull_says_to_end_the_turn_and_the_stop_hands_over_the_next() {
 
     let _ = worker_tools::pull(&s, T0).unwrap();
     let claim = store.held_by(&s.context, &s.lease, T0).unwrap().unwrap();
-    worker_tools::submit(&s, &claim.id.0, "h1\n", "one", None, T0 + 1).unwrap();
+    worker_tools::submit(&s, &claim.id.0, &plain("h1\n", "one", None), T0 + 1).unwrap();
 
     let again = worker_tools::pull(&s, T0 + 2).unwrap();
     assert!(again.contains("end your turn"), "{again}");
@@ -249,18 +257,23 @@ fn a_submit_from_a_moved_head_hands_back_the_head_as_it_is_now() {
     store
         .submit(
             &theirs.id,
-            &kudo_context::Submission {
+            &Submission {
                 head: "# shim\ntheirs landed\n".into(),
                 log: "theirs".into(),
-                base: None,
+                ..Default::default()
             },
             T0 + 1,
         )
         .unwrap();
     let now = store.head(&s.context).unwrap();
 
-    let refused =
-        worker_tools::submit(&s, &mine.id.0, "# shim\nmine\n", "mine", None, T0 + 2).unwrap_err();
+    let refused = worker_tools::submit(
+        &s,
+        &mine.id.0,
+        &plain("# shim\nmine\n", "mine", None),
+        T0 + 2,
+    )
+    .unwrap_err();
     assert!(
         refused.contains("theirs landed"),
         "the head as it is: {refused}"
@@ -274,9 +287,11 @@ fn a_submit_from_a_moved_head_hands_back_the_head_as_it_is_now() {
     worker_tools::submit(
         &s,
         &mine.id.0,
-        "# shim\ntheirs landed\nmine\n",
-        "mine",
-        Some(&now.version),
+        &plain(
+            "# shim\ntheirs landed\nmine\n",
+            "mine",
+            Some(vec![now.version.clone()]),
+        ),
         T0 + 3,
     )
     .unwrap();
@@ -284,4 +299,35 @@ fn a_submit_from_a_moved_head_hands_back_the_head_as_it_is_now() {
         store.head(&s.context).unwrap().body,
         "# shim\ntheirs landed\nmine\n"
     );
+}
+
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
+#[test]
+fn the_submit_tool_says_which_lines_landed_as_claimed() {
+    let (s, store) = setup();
+    store.enqueue(&s.context, "one", T0).unwrap();
+    let _ = worker_tools::pull(&s, T0).unwrap();
+    let claim = store.held_by(&s.context, &s.lease, T0).unwrap().unwrap();
+    let sub = Submission {
+        head: "# shim
+checked
+"
+        .into(),
+        log: "checked it".into(),
+        established: vec![
+            Established {
+                claim: "backed by the item".into(),
+                evidence: vec![claim.item.id.0.clone()],
+            },
+            Established {
+                claim: "backed by nothing".into(),
+                evidence: vec![],
+            },
+        ],
+        ..Default::default()
+    };
+    let reply = worker_tools::submit(&s, &claim.id.0, &sub, T0 + 1).unwrap();
+    assert!(reply.contains("backed by nothing"), "{reply}");
+    assert!(reply.contains("claimed"), "{reply}");
+    assert!(!reply.contains("backed by the item"), "{reply}");
 }

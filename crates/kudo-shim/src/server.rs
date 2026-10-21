@@ -129,6 +129,15 @@ pub struct SubmitArgs {
     pub base: Option<String>,
 }
 
+/// Head versions as a refusal gives them: comma-separated.
+fn split_versions(base: &str) -> Vec<String> {
+    base.split(',')
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 /// File a rough edge.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
 pub struct InboxArgs {
@@ -240,14 +249,13 @@ impl ShimServer {
         Parameters(args): Parameters<SubmitArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         self.worker_call(|s, now| {
-            worker_tools::submit(
-                s,
-                &args.claim,
-                &args.head,
-                &args.log,
-                args.base.as_deref(),
-                now,
-            )
+            let submission = kudo_context::Submission {
+                head: args.head.clone(),
+                log: args.log.clone(),
+                base: args.base.as_deref().map(split_versions),
+                ..Default::default()
+            };
+            worker_tools::submit(s, &args.claim, &submission, now)
         })
     }
 
@@ -675,6 +683,40 @@ mod tests {
                 "{tool} missing from {names:?}"
             );
         }
+    }
+
+    /// The submit tool takes the typed submission, not one free-text log.
+    // implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
+    #[test]
+    fn the_submit_tool_takes_the_typed_submission() {
+        let submit = ShimServer::tool_router()
+            .list_all()
+            .into_iter()
+            .find(|t| t.name == "submit")
+            .unwrap();
+        let schema = serde_json::to_value(&submit.input_schema).unwrap();
+        for field in [
+            "claim",
+            "head",
+            "log",
+            "established",
+            "claimed",
+            "ruled_out",
+            "gaps",
+            "base",
+        ] {
+            assert!(
+                schema["properties"].get(field).is_some(),
+                "{field} missing: {schema}"
+            );
+        }
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert_eq!(required, ["claim", "head", "log"], "{schema}");
     }
 
     #[test]

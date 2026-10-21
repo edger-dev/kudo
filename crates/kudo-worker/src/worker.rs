@@ -2,7 +2,7 @@
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 
-use kudo_context::{Claim, ClaimId, ContextId, ContextStore, Error, Now, Submission, SubmissionId};
+use kudo_context::{Claim, ClaimId, ContextId, ContextStore, Error, Now, Submission, Submitted};
 
 use crate::lease::LeaseRecord;
 use crate::{LeaseBook, LeaseEnd};
@@ -142,12 +142,12 @@ impl<'a> Worker<'a> {
         claim: &ClaimId,
         submission: &Submission,
         now: Now,
-    ) -> Result<SubmissionId, Error> {
-        let id = self.store.submit(claim, submission, now)?;
+    ) -> Result<Submitted, Error> {
+        let done = self.store.submit(claim, submission, now)?;
         let mut record = self.record()?;
         record.submitted_this_turn = true;
         self.book.put(&self.cfg.lease, &record)?;
-        Ok(id)
+        Ok(done)
     }
 
     /// PreCompact: the lease ends, and an open claim is released.

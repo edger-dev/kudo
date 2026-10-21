@@ -26,6 +26,7 @@ fn sub(head: &str, base: Option<Vec<String>>) -> Submission {
         head: head.into(),
         log: "log".into(),
         base,
+        ..Default::default()
     }
 }
 
