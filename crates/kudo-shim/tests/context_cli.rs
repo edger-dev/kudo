@@ -235,3 +235,24 @@ fn a_mirrored_store_opens_on_a_new_machine_with_what_the_other_wrote() {
     assert!(!root.join("typo").exists());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `context list` on a machine that never held the store, with a mirror,
+/// lists what the other machine created.
+#[test]
+fn list_on_a_new_machine_with_a_mirror_shows_the_other_machines_contexts() {
+    let root =
+        std::env::temp_dir().join(format!("kudo-shim-cli-list-mirror-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let url = format!("file://{}", root.join("bucket").display());
+    let made = cli::context_with_mirror(
+        &root.join("pc"),
+        Some(&url),
+        &args(&["new", "made on pc"]),
+        T0,
+    )
+    .unwrap();
+    let listed =
+        cli::context_with_mirror(&root.join("edger"), Some(&url), &args(&["list"]), T0).unwrap();
+    assert!(listed.starts_with(&made.trim()[..12]), "{listed}");
+    let _ = std::fs::remove_dir_all(&root);
+}
