@@ -20,6 +20,7 @@ pub mod hook;
 pub mod hub;
 pub mod jobs;
 pub mod mesh;
+pub mod panes;
 pub mod route;
 pub mod server;
 pub mod startup;

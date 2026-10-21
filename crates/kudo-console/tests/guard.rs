@@ -94,3 +94,31 @@ fn what_another_site_could_send_is_refused() {
 fn the_page_render_itself_is_allowed() {
     assert!(allowed(&Method::GET, &headers(&[("host", "127.0.0.1:8099")])).is_ok());
 }
+
+/// DNS rebinding makes a hostile page same-origin with itself: the host it
+/// names must be one this console answers to.
+#[test]
+fn a_host_the_console_does_not_answer_to_is_refused() {
+    assert!(
+        allowed(
+            &Method::POST,
+            &headers(&[
+                ("content-type", "application/json"),
+                ("host", "evil.example:8080"),
+                ("origin", "http://evil.example:8080"),
+                ("sec-fetch-site", "same-origin"),
+            ])
+        )
+        .is_err()
+    );
+    for host in ["localhost:8080", "127.0.0.1:8080", "[::1]:8080"] {
+        assert!(
+            allowed(
+                &Method::POST,
+                &headers(&[("content-type", "application/json"), ("host", host)])
+            )
+            .is_ok(),
+            "{host}"
+        );
+    }
+}

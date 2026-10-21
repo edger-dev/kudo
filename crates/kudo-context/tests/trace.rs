@@ -169,3 +169,22 @@ fn a_pane_records_where_a_lease_runs() {
     assert!(store.panes(&other).unwrap().is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn panes_read_oldest_first() {
+    let (dir, store) = store("panes-order");
+    let ctx = store.create_context("p", "# p\n", T0).unwrap();
+    for (n, job) in ["j1", "j2", "j3"].iter().enumerate() {
+        store
+            .record_pane(&ctx, "lease-x", "yolo", job, T0 + n as i64)
+            .unwrap();
+    }
+    let jobs: Vec<String> = store
+        .panes(&ctx)
+        .unwrap()
+        .into_iter()
+        .map(|p| p.job)
+        .collect();
+    assert_eq!(jobs, ["j1", "j2", "j3"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -79,10 +79,7 @@ fn three_panes_put_where_head_and_trace_side_by_side() {
         ["where", "head", "trace", "terminal"],
         "{html}"
     );
-    assert!(
-        html.contains("claude&#62; waiting for you"),
-        "{html}"
-    );
+    assert!(html.contains("claude&#62; waiting for you"), "{html}");
     assert!(
         html.contains("take over"),
         "a worker with a pane offers it: {html}"

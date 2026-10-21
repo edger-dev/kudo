@@ -292,6 +292,12 @@ pub fn lease_for(given: Option<String>) -> Result<String, String> {
     }
 }
 
+/// The lease a worker runs under, from the environment as `lookup` reads it
+/// (stub).
+pub fn lease_from(lookup: impl Fn(&str) -> Option<String>) -> Result<String, String> {
+    lease_for(lookup(kudo_worker::env::LEASE_ENV))
+}
+
 /// The mirror settings to hand on by name, from these variables.
 pub fn mirror_settings_from(
     vars: impl IntoIterator<Item = (String, String)>,

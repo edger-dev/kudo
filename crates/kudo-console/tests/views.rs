@@ -125,3 +125,19 @@ fn a_worker_started_in_a_pane_carries_it() {
     assert_eq!(pane.node, "yolo");
     assert_eq!(pane.job, "job-3");
 }
+
+/// A pane started but not yet traced (its CLI is at a startup prompt) is a
+/// worker too — starting — so it can be taken over.
+#[test]
+fn a_pane_with_no_trace_yet_is_a_starting_worker() {
+    let store = store("starting");
+    let ctx = store.create_context("starting", "# s\n", T0).unwrap();
+    store
+        .record_pane(&ctx, "lease-new", "yolo", "job-9", T0)
+        .unwrap();
+    let cards = views::contexts(&store, T0 + 1).unwrap();
+    let w = &cards[0].workers[0];
+    assert_eq!(w.lease, "lease-new");
+    assert_eq!(w.last, "starting");
+    assert_eq!(w.pane.as_ref().unwrap().job, "job-9");
+}
