@@ -194,10 +194,17 @@ fn the_workspace_manifest_declares_the_dev_topology() {
             "Service",
             "{name} is a long-running service"
         );
-        assert_eq!(format!("{:?}", entry.autostart), "Manual", "{name} starts on request");
+        assert_eq!(
+            format!("{:?}", entry.autostart),
+            "Manual",
+            "{name} starts on request"
+        );
     }
     let node = manifest.get("dev-node").unwrap().argv.join(" ");
-    assert!(node.contains("HUB_ADDR=127.0.0.1:15401"), "the dev node dials the dev hub: {node}");
+    assert!(
+        node.contains("HUB_ADDR=127.0.0.1:15401"),
+        "the dev node dials the dev hub: {node}"
+    );
     let hub = manifest.get("dev-hub").unwrap().argv.join(" ");
     assert!(hub.contains("127.0.0.1:15401"), "{hub}");
 }

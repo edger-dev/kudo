@@ -129,6 +129,8 @@ async fn a_job_starts_and_its_output_reads_back() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await
@@ -177,6 +179,8 @@ async fn tailing_from_next_offset_returns_only_new_output() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await
@@ -248,6 +252,8 @@ async fn a_started_job_appears_in_the_listing() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await
@@ -281,6 +287,8 @@ async fn a_job_can_be_killed_and_still_be_listed() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await
@@ -325,6 +333,8 @@ async fn an_unstartable_program_reports_the_engine_s_own_message() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await
@@ -368,6 +378,8 @@ async fn a_foreign_workspace_job_cannot_be_killed_through_the_shim() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: theirs.to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await
@@ -437,6 +449,8 @@ async fn a_jobs_resource_use_is_readable_over_the_mesh() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await
@@ -545,6 +559,8 @@ async fn a_redrawing_job_reads_back_as_one_screen_over_the_mesh() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await

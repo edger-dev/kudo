@@ -32,13 +32,13 @@ dbg_macro = "warn"              # rule: jig::rust::no-todo-committed
 # everyone else builds is this revision:
 #   [patch."https://github.com/edger-dev/hub"]
 #   hub-protocol = { path = "../hub/crates/hub-protocol" }
-hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "dbc40efec43ebc385d92c608144610dfadbd7145" }
+hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "828a6b05c9069c62d47bd53587f0ba897e43a8d2" }
 
 # `node` is a real dependency of the composition root (kudo-node assembles a
 # daemon out of it) and a dev-dependency of the shim's routing tests, which run
 # a real hub and a real node rather than a mock of the far side.
-hub = { git = "https://github.com/edger-dev/hub", rev = "dbc40efec43ebc385d92c608144610dfadbd7145" }
-node = { git = "https://github.com/edger-dev/hub", rev = "dbc40efec43ebc385d92c608144610dfadbd7145" }
+hub = { git = "https://github.com/edger-dev/hub", rev = "828a6b05c9069c62d47bd53587f0ba897e43a8d2" }
+node = { git = "https://github.com/edger-dev/hub", rev = "828a6b05c9069c62d47bd53587f0ba897e43a8d2" }
 
 # Kept on hub's line: hub-protocol's types are facet-derived, so the shim must
 # encode against the same major. See RFC-0006 on the facet version skew.
@@ -51,7 +51,7 @@ rmcp = { version = "3.0.0-beta.2", features = ["server", "transport-io"] }
 # The engine the composition root hosts. A second component dependency, and the
 # first time two facet versions meet in one build graph — safe only because the
 # boundary between them is bytes. See RFC-0006.
-moco-job = { git = "https://github.com/edger-dev/moco", rev = "81fe07605e116d75fac6ca85f7f5e56f463f5310" }
+moco-job = { git = "https://github.com/edger-dev/moco", rev = "b08ac949a3d586861fcc08d78abd30ea8fdd9918" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

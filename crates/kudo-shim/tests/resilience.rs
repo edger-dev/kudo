@@ -139,6 +139,8 @@ async fn a_domain_refusal_is_not_retried() {
             caller: moco_job::wire::WireCaller::Session {
                 cwd: std::env::temp_dir().to_string_lossy().into_owned(),
             },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
         },
     )
     .await

@@ -16,7 +16,7 @@ proc (
    lifetime @Service, restart @OnFailure, port @Fixed{port 9100}},
 
   {name dev-hub,
-   argv (nix run "github:edger-dev/hub/c3f6a240ac78c79c1c920299c0e2d59cff2c34fc#hub" "--" "127.0.0.1:15401"),
+   argv (nix run "github:edger-dev/hub/828a6b05c9069c62d47bd53587f0ba897e43a8d2#hub" "--" "127.0.0.1:15401"),
    lifetime @Service, restart @OnFailure, port @Fixed{port 15401}},
 
   {name dev-node,

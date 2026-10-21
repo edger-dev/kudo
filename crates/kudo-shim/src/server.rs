@@ -674,6 +674,8 @@ impl ShimServer {
                     cwd,
                     deadline_ms: args.timeout_ms.unwrap_or(0),
                     caller: jobs::session_caller(),
+                    env: vec![],
+                    human_view: moco_job::lens::HumanView::Logs,
                 },
             )
             .await

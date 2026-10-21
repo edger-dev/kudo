@@ -97,6 +97,8 @@ async fn a_job_runs_through_the_whole_mesh() {
         cwd: std::env::temp_dir().to_string_lossy().into_owned(),
         deadline_ms: 0,
         caller: moco_job::wire::WireCaller::Console,
+        env: vec![],
+        human_view: moco_job::lens::HumanView::Logs,
     })
     .expect("encode start");
 

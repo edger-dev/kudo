@@ -2440,7 +2440,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 [[package]]
 name = "hub"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=dbc40efec43ebc385d92c608144610dfadbd7145#dbc40efec43ebc385d92c608144610dfadbd7145"
+source = "git+https://github.com/edger-dev/hub?rev=828a6b05c9069c62d47bd53587f0ba897e43a8d2#828a6b05c9069c62d47bd53587f0ba897e43a8d2"
 dependencies = [
  "hub-protocol",
  "tokio",
@@ -2450,7 +2450,7 @@ dependencies = [
 [[package]]
 name = "hub-protocol"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=dbc40efec43ebc385d92c608144610dfadbd7145#dbc40efec43ebc385d92c608144610dfadbd7145"
+source = "git+https://github.com/edger-dev/hub?rev=828a6b05c9069c62d47bd53587f0ba897e43a8d2#828a6b05c9069c62d47bd53587f0ba897e43a8d2"
 dependencies = [
  "facet 0.50.0-rc.5",
  "vox",
@@ -3107,7 +3107,7 @@ dependencies = [
 [[package]]
 name = "moco-core"
 version = "0.1.0-dev"
-source = "git+https://github.com/edger-dev/moco?rev=81fe07605e116d75fac6ca85f7f5e56f463f5310#81fe07605e116d75fac6ca85f7f5e56f463f5310"
+source = "git+https://github.com/edger-dev/moco?rev=b08ac949a3d586861fcc08d78abd30ea8fdd9918#b08ac949a3d586861fcc08d78abd30ea8fdd9918"
 dependencies = [
  "facet 0.43.2",
  "moco-internals",
@@ -3117,7 +3117,7 @@ dependencies = [
 [[package]]
 name = "moco-internals"
 version = "0.1.0-dev"
-source = "git+https://github.com/edger-dev/moco?rev=81fe07605e116d75fac6ca85f7f5e56f463f5310#81fe07605e116d75fac6ca85f7f5e56f463f5310"
+source = "git+https://github.com/edger-dev/moco?rev=b08ac949a3d586861fcc08d78abd30ea8fdd9918#b08ac949a3d586861fcc08d78abd30ea8fdd9918"
 dependencies = [
  "facet 0.43.2",
  "facet-styx 1.0.1",
@@ -3127,7 +3127,7 @@ dependencies = [
 [[package]]
 name = "moco-job"
 version = "0.1.0-dev"
-source = "git+https://github.com/edger-dev/moco?rev=81fe07605e116d75fac6ca85f7f5e56f463f5310#81fe07605e116d75fac6ca85f7f5e56f463f5310"
+source = "git+https://github.com/edger-dev/moco?rev=b08ac949a3d586861fcc08d78abd30ea8fdd9918#b08ac949a3d586861fcc08d78abd30ea8fdd9918"
 dependencies = [
  "facet 0.43.2",
  "facet-styx 1.0.1",
@@ -3139,7 +3139,7 @@ dependencies = [
 [[package]]
 name = "moco-macros"
 version = "0.1.0-dev"
-source = "git+https://github.com/edger-dev/moco?rev=81fe07605e116d75fac6ca85f7f5e56f463f5310#81fe07605e116d75fac6ca85f7f5e56f463f5310"
+source = "git+https://github.com/edger-dev/moco?rev=b08ac949a3d586861fcc08d78abd30ea8fdd9918#b08ac949a3d586861fcc08d78abd30ea8fdd9918"
 dependencies = [
  "moco-internals",
 ]
@@ -3171,7 +3171,7 @@ dependencies = [
 [[package]]
 name = "node"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=dbc40efec43ebc385d92c608144610dfadbd7145#dbc40efec43ebc385d92c608144610dfadbd7145"
+source = "git+https://github.com/edger-dev/hub?rev=828a6b05c9069c62d47bd53587f0ba897e43a8d2#828a6b05c9069c62d47bd53587f0ba897e43a8d2"
 dependencies = [
  "facet 0.50.0-rc.5",
  "facet-json 0.50.0-rc.5",
