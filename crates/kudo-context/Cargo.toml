@@ -13,4 +13,5 @@ workspace = true
 # puts that store on an object store.
 [dependencies]
 kinora = { workspace = true }
+kinora-remote = { workspace = true }
 jiff = { workspace = true }

@@ -20,6 +20,7 @@ pub mod error;
 pub mod store;
 
 pub use error::Error;
+pub use kinora_remote::Mirror;
 pub use store::ContextStore;
 
 /// Seconds since the Unix epoch. Every time-dependent call takes `now`

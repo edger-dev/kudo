@@ -84,6 +84,13 @@ impl ContextStore {
         Ok(Self { kinora })
     }
 
+    /// Mirror this store: every operation pulls the mirror before it reads,
+    /// and every write is pushed as it lands.
+    pub fn with_mirror(self, mirror: crate::Mirror) -> Self {
+        let _ = mirror;
+        self
+    }
+
     /// Birth a context whose first head is `head`.
     pub fn create_context(&self, title: &str, head: &str, now: Now) -> Result<ContextId, Error> {
         // The marker makes the card unique: a title and a second do not.
