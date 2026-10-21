@@ -407,3 +407,48 @@ fn refusals_a_stuck_release_and_a_takeover_are_traced() {
         ]
     );
 }
+
+/// SessionStart fires again on resume and after compaction: the lease starts
+/// once, and an ended lease does not start again.
+#[test]
+fn a_lease_starts_once_and_not_again_after_it_ended() {
+    use kudo_context::TraceEvent as T;
+    let f = Fixture::new();
+    let w = f.worker(10);
+    w.session_start(T0).unwrap();
+    w.session_start(T0 + 1).unwrap(); // resumed
+    w.pre_compact(T0 + 2).unwrap();
+    w.session_start(T0 + 3).unwrap(); // after the compaction
+    assert_eq!(
+        trace_of(&f),
+        [T::LeaseStart, T::LeaseEnd("compaction".into())]
+    );
+}
+
+/// A lease can only submit or release the claim it holds.
+#[test]
+fn another_leases_claim_cannot_be_submitted_or_released() {
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "theirs", T0).unwrap();
+    let theirs = f
+        .store
+        .pull(&f.ctx, "lease-other", T0, 600)
+        .unwrap()
+        .unwrap();
+    let w = f.worker(10);
+    let sub = Submission {
+        head: "# hooks\nstolen\n".into(),
+        log: "stolen".into(),
+        ..Default::default()
+    };
+    assert!(w.submit(&theirs.id, &sub, T0 + 1).is_err());
+    assert!(w.release(&theirs.id, T0 + 1).is_err());
+    assert!(
+        f.store
+            .held_by(&f.ctx, "lease-other", T0 + 1)
+            .unwrap()
+            .is_some(),
+        "still theirs"
+    );
+    assert!(trace_of(&f).is_empty(), "nothing credited to this lease");
+}

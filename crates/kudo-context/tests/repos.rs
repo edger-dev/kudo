@@ -244,3 +244,44 @@ fn evidence_does_not_cross_contexts() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A kino one context cached is evidence for another only through that
+/// context's own declared repo — and then it is cached for it too.
+#[test]
+fn a_second_context_declaring_the_same_repo_cites_the_same_kino() {
+    let (dir, store, a) = store_with_context("repos-shared");
+    let repo_dir = dir.join("project");
+    let spec = repo_kino(&repo_dir, "# Shared by two contexts\n");
+    let project = Repo {
+        name: "project".into(),
+        node: "yolo".into(),
+        path: repo_dir.clone(),
+    };
+    let b = store
+        .create_context("also declares it", "# b\n", T0)
+        .unwrap();
+    store.declare_repo(&a, &project, T0).unwrap();
+    store.declare_repo(&b, &project, T0).unwrap();
+    let cite = |ctx: &ContextId, at: i64| {
+        store.enqueue(ctx, "cite", at).unwrap();
+        let claim = store.pull(ctx, "lease-x", at, 600).unwrap().unwrap();
+        let sub = Submission {
+            head: format!("# h {at}\n"),
+            log: "cite".into(),
+            established: vec![Established {
+                claim: "backed".into(),
+                evidence: vec![spec.clone()],
+            }],
+            ..Default::default()
+        };
+        store.submit(&claim.id, &sub, at + 1).unwrap()
+    };
+    assert!(cite(&a, T0 + 1).downgraded.is_empty());
+    assert!(
+        cite(&b, T0 + 10).downgraded.is_empty(),
+        "B's own repo backs it"
+    );
+    std::fs::remove_dir_all(&repo_dir).unwrap();
+    assert!(cite(&b, T0 + 20).downgraded.is_empty(), "cached for B too");
+    let _ = std::fs::remove_dir_all(&dir);
+}

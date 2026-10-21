@@ -101,3 +101,25 @@ fn a_head_version_traces_forward_to_its_submission_claim_item_and_lease() {
     assert_eq!(p.attempt, 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Within a lease, its own order (seq) wins over the clock: a clock that
+/// stepped back does not reorder a lease's events.
+#[test]
+fn a_lease_reads_in_its_own_order_when_the_clock_steps_back() {
+    let (dir, store) = store("trace-clock");
+    let ctx = store.create_context("traced", "# traced\n", T0).unwrap();
+    store
+        .record_trace(&ctx, "lease-a", &TraceEvent::LeaseStart, T0 + 5)
+        .unwrap();
+    store
+        .record_trace(
+            &ctx,
+            "lease-a",
+            &TraceEvent::LeaseEnd("budget".into()),
+            T0 + 4,
+        )
+        .unwrap();
+    let seqs: Vec<u64> = store.trace(&ctx).unwrap().iter().map(|t| t.seq).collect();
+    assert_eq!(seqs, [1, 2]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
