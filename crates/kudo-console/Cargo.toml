@@ -14,8 +14,13 @@ serde = { version = "1", features = ["derive"] }
 kudo-context = { path = "../kudo-context", optional = true }
 kudo-shim = { path = "../kudo-shim", optional = true }
 tokio = { workspace = true, optional = true }
+kudo-worker = { path = "../kudo-worker", optional = true }
+jiff = { workspace = true, optional = true }
 hub-protocol = { workspace = true, optional = true }
 vox = { workspace = true, optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
 
 [dev-dependencies]
 dioxus-ssr = "=0.7.4"
@@ -24,4 +29,4 @@ kudo-worker = { path = "../kudo-worker" }
 [features]
 default = []
 web = ["dioxus/web"]
-server = ["dioxus/server", "dep:kudo-context", "dep:kudo-shim", "dep:tokio", "dep:hub-protocol", "dep:vox"]
+server = ["dioxus/server", "dep:kudo-context", "dep:kudo-shim", "dep:tokio", "dep:hub-protocol", "dep:vox", "dep:kudo-worker", "dep:jiff"]

@@ -11,15 +11,17 @@ use crate::model::ConsoleData;
 /// as the selected context.
 #[server]
 pub async fn console_data(selected: Option<String>) -> Result<ConsoleData, ServerFnError> {
-    crate::server::console_data(selected)
-        .await
-        .map_err(ServerFnError::new)
+    crate::server::guarded().await?;
+    Ok(crate::server::console_data(selected).await)
 }
 
 /// Enqueue `ask` under the context `context` (an id or unique prefix).
 #[server]
 pub async fn enqueue(context: String, ask: String) -> Result<String, ServerFnError> {
-    crate::server::enqueue(&context, &ask).map_err(ServerFnError::new)
+    crate::server::guarded().await?;
+    crate::server::enqueue(context, ask)
+        .await
+        .map_err(ServerFnError::new)
 }
 
 /// Wait until something has moved since `after` (the hub's events), or a
@@ -27,5 +29,6 @@ pub async fn enqueue(context: String, ask: String) -> Result<String, ServerFnErr
 /// re-reading on a timer.
 #[server]
 pub async fn wait_version(after: u64) -> Result<u64, ServerFnError> {
+    crate::server::guarded().await?;
     Ok(crate::server::wait_version(after).await)
 }

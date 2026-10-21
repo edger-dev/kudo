@@ -5,7 +5,11 @@
 
 use kudo_context::{ContextStore, Error, Now, TraceEvent};
 
-use crate::model::{ContextCard, ContextDetail, TraceRow, WorkerView};
+use crate::model::{ConsoleData, ContextCard, ContextDetail, TraceRow, WorkerView};
+
+/// A lease silent for longer than a claim lives is likely dead (killed,
+/// crashed, its machine asleep): shown as quiet, never as working.
+const QUIET_AFTER: i64 = kudo_worker::DEFAULT_CLAIM_TTL;
 
 /// Every context, newest first, with its counts and the leases still running
 /// under it (a lease whose last traced event is not its end).
@@ -14,20 +18,26 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
         .contexts()?
         .into_iter()
         .map(|c| {
-            let mut last: Vec<(String, TraceEvent)> = Vec::new();
+            let mut last: Vec<(String, TraceEvent, String)> = Vec::new();
             for entry in store.trace(&c.id)? {
-                match last.iter_mut().find(|(lease, _)| *lease == entry.lease) {
-                    Some(slot) => slot.1 = entry.event,
-                    None => last.push((entry.lease, entry.event)),
+                match last.iter_mut().find(|(lease, _, _)| *lease == entry.lease) {
+                    Some(slot) => {
+                        slot.1 = entry.event;
+                        slot.2 = entry.at;
+                    }
+                    None => last.push((entry.lease, entry.event, entry.at)),
                 }
             }
             let workers = last
                 .into_iter()
-                .filter(|(_, event)| !matches!(event, TraceEvent::LeaseEnd(_)))
-                .map(|(lease, event)| WorkerView {
+                .filter(|(_, event, _)| !matches!(event, TraceEvent::LeaseEnd(_)))
+                .map(|(lease, event, at)| WorkerView {
                     lease,
                     last: event.to_line(),
-                    quiet: false,
+                    quiet: at
+                        .parse::<jiff::Timestamp>()
+                        .map(|t| now - t.as_second() > QUIET_AFTER)
+                        .unwrap_or(false),
                 })
                 .collect();
             Ok(ContextCard {

@@ -15,7 +15,7 @@ pub struct NodeView {
 pub struct WorkerView {
     pub lease: String,
     pub last: String,
-    /// Silent for longer than a claim lives: likely dead (stub).
+    /// Silent for longer than a claim lives: likely dead, not working.
     pub quiet: bool,
 }
 

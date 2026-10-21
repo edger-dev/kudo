@@ -10,34 +10,53 @@ use crate::shell::Shell;
 /// The arrangement this console shows: change this value, not the components.
 pub const LAYOUT: Layout = THREE_PANES;
 
+/// Wait a while before trying the server again (the page only).
+async fn pause(millis: u32) {
+    #[cfg(target_arch = "wasm32")]
+    gloo_timers::future::TimeoutFuture::new(millis).await;
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = millis;
+}
+
 #[component]
 pub fn App() -> Element {
     let selection = use_context_provider(|| Signal::new(Selection::default()));
-    let mut version = use_signal(|| 0u64);
-    // Long-poll: the server answers when the hub says something moved.
+    // Bumped on every long-poll answer: something moved, or a while passed.
+    let mut tick = use_signal(|| 0u64);
     use_future(move || async move {
         let mut seen = 0u64;
+        let mut backoff = 500u32;
         loop {
             match crate::api::wait_version(seen).await {
                 Ok(v) => {
                     seen = v;
-                    version.set(v);
+                    backoff = 500;
+                    tick += 1;
                 }
-                Err(_) => seen = 0,
+                // The server is down, or was rebuilt under this page: back
+                // off rather than spin.
+                Err(_) => {
+                    pause(backoff).await;
+                    backoff = (backoff * 2).min(30_000);
+                }
             }
         }
     });
-    let data = use_resource(move || {
-        let _ = version();
+    let data = use_server_future(move || {
+        let _ = tick();
         let selected = selection.read().context.clone();
         async move { crate::api::console_data(selected).await }
-    });
+    })?;
     let mut ask = use_signal(String::new);
-    let current = data
-        .read()
+    let read = data.read();
+    let current = read
         .as_ref()
         .and_then(|d| d.as_ref().ok())
         .and_then(|d| d.selected.as_ref().map(|s| s.id.clone()));
+    let error = read
+        .as_ref()
+        .and_then(|d| d.as_ref().ok())
+        .and_then(|d| d.error.clone());
     rsx! {
         div { style: "font-family:monospace;padding:4px;",
             if let Some(context) = current.clone() {
@@ -61,8 +80,11 @@ pub fn App() -> Element {
                     button { r#type: "submit", "enqueue" }
                 }
             }
+            if let Some(error) = error {
+                p { style: "color:#a00;", "{error}" }
+            }
         }
-        match &*data.read() {
+        match &*read {
             Some(Ok(d)) => rsx! { Shell { layout: LAYOUT, data: d.clone() } },
             Some(Err(e)) => rsx! { p { "{e}" } },
             None => rsx! { p { "loading" } },

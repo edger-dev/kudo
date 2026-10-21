@@ -67,6 +67,9 @@ pub fn context_with(
                 .map_err(|e| e.to_string())?;
             Ok(format!("{}\n", id.0))
         }
+        ["enqueue", _, ask @ ..] if ask.join(" ").trim().is_empty() => {
+            Err("an empty ask: say what to do".to_owned())
+        }
         ["enqueue", ctx, ask @ ..] if !ask.is_empty() => {
             let store = open_store(store_dir, mirror, true)?;
             let ctx = named(&store, ctx)?;
