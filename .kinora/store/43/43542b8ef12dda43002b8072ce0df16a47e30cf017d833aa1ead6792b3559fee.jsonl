@@ -1,0 +1,2 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"600a81ce111ce10a9fb054610c4226a9d9c28a0575350850d524573038e54bcd","hash":"7bfe97870c78651fbfddeb68135e0c5384e4a7578244ebbf821d9dbeb700a7ad","parents":["600a81ce111ce10a9fb054610c4226a9d9c28a0575350850d524573038e54bcd"],"ts":"2026-10-21T05:41:17.52472307Z","author":"YJ Park","provenance":"dev process","metadata":{"name":"layered-local-dev-plan","status::resolved":"false"}}
