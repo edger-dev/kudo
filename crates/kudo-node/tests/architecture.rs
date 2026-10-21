@@ -174,3 +174,28 @@ fn the_home_module_gives_the_daemon_the_users_path() {
         );
     }
 }
+
+/// The full development topology is a moco manifest at the workspace root:
+/// a dev S3, a dev hub and a dev node pointed at it, as services started on
+/// request — the process manager runs its own development.
+// implements: 482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae@482bd420c2a2251c6d5c2fa311e8a14b2bb0898cf84cedfbef88fe6ba8a119ae
+#[test]
+fn the_workspace_manifest_declares_the_dev_topology() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let manifest = moco_job::Manifest::load(&root).expect("moco-processes.styx parses");
+    for name in ["dev-s3", "dev-hub", "dev-node"] {
+        let entry = manifest
+            .get(name)
+            .unwrap_or_else(|| panic!("{name} missing from {:?}", manifest.names()));
+        assert_eq!(
+            format!("{:?}", entry.lifetime),
+            "Service",
+            "{name} is a long-running service"
+        );
+        assert_eq!(format!("{:?}", entry.autostart), "Manual", "{name} starts on request");
+    }
+    let node = manifest.get("dev-node").unwrap().argv.join(" ");
+    assert!(node.contains("HUB_ADDR=127.0.0.1:15401"), "the dev node dials the dev hub: {node}");
+    let hub = manifest.get("dev-hub").unwrap().argv.join(" ");
+    assert!(hub.contains("127.0.0.1:15401"), "{hub}");
+}
