@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# A development S3 (MinIO) for the context store mirror, run by hand in this
+# container: localhost only, a fixed development key, data kept between runs.
+#
+#   scripts/dev-s3                 # runs in the foreground; Ctrl-C stops it
+#   source ~/.local/state/kudo/dev-s3/mirror.env   # in any other pane
+#
+# Then kudo-shim (context commands, workers, hooks) syncs through it. R2 later
+# is the same variables with its endpoint and keys.
+set -euo pipefail
+
+dir=${KUDO_DEV_S3_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/kudo/dev-s3}
+port=${KUDO_DEV_S3_PORT:-9100}
+bucket=${KUDO_DEV_S3_BUCKET:-kudo-dev}
+user=kudo
+secret=kudo-dev-secret
+
+mkdir -p "$dir/data/$bucket"
+cat > "$dir/mirror.env" <<ENV
+# Written by kudo's scripts/dev-s3: the context store mirror on the dev MinIO.
+export KUDO_CONTEXT_MIRROR=s3://$bucket/${USER:-dev}
+export AWS_ENDPOINT=http://127.0.0.1:$port
+export AWS_REGION=us-east-1
+export AWS_ACCESS_KEY_ID=$user
+export AWS_SECRET_ACCESS_KEY=$secret
+ENV
+
+echo "dev S3 on http://127.0.0.1:$port (console :$((port + 1))), data in $dir/data"
+echo "in another pane: source $dir/mirror.env"
+MINIO_ROOT_USER=$user MINIO_ROOT_PASSWORD=$secret exec nix run nixpkgs#minio -- \
+  server "$dir/data" --address "127.0.0.1:$port" --console-address "127.0.0.1:$((port + 1))"

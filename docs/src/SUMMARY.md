@@ -10,6 +10,10 @@
 - [Agent tools](./process-manager/tools.md)
 - [Deployment](./process-manager/deployment.md)
 
+# Contexts
+
+- [The context store mirror](./contexts/mirror.md)
+
 # RFCs
 
 - [RFC-0001: Moco Data Model](./rfcs/rfc-0001_moco-data-model.md)
