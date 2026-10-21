@@ -53,6 +53,11 @@ impl Fixture {
     }
 
     fn worker(&self, max_turns: u32) -> Worker<'_> {
+        self.waiting_worker(max_turns, 0)
+    }
+
+    /// A worker that waits up to `idle_limit` seconds for work.
+    fn waiting_worker(&self, max_turns: u32, idle_limit: i64) -> Worker<'_> {
         Worker::new(
             &self.store,
             &self.book,
@@ -61,6 +66,7 @@ impl Fixture {
                 lease: LEASE.into(),
                 claim_ttl: 600,
                 max_turns,
+                idle_limit,
             },
         )
     }
@@ -524,4 +530,81 @@ fn an_event_the_trace_did_not_take_is_not_observed() {
         0,
         "nothing published that the trace lacks"
     );
+}
+
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+#[test]
+fn a_worker_with_nothing_ready_waits_and_takes_the_next_item_queued() {
+    use kudo_context::TraceEvent as T;
+    let f = Fixture::new();
+    let w = f.waiting_worker(10, 3600);
+    assert_eq!(w.stop(T0).unwrap(), Stop::Wait);
+    assert_eq!(w.stop(T0 + 10).unwrap(), Stop::Wait);
+    assert_eq!(trace_of(&f), [T::Wait], "the wait is traced once");
+
+    f.store.enqueue(&f.ctx, "queued later", T0 + 20).unwrap();
+    let reason = block_reason(w.stop(T0 + 30).unwrap());
+    assert!(reason.contains("queued later"), "{reason}");
+
+    // An item handed over resets the idle count.
+    f.submit_held(T0 + 40);
+    assert_eq!(w.stop(T0 + 50).unwrap(), Stop::Wait);
+    assert_eq!(w.stop(T0 + 50 + 3599).unwrap(), Stop::Wait);
+}
+
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+#[test]
+fn a_worker_idle_past_its_limit_ends_its_lease() {
+    let f = Fixture::new();
+    let w = f.waiting_worker(10, 100);
+    assert_eq!(w.stop(T0).unwrap(), Stop::Wait);
+    assert_eq!(w.stop(T0 + 99).unwrap(), Stop::Wait);
+    assert_eq!(w.stop(T0 + 100).unwrap(), Stop::Allow(LeaseEnd::QueueEmpty));
+}
+
+/// The hook's wait: an item queued while it waits is handed over.
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+#[test]
+fn stop_waiting_hands_over_an_item_queued_mid_wait() {
+    use std::cell::Cell;
+    let f = Fixture::new();
+    let w = f.waiting_worker(10, 3600);
+    let clock = Cell::new(T0);
+    let pauses = Cell::new(0);
+    let stop = w
+        .stop_waiting(
+            || clock.get(),
+            || {
+                clock.set(clock.get() + 5);
+                pauses.set(pauses.get() + 1);
+                if pauses.get() == 3 {
+                    f.store
+                        .enqueue(&f.ctx, "arrived mid-wait", clock.get())
+                        .unwrap();
+                }
+            },
+            540,
+        )
+        .unwrap();
+    assert!(block_reason(stop).contains("arrived mid-wait"));
+    assert_eq!(pauses.get(), 3);
+}
+
+/// A window with nothing: the turn ends with a short idle reply, the wait
+/// traced again so a live waiter never looks quiet.
+// implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+#[test]
+fn stop_waiting_ends_the_turn_when_the_window_passes() {
+    use kudo_context::TraceEvent as T;
+    use std::cell::Cell;
+    let f = Fixture::new();
+    let w = f.waiting_worker(10, 3600);
+    let clock = Cell::new(T0);
+    let stop = w
+        .stop_waiting(|| clock.get(), || clock.set(clock.get() + 10), 30)
+        .unwrap();
+    let reason = block_reason(stop);
+    assert!(reason.contains("Nothing is ready"), "{reason}");
+    assert_eq!(trace_of(&f), [T::Wait, T::Wait]);
+    assert!(clock.get() >= T0 + 30 && clock.get() < T0 + 60);
 }

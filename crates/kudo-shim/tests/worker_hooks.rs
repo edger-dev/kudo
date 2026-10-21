@@ -34,6 +34,7 @@ fn setup() -> (WorkerSetup, ContextStore) {
         lease: "lease-1".into(),
         claim_ttl: 600,
         max_turns: 10,
+        idle_limit: 0,
     };
     (setup, store)
 }

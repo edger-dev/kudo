@@ -141,6 +141,8 @@ fn an_event_round_trips_as_one_line() {
             submission: SubmissionId("s5".into()),
         },
         TraceEvent::LeaseEnd("queue-empty".into()),
+        // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+        TraceEvent::Wait,
     ] {
         let line = event.to_line();
         assert!(!line.contains('\n'), "{line:?}");

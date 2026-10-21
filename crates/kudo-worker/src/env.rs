@@ -36,6 +36,12 @@ pub fn bypass_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
     lookup(BYPASS_ENV).is_some_and(|v| v.trim() == "1")
 }
 
+/// Seconds a lease may wait in a row with nothing handed over (stub).
+pub const IDLE_LIMIT_ENV: &str = "KUDO_IDLE_LIMIT";
+pub const DEFAULT_IDLE_LIMIT: i64 = 7200;
+/// Seconds one Stop hook call waits for work (stub).
+pub const WAIT_WINDOW: i64 = 540;
+
 pub const DEFAULT_CLAIM_TTL: i64 = 1800;
 pub const DEFAULT_MAX_TURNS: u32 = 20;
 
@@ -51,6 +57,7 @@ pub struct WorkerSetup {
     pub lease: String,
     pub claim_ttl: i64,
     pub max_turns: u32,
+    pub idle_limit: i64,
 }
 
 impl WorkerSetup {
@@ -67,6 +74,7 @@ impl WorkerSetup {
             max_turns: lookup(MAX_TURNS_ENV)
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(DEFAULT_MAX_TURNS),
+            idle_limit: 0,
         })
     }
 
@@ -101,6 +109,7 @@ impl WorkerSetup {
             lease: self.lease.clone(),
             claim_ttl: self.claim_ttl,
             max_turns: self.max_turns,
+            idle_limit: self.idle_limit,
         }
     }
 }

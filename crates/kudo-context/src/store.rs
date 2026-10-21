@@ -537,6 +537,7 @@ impl ContextStore {
                 ("submit", claim.0.as_str(), submission.0.as_str(), "")
             }
             TraceEvent::LeaseEnd(why) => ("lease-end", "", "", why.as_str()),
+            TraceEvent::Wait => ("wait", "", "", ""),
         };
         let line = event.to_line();
         // The nonce keeps two equal events of one lease two kinos.

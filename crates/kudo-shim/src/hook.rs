@@ -98,7 +98,7 @@ pub fn run_with(
                 "decision": "block",
                 "reason": reason,
             })),
-            Stop::Allow(_) => HookReply::quiet(),
+            Stop::Allow(_) | Stop::Wait => HookReply::quiet(),
         }),
         "pre-compact" => worker.pre_compact(now).map(|()| HookReply::quiet()),
         "user-prompt-submit" => {

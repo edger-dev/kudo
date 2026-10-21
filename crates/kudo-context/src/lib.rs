@@ -171,6 +171,8 @@ pub enum TraceEvent {
     },
     /// The lease ended, and why.
     LeaseEnd(String),
+    /// Nothing was ready; the lease waits for the next item.
+    Wait,
 }
 
 // implements: 03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d@03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d
@@ -185,6 +187,7 @@ impl TraceEvent {
             Self::Release(_) => "release",
             Self::Submit { .. } => "submit",
             Self::LeaseEnd(_) => "lease-end",
+            Self::Wait => "wait",
         }
     }
 
@@ -192,7 +195,7 @@ impl TraceEvent {
     /// trace kino holds and an event payload carries.
     pub fn to_line(&self) -> String {
         match self {
-            Self::LeaseStart => self.name().to_owned(),
+            Self::LeaseStart | Self::Wait => self.name().to_owned(),
             Self::Handoff(c) | Self::Pull(c) | Self::Refused(c) | Self::Release(c) => {
                 format!("{} {}", self.name(), c.0)
             }

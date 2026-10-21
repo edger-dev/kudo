@@ -17,6 +17,7 @@ fn a_setup_survives_the_environment_round_trip() {
         lease: "6f1e…".into(),
         claim_ttl: 900,
         max_turns: 7,
+        idle_limit: 0,
     };
     let env: HashMap<String, String> = setup.to_env().into_iter().collect();
     let back = WorkerSetup::from_lookup(|k| env.get(k).cloned()).unwrap();

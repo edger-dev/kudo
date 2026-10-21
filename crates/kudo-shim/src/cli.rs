@@ -153,7 +153,7 @@ pub fn context_with(
             for t in store.trace(&ctx).map_err(|e| e.to_string())? {
                 let short = |id: &str| id.get(..SHORT_ID).unwrap_or(id).to_owned();
                 let what = match &t.event {
-                    TraceEvent::LeaseStart => "lease-start".to_owned(),
+                    TraceEvent::LeaseStart | TraceEvent::Wait => t.event.name().to_owned(),
                     TraceEvent::Handoff(c) => format!("handoff {}", short(&c.0)),
                     TraceEvent::Pull(c) => format!("pull {}", short(&c.0)),
                     TraceEvent::Refused(c) => format!("refused {}", short(&c.0)),
@@ -402,6 +402,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
             .unwrap_or(i64::from(kudo_worker::DEFAULT_MAX_TURNS))
             .try_into()
             .unwrap_or(kudo_worker::DEFAULT_MAX_TURNS),
+        idle_limit: 0,
     };
     let cli = std::env::var("KUDO_AGENT_CLI").unwrap_or_else(|_| "claude".to_owned());
     let mut plan = kudo_worker::plan(&setup, &cli, &shim, hub.as_deref(), &mirror_settings());

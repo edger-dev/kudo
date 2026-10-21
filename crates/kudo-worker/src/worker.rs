@@ -23,6 +23,8 @@ pub struct WorkerConfig {
     pub claim_ttl: i64,
     /// Items the Stop hook may hand over before the lease ends.
     pub max_turns: u32,
+    /// Seconds the lease may wait in a row with nothing ready (stub).
+    pub idle_limit: i64,
 }
 
 /// What the Stop hook tells the CLI.
@@ -32,6 +34,8 @@ pub enum Stop {
     Block { reason: String },
     /// Let the session end; the lease has ended for this reason.
     Allow(LeaseEnd),
+    /// Nothing is ready; wait and ask again (stub).
+    Wait,
 }
 
 /// What the `pull` tool gets.
@@ -171,6 +175,17 @@ impl<'a> Worker<'a> {
         Ok(Stop::Block {
             reason: format!("Next item. {}", self.claim_text(&claim)?),
         })
+    }
+
+    /// Stop, waiting up to `window` seconds for work (stub).
+    pub fn stop_waiting(
+        &self,
+        clock: impl Fn() -> Now,
+        pause: impl Fn(),
+        window: i64,
+    ) -> Result<Stop, Error> {
+        let _ = (pause, window);
+        self.stop(clock())
     }
 
     /// The `pull` tool: claim the next item, unless this turn already

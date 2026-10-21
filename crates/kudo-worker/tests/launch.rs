@@ -18,6 +18,7 @@ fn setup(lease: &str) -> WorkerSetup {
         lease: lease.into(),
         claim_ttl: 600,
         max_turns: 5,
+        idle_limit: 0,
     }
 }
 
@@ -71,6 +72,15 @@ fn the_settings_install_all_four_hooks_through_the_shim() {
             "{event}"
         );
     }
+    // The Stop hook waits for work: its timeout covers the wait window.
+    // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed
+    let timeout = settings["hooks"]["Stop"][0]["hooks"][0]["timeout"]
+        .as_i64()
+        .unwrap_or(0);
+    assert!(
+        timeout >= kudo_worker::env::WAIT_WINDOW + 30,
+        "Stop hook timeout {timeout}s"
+    );
 }
 
 #[test]

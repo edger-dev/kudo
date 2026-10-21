@@ -1,0 +1,1 @@
+{"event_kind":"assign","kind":"kin::assign","id":"9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed","hash":"9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed","parents":[],"ts":"2026-10-21T14:27:54.068821763Z","author":"YJ Park","provenance":"user request: workers wait for new tasks instead of ending","metadata":{"kin::target_root":"specs"}}

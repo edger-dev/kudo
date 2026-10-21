@@ -104,6 +104,7 @@ async fn the_session_start_hook_publishes_lease_start() {
         lease: "lease-9".into(),
         claim_ttl: 600,
         max_turns: 10,
+        idle_limit: 0,
     };
     let mut rx = subscribed(&addr, &format!("kudo/context/{}/", ctx.0)).await;
     let observer = events::observer(addr.clone());
@@ -171,6 +172,7 @@ fn a_hub_that_hangs_costs_a_hook_about_the_budget() {
         lease: "lease-h".into(),
         claim_ttl: 600,
         max_turns: 10,
+        idle_limit: 0,
     };
     let started = std::time::Instant::now();
     let reply = hook::run_with(
