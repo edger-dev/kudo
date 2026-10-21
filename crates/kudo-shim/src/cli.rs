@@ -45,12 +45,11 @@ pub fn context_with_mirror(
     args: &[String],
     now: i64,
 ) -> Result<String, String> {
-    let _ = mirror;
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
         ["new", title @ ..] if !title.is_empty() => {
             let title = title.join(" ");
-            let store = open_or_init(store_dir)?;
+            let store = open_or_init_with(store_dir, mirror)?;
             let head = format!(
                 "# {title}\nstate:       active — new\nwhere:       nothing done yet\n\
                  next_action: pull the first item · who: worker\n"
@@ -61,7 +60,7 @@ pub fn context_with_mirror(
             Ok(format!("{}\n", id.0))
         }
         ["enqueue", ctx, ask @ ..] if !ask.is_empty() => {
-            let store = open(store_dir)?;
+            let store = open_store(store_dir, mirror, true)?;
             let ctx = named(&store, ctx)?;
             let item = store
                 .enqueue(&ctx, &ask.join(" "), now)
@@ -69,7 +68,7 @@ pub fn context_with_mirror(
             Ok(format!("enqueued {}\n", item.0))
         }
         ["show", ctx] => {
-            let store = open(store_dir)?;
+            let store = open_store(store_dir, mirror, true)?;
             let ctx = named(&store, ctx)?;
             let head = store.head(&ctx).map_err(|e| e.to_string())?;
             let ready = store.ready_count(&ctx, now).map_err(|e| e.to_string())?;
@@ -111,7 +110,7 @@ pub fn context_with_mirror(
                 Some(p) => PathBuf::from(p),
                 None => std::env::current_dir().map_err(|e| e.to_string())?,
             };
-            let store = open(store_dir)?;
+            let store = open_store(store_dir, mirror, true)?;
             let ctx = named(&store, ctx)?;
             let repo = Repo {
                 name: (*name).to_owned(),
@@ -129,7 +128,7 @@ pub fn context_with_mirror(
             ))
         }
         ["trace", ctx] => {
-            let store = open(store_dir)?;
+            let store = open_store(store_dir, mirror, true)?;
             let ctx = named(&store, ctx)?;
             let mut out = String::new();
             for t in store.trace(&ctx).map_err(|e| e.to_string())? {
@@ -154,7 +153,7 @@ pub fn context_with_mirror(
             Ok(out)
         }
         ["why", ctx, version @ ..] if version.len() <= 1 => {
-            let store = open(store_dir)?;
+            let store = open_store(store_dir, mirror, true)?;
             let ctx = named(&store, ctx)?;
             let version = match version.first() {
                 Some(v) => (*v).to_owned(),
@@ -179,10 +178,10 @@ pub fn context_with_mirror(
             )
         }
         ["list"] => {
-            if !store_dir.join(".kinora").is_dir() {
+            if mirror.is_none() && !store_dir.join(".kinora").is_dir() {
                 return Ok(NO_CONTEXTS.to_owned());
             }
-            let store = open(store_dir)?;
+            let store = open_store(store_dir, mirror, true)?;
             let all = store.contexts().map_err(|e| e.to_string())?;
             if all.is_empty() {
                 return Ok(NO_CONTEXTS.to_owned());
@@ -245,9 +244,9 @@ fn open(dir: &Path) -> Result<ContextStore, String> {
     open_configured(dir)
 }
 
-fn open_or_init(dir: &Path) -> Result<ContextStore, String> {
-    match mirror_from_env() {
-        Some(url) => open_store(dir, Some(&url), true),
+fn open_or_init_with(dir: &Path, mirror: Option<&str>) -> Result<ContextStore, String> {
+    match mirror {
+        Some(url) => open_store(dir, Some(url), true),
         None => init_if_missing(dir),
     }
 }
