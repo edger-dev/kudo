@@ -1,7 +1,7 @@
 //! Two machines, one mirror: stores that share a mirror act as one store —
 //! enqueues, claims and heads cross over; writes made offline push later.
 //!
-//! implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
+//! implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@61632ce8ff602a5a85acd48cc9208e1ca388d7a696ce46d8459e27b85426538e
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 

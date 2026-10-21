@@ -205,7 +205,7 @@ fn a_declared_repo_missing_on_this_node_is_named_in_the_error() {
 
 /// With a mirror, a machine that has never held the store opens it and
 /// finds what another machine wrote.
-// implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f
+// implements: fc473f56b1b8bdbae4a31e54e7281c4aeed3c08bd03804b256ca37e1937fe66f@61632ce8ff602a5a85acd48cc9208e1ca388d7a696ce46d8459e27b85426538e
 #[test]
 fn a_mirrored_store_opens_on_a_new_machine_with_what_the_other_wrote() {
     let root = std::env::temp_dir().join(format!("kudo-shim-cli-mirror-{}", std::process::id()));
