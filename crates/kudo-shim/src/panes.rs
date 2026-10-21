@@ -154,6 +154,7 @@ pub async fn start(
         lease,
         node: node.to_owned(),
         job: reply.id.clone(),
+        at: now,
     };
     let recorded = {
         let (store, ctx, pane) = (store.clone(), ctx.clone(), pane.clone());

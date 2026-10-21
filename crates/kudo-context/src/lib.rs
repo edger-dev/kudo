@@ -256,4 +256,6 @@ pub struct PaneRecord {
     pub node: String,
     /// The job on that node that is the pane.
     pub job: String,
+    /// When it was recorded, in Unix seconds.
+    pub at: Now,
 }

@@ -53,7 +53,9 @@ and takes typing — a line with Enter, or a key alone (the arrows, Tab, Enter,
 Esc, Ctrl-C; the arrows and Esc also work from the empty line field), sent in
 order. A worker
 whose CLI has not started its session yet shows as *starting*, and can be
-taken over all the same — which is how you answer a startup prompt.
+taken over all the same — which is how you answer a startup prompt. One still
+silent after ten minutes shows as *quiet* (stuck at a prompt, or dead), and
+after a day it is no longer listed.
 
 Only panes the console started can be typed into, and only by the console
 (the node refuses input from anyone else). A node too old to start a worker

@@ -10,6 +10,11 @@ use crate::model::{ConsoleData, ContextCard, ContextDetail, PaneRef, TraceRow, W
 /// A lease silent for longer than a claim lives is likely dead (killed,
 /// crashed, its machine asleep): shown as quiet, never as working.
 const QUIET_AFTER: i64 = kudo_worker::DEFAULT_CLAIM_TTL;
+/// A pane that never traced: quiet after this (stuck at a prompt, or dead)…
+// implements: 0c4e36f264b2b4fbc6fcfee93bc02ad5b8419a1d21a8638bf080623ab942a37d@0c4e36f264b2b4fbc6fcfee93bc02ad5b8419a1d21a8638bf080623ab942a37d
+const STARTING_QUIET_AFTER: i64 = 600;
+/// …and no longer listed after this.
+const STARTING_GONE_AFTER: i64 = 86_400;
 
 /// Every context, newest first, with its counts and the leases still running
 /// under it (a lease whose last traced event is not its end).
@@ -29,7 +34,7 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                 }
             }
             let panes = store.panes(&c.id)?;
-            let mut starting: Vec<String> = Vec::new();
+            let mut starting: Vec<(String, bool)> = Vec::new();
             let pane_of = |lease: &str| {
                 panes.iter().rfind(|p| p.lease == lease).map(|p| PaneRef {
                     node: p.node.clone(),
@@ -38,9 +43,13 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
             };
             // A pane started but not traced yet (its CLI at a startup
             // prompt) is a worker too: starting, and reachable to take over.
+            // Silent for minutes it is stuck or dead: quiet, then gone.
             for pane in &panes {
-                if !last.iter().any(|(lease, _, _)| *lease == pane.lease) {
-                    starting.push(pane.lease.clone());
+                let age = now - pane.at;
+                if !last.iter().any(|(lease, _, _)| *lease == pane.lease)
+                    && age < STARTING_GONE_AFTER
+                {
+                    starting.push((pane.lease.clone(), age >= STARTING_QUIET_AFTER));
                 }
             }
             let workers = last
@@ -55,10 +64,10 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                     pane: pane_of(&lease),
                     lease,
                 })
-                .chain(starting.iter().map(|lease| WorkerView {
+                .chain(starting.iter().map(|(lease, quiet)| WorkerView {
                     lease: lease.clone(),
                     last: "starting".to_owned(),
-                    quiet: false,
+                    quiet: *quiet,
                     pane: pane_of(lease),
                 }))
                 .collect();

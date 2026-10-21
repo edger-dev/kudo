@@ -606,6 +606,7 @@ impl ContextStore {
                 lease: field(e, LEASE).to_owned(),
                 node: field(e, NODE).to_owned(),
                 job: field(e, JOB).to_owned(),
+                at: e.ts.parse::<jiff::Timestamp>().map_or(0, |t| t.as_second()),
             })
             .collect())
     }

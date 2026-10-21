@@ -19,12 +19,40 @@ use kudo_worker::WorkerSetup;
 use kudo_shim::startup::{Startup, plan_startup};
 use kudo_shim::{HubClient, ShimServer, call_timeout_from_env, hub_addr_from_env};
 
+/// What `kudo-shim --help` prints.
+const USAGE: &str = "\
+kudo-shim — kudo's agent-side binary
+
+usage:
+  kudo-shim                      an MCP server on stdio (the CLI starts it): job
+                                 tools over the hub, and worker tools in a worker
+  kudo-shim hook <event>         answer a worker's CLI hook (session-start, stop,
+                                 pre-compact, user-prompt-submit)
+  kudo-shim context <command>    drive a context by hand (new, enqueue, show,
+                                 list, trace, why, repo add)
+  kudo-shim worker <context> [--repo <name>]
+                                 start a worker session here
+  kudo-shim --version | --help
+";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `kudo-shim hook <event>`: the CLI's hooks. Answered from the context
     // store before anything dials the hub — a worker's loop must survive the
     // hub and the node restarting.
     let args: Vec<String> = std::env::args().collect();
+    // implements: 35e0ccd93acf733faaacad05140d9932384b173b1a02353b7145c879441b2c6a@35e0ccd93acf733faaacad05140d9932384b173b1a02353b7145c879441b2c6a
+    match args.get(1).map(String::as_str) {
+        Some("--version" | "-V" | "version") => {
+            println!("kudo-shim {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Some("--help" | "-h" | "help") => {
+            print!("{USAGE}");
+            return Ok(());
+        }
+        _ => {}
+    }
     if args.get(1).map(String::as_str) == Some("hook") {
         std::process::exit(run_hook(
             args.get(2).map(String::as_str).unwrap_or_default(),
