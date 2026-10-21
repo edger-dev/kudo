@@ -38,6 +38,25 @@ nothing stops a person on the network. So:
   `http://127.0.0.1:8080`;
 - never bind it to a shared or public address.
 
+## Starting a worker, and taking it over
+
+Under each context, **start a worker on <node>** starts `kudo-shim worker`
+for that context as a terminal job on that node (in the context's repo there,
+when it declares one — otherwise in `/tmp`, where the agent CLI first asks to
+trust the folder). The console picks the worker's lease, records the pane,
+and selects it: the **terminal** pane shows its screen (re-read every second)
+and takes typing — a line with Enter, or Enter / Ctrl-C / Esc alone. A worker
+whose CLI has not started its session yet shows as *starting*, and can be
+taken over all the same — which is how you answer a startup prompt.
+
+Only panes the console started can be typed into, and only by the console
+(the node refuses input from anyone else). A node too old to start a worker
+pane is refused, and the job it started is stopped.
+
+To reach the console by a name other than localhost (through a tunnel that
+keeps a hostname), list it in `KUDO_CONSOLE_HOSTS` (comma-separated); any
+other `Host` is refused, which also defeats DNS rebinding.
+
 ## Live updates
 
 The server subscribes to the hub's `kudo/` events and the page long-polls a

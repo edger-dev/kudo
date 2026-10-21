@@ -5,17 +5,23 @@
 
 use dioxus::prelude::*;
 
-use crate::model::{ConsoleData, PaneRef};
+use crate::model::{ConsoleData, PaneRef, TerminalView};
 
 /// Everything the panes draw from, with `selected` (an id or unique prefix)
 /// as the selected context.
 #[server]
-pub async fn console_data(
-    selected: Option<String>,
-    pane: Option<PaneRef>,
-) -> Result<ConsoleData, ServerFnError> {
+pub async fn console_data(selected: Option<String>) -> Result<ConsoleData, ServerFnError> {
     crate::server::guarded().await?;
-    Ok(crate::server::console_data(selected, pane).await)
+    Ok(crate::server::console_data(selected).await)
+}
+
+/// A pane's screen, for the terminal pane's poll.
+#[server]
+pub async fn pane_screen(pane: PaneRef) -> Result<TerminalView, ServerFnError> {
+    crate::server::guarded().await?;
+    crate::server::pane_screen(pane)
+        .await
+        .map_err(ServerFnError::new)
 }
 
 /// Enqueue `ask` under the context `context` (an id or unique prefix).
@@ -39,7 +45,7 @@ pub async fn wait_version(after: u64) -> Result<u64, ServerFnError> {
 /// Start a worker for `context` on `node`, in a pane the console can take
 /// over: the job id.
 #[server]
-pub async fn start_worker(context: String, node: String) -> Result<String, ServerFnError> {
+pub async fn start_worker(context: String, node: String) -> Result<PaneRef, ServerFnError> {
     crate::server::guarded().await?;
     crate::server::start_worker(context, node)
         .await

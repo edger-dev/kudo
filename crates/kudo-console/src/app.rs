@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::layout::{Layout, THREE_PANES};
-use crate::selection::Selection;
+use crate::selection::{Notice, Selection};
 use crate::shell::Shell;
 
 /// The arrangement this console shows: change this value, not the components.
@@ -21,6 +21,14 @@ async fn pause(millis: u32) {
 #[component]
 pub fn App() -> Element {
     let selection = use_context_provider(|| Signal::new(Selection::default()));
+    let notice = use_context_provider(|| Signal::new(Notice::default()));
+    // The taken-over pane's screen, polled on its own beat: a cheap call, not
+    // a re-read of the whole console.
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(unused_mut, reason = "the poll is the page's")
+    )]
+    let mut screen_tick = use_signal(|| 0u64);
     // Bumped on every long-poll answer: something moved, or a while passed.
     let mut tick = use_signal(|| 0u64);
     use_future(move || async move {
@@ -49,18 +57,25 @@ pub fn App() -> Element {
         loop {
             pause(1000).await;
             if selection.read().pane.is_some() {
-                tick += 1;
+                screen_tick += 1;
             }
         }
     });
     let data = use_server_future(move || {
         let _ = tick();
-        let (selected, pane) = {
-            let s = selection.read();
-            (s.context.clone(), s.pane.clone())
-        };
-        async move { crate::api::console_data(selected, pane).await }
+        let selected = selection.read().context.clone();
+        async move { crate::api::console_data(selected).await }
     })?;
+    let terminal = use_resource(move || {
+        let _ = screen_tick();
+        let pane = selection.read().pane.clone();
+        async move {
+            match pane {
+                Some(pane) => crate::api::pane_screen(pane).await.ok(),
+                None => None,
+            }
+        }
+    });
     let mut ask = use_signal(String::new);
     let read = data.read();
     let current = read
@@ -97,9 +112,16 @@ pub fn App() -> Element {
             if let Some(error) = error {
                 p { style: "color:#a00;", "{error}" }
             }
+            if let Some(said) = notice.read().0.clone() {
+                p { style: "color:#a00;", "{said}" }
+            }
         }
         match &*read {
-            Some(Ok(d)) => rsx! { Shell { layout: LAYOUT, data: d.clone() } },
+            Some(Ok(d)) => {
+                let mut d = d.clone();
+                d.terminal = terminal.read().clone().flatten();
+                rsx! { Shell { layout: LAYOUT, data: d } }
+            }
             Some(Err(e)) => rsx! { p { "{e}" } },
             None => rsx! { p { "loading" } },
         }

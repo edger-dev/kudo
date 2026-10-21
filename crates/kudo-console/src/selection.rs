@@ -10,3 +10,7 @@ pub struct Selection {
     /// The pane being taken over.
     pub pane: Option<crate::model::PaneRef>,
 }
+
+/// What the last action said, when it failed: shown above the panes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Notice(pub Option<String>);

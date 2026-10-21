@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 
 use crate::layout::{Direction, Layout, PaneKind};
 use crate::model::ConsoleData;
-use crate::selection::Selection;
+use crate::selection::{Notice, Selection};
 
 /// The panes of `layout`, drawn from `data`.
 #[component]
@@ -110,7 +110,14 @@ fn WherePane(data: ConsoleData) -> Element {
                                 e.stop_propagation();
                                 let (context, node) = (context.clone(), node.clone());
                                 async move {
-                                    let _ = crate::api::start_worker(context, node).await;
+                                    match crate::api::start_worker(context, node).await {
+                                        Ok(pane) => {
+                                            if let Some(mut selection) = selection {
+                                                selection.write().pane = Some(pane);
+                                            }
+                                        }
+                                        Err(e) => say(e.to_string()),
+                                    }
                                 }
                             }
                         },
@@ -151,31 +158,68 @@ fn TracePane(data: ConsoleData) -> Element {
     }
 }
 
+/// Say what failed, above the panes (when the page provides the notice).
+fn say(text: String) {
+    if let Some(mut notice) = try_consume_context::<Signal<Notice>>() {
+        notice.set(Notice(Some(text)));
+    }
+}
+
+/// Type `bytes` into a pane, in pieces a node takes whole; whether it all went.
+async fn type_all(pane: crate::model::PaneRef, bytes: Vec<u8>) -> bool {
+    for piece in bytes.chunks(4096) {
+        if let Err(e) =
+            crate::api::type_into(pane.node.clone(), pane.job.clone(), piece.to_vec()).await
+        {
+            say(format!("not typed: {e}"));
+            return false;
+        }
+    }
+    true
+}
+
 /// A worker's pane, taken over: its screen, and keys to type into it.
 #[component]
 fn TerminalPane(data: ConsoleData) -> Element {
+    let selection = try_consume_context::<Signal<Selection>>();
     let Some(terminal) = data.terminal.clone() else {
         return rsx! { p { "take over a worker to see its pane" } };
     };
     let mut typed = use_signal(String::new);
     let pane = terminal.pane.clone();
-    let send = move |bytes: Vec<u8>| {
+    let key = move |bytes: Vec<u8>| {
         let pane = pane.clone();
         async move {
-            let _ = crate::api::type_into(pane.node, pane.job, bytes).await;
+            let _ = type_all(pane, bytes).await;
         }
     };
-    let (enter, ctrl_c, escape) = (send.clone(), send.clone(), send.clone());
+    let (enter, ctrl_c, escape) = (key.clone(), key.clone(), key.clone());
+    let line_pane = terminal.pane.clone();
     rsx! {
-        h3 { "pane {terminal.pane.job} on {terminal.pane.node}" }
+        h3 {
+            "pane {terminal.pane.job} on {terminal.pane.node} "
+            button {
+                onclick: move |_| {
+                    if let Some(mut selection) = selection {
+                        selection.write().pane = None;
+                    }
+                },
+                "close"
+            }
+        }
         pre { style: "background:#111;color:#ddd;padding:6px;white-space:pre;", "{terminal.screen}" }
         form {
             onsubmit: move |e: FormEvent| {
                 e.prevent_default();
+                let pane = line_pane.clone();
                 let mut line = typed().into_bytes();
                 line.push(b'\r');
-                typed.set(String::new());
-                send(line)
+                async move {
+                    // Kept until it went: a refused line is not lost.
+                    if type_all(pane, line).await {
+                        typed.set(String::new());
+                    }
+                }
             },
             input {
                 style: "width:60%;",

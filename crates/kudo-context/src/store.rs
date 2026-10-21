@@ -597,8 +597,9 @@ impl ContextStore {
     pub fn panes(&self, ctx: &ContextId) -> Result<Vec<PaneRecord>, Error> {
         let view = self.view()?;
         view.require_context(ctx)?;
-        Ok(view
-            .of_kind_in("pane", ctx)
+        let mut events = view.of_kind_in("pane", ctx);
+        events.sort_by(|a, b| a.ts.cmp(&b.ts).then_with(|| a.id.cmp(&b.id)));
+        Ok(events
             .into_iter()
             .map(|e| PaneRecord {
                 lease: field(e, LEASE).to_owned(),

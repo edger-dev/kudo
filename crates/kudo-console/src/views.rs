@@ -29,12 +29,20 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                 }
             }
             let panes = store.panes(&c.id)?;
+            let mut starting: Vec<String> = Vec::new();
             let pane_of = |lease: &str| {
                 panes.iter().rfind(|p| p.lease == lease).map(|p| PaneRef {
                     node: p.node.clone(),
                     job: p.job.clone(),
                 })
             };
+            // A pane started but not traced yet (its CLI at a startup
+            // prompt) is a worker too: starting, and reachable to take over.
+            for pane in &panes {
+                if !last.iter().any(|(lease, _, _)| *lease == pane.lease) {
+                    starting.push(pane.lease.clone());
+                }
+            }
             let workers = last
                 .into_iter()
                 .filter(|(_, event, _)| !matches!(event, TraceEvent::LeaseEnd(_)))
@@ -47,6 +55,12 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                     pane: pane_of(&lease),
                     lease,
                 })
+                .chain(starting.iter().map(|lease| WorkerView {
+                    lease: lease.clone(),
+                    last: "starting".to_owned(),
+                    quiet: false,
+                    pane: pane_of(lease),
+                }))
                 .collect();
             Ok(ContextCard {
                 ready: store.ready_count(&c.id, now)?,

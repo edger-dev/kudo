@@ -9,6 +9,21 @@
 
 use dioxus::fullstack::{HeaderMap, Method};
 
+/// Whether `host` (with its port) is one this console answers to: localhost,
+/// or a name listed in `KUDO_CONSOLE_HOSTS` (comma-separated).
+fn answers_to(host: &str) -> bool {
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if port.bytes().all(|b| b.is_ascii_digit()) => name,
+        _ => host,
+    };
+    if matches!(name, "localhost" | "127.0.0.1" | "[::1]") {
+        return true;
+    }
+    std::env::var("KUDO_CONSOLE_HOSTS")
+        .map(|list| list.split(',').any(|h| h.trim() == name))
+        .unwrap_or(false)
+}
+
 /// Whether a request may reach a server function. A page load (GET or HEAD,
 /// in which the page's own render runs them) writes nothing another site
 /// could aim; anything else must be JSON, and not from another origin.
@@ -17,6 +32,12 @@ pub fn allowed(method: &Method, headers: &HeaderMap) -> Result<(), String> {
         return Ok(());
     }
     let get = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    // DNS rebinding makes a hostile page same-origin with itself: the host
+    // must be one this console answers to.
+    let host = get("host").unwrap_or_default();
+    if !answers_to(host) {
+        return Err(format!("the console does not answer to {host:?}"));
+    }
     if !get("content-type").is_some_and(|ct| ct.starts_with("application/json")) {
         return Err("the console takes JSON only".to_owned());
     }

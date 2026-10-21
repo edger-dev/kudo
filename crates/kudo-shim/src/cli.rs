@@ -292,10 +292,10 @@ pub fn lease_for(given: Option<String>) -> Result<String, String> {
     }
 }
 
-/// The lease a worker runs under, from the environment as `lookup` reads it
-/// (stub).
+/// The lease a worker runs under, from the environment as `lookup` reads it:
+/// the launcher's `KUDO_GIVEN_LEASE`, never an inherited `KUDO_LEASE`.
 pub fn lease_from(lookup: impl Fn(&str) -> Option<String>) -> Result<String, String> {
-    lease_for(lookup(kudo_worker::env::LEASE_ENV))
+    lease_for(lookup(kudo_worker::env::GIVEN_LEASE_ENV))
 }
 
 /// The mirror settings to hand on by name, from these variables.
@@ -388,7 +388,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
     };
     // A launcher that picked the lease (the console, to record the pane it
     // starts) hands it in.
-    let lease = match lease_for(std::env::var(kudo_worker::env::LEASE_ENV).ok()) {
+    let lease = match lease_from(|k| std::env::var(k).ok()) {
         Ok(lease) => lease,
         Err(e) => return e,
     };

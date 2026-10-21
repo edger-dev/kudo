@@ -64,7 +64,7 @@ fn store() -> Result<Arc<ContextStore>, String> {
     Ok(store)
 }
 
-pub(crate) async fn console_data(selected: Option<String>, pane: Option<PaneRef>) -> ConsoleData {
+pub(crate) async fn console_data(selected: Option<String>) -> ConsoleData {
     follow_events();
     // The store's reads (and its mirror's syncs) block: off the runtime.
     let read = tokio::task::spawn_blocking(move || {
@@ -83,13 +83,34 @@ pub(crate) async fn console_data(selected: Option<String>, pane: Option<PaneRef>
         },
     };
     data.nodes = nodes().await;
-    if let Some(pane) = pane {
-        data.terminal = Some(TerminalView {
-            screen: screen(&pane).await.unwrap_or_else(|e| format!("({e})")),
-            pane,
-        });
-    }
     data
+}
+
+/// A recorded pane's screen.
+pub(crate) async fn pane_screen(pane: PaneRef) -> Result<TerminalView, String> {
+    let screen = screen(&pane).await?;
+    Ok(TerminalView { pane, screen })
+}
+
+/// Whether the console recorded this pane: typing reaches only panes it
+/// started, never any job on any node.
+async fn recorded(pane: &PaneRef) -> Result<bool, String> {
+    let pane = pane.clone();
+    tokio::task::spawn_blocking(move || {
+        let store = store()?;
+        for card in store.contexts().map_err(|e| e.to_string())? {
+            let panes = store.panes(&card.id).map_err(|e| e.to_string())?;
+            if panes
+                .iter()
+                .any(|p| p.node == pane.node && p.job == pane.job)
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// The hub, dialled within two seconds.
@@ -118,84 +139,28 @@ async fn screen(pane: &PaneRef) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&reply.bytes).into_owned())
 }
 
-/// Start `kudo-shim worker <context>` as a terminal job on `node` — in the
-/// context's repo on that node when it declares one — under a lease picked
-/// here, and record the pane so the worker can be taken over.
-pub(crate) async fn start_worker(context: String, node: String) -> Result<String, String> {
+/// Start a worker in a pane on `node`; the pane. The launch policy is the
+/// shim's — the console only calls it.
+pub(crate) async fn start_worker(context: String, node: String) -> Result<PaneRef, String> {
     let store = tokio::task::spawn_blocking(store)
         .await
         .map_err(|e| e.to_string())??;
-    let (ctx, repo) = {
-        let store = store.clone();
-        let (context, node) = (context.clone(), node.clone());
-        tokio::task::spawn_blocking(move || {
-            let ctx = store.resolve_context(&context).map_err(|e| e.to_string())?;
-            let repo = store
-                .repos(&ctx)
-                .map_err(|e| e.to_string())?
-                .into_iter()
-                .find(|r| r.node == node)
-                .map(|r| r.name);
-            Ok::<_, String>((ctx, repo))
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
-    let lease = kudo_worker::new_lease_id().map_err(|e| e.to_string())?;
-    let mut argv = vec!["kudo-shim".to_owned(), "worker".to_owned(), ctx.0.clone()];
-    if let Some(repo) = repo {
-        argv.extend(["--repo".to_owned(), repo]);
-    }
-    // Only what binds the worker: its secrets are the node's own environment.
-    let mut env = vec![moco_job::wire::EnvVar {
-        name: kudo_worker::env::LEASE_ENV.to_owned(),
-        value: lease.clone(),
-    }];
-    if let Some(addr) = kudo_shim::hub_addr_from_env() {
-        env.push(moco_job::wire::EnvVar {
-            name: kudo_shim::HUB_ADDR_ENV.to_owned(),
-            value: addr,
-        });
-    }
-    let wanted = env.len();
     let hub = hub().await?;
-    let started = kudo_shim::jobs::start(
-        &hub,
-        kudo_shim::Target::node(node.clone()),
-        kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
-        moco_job::wire::StartRequest {
-            argv,
-            cwd: "/tmp".to_owned(),
-            deadline_ms: 0,
-            caller: moco_job::wire::WireCaller::Console,
-            env,
-            human_view: moco_job::lens::HumanView::Terminal,
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    // An older node ignores the fields it does not know: it would run the
-    // worker unbound, in no terminal. Say so rather than record a pane.
-    if started.human_view != moco_job::lens::HumanView::Terminal
-        || started.env_set as usize != wanted
-    {
-        return Err(format!(
-            "node {node} is too old to start a worker pane (it did not apply the \
-             environment or the terminal); job {} was started — kill it",
-            started.id
-        ));
-    }
-    let job = started.id.clone();
-    tokio::task::spawn_blocking(move || store.record_pane(&ctx, &lease, &node, &job, now()))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+    let pane = kudo_shim::panes::start(&hub, store, &context, &node, now()).await?;
     bump();
-    Ok(started.id)
+    Ok(PaneRef {
+        node: pane.node,
+        job: pane.job,
+    })
 }
 
 /// Type into a pane, as the console.
 pub(crate) async fn type_into(node: String, job: String, bytes: Vec<u8>) -> Result<(), String> {
+    let pane = PaneRef { node, job };
+    if !recorded(&pane).await? {
+        return Err("that is not a pane this console started".to_owned());
+    }
+    let PaneRef { node, job } = pane;
     let hub = hub().await?;
     kudo_shim::jobs::input(
         &hub,

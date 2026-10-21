@@ -16,6 +16,10 @@ pub const MIRROR_ENV: &str = "KUDO_CONTEXT_MIRROR";
 pub const CONTEXT_ENV: &str = "KUDO_CONTEXT";
 /// The lease id (also the CLI's session id).
 pub const LEASE_ENV: &str = "KUDO_LEASE";
+/// A lease a launcher picked for the worker it starts (the console, to record
+/// the pane). Its own variable: every shell inside a worker session inherits
+/// that session's KUDO_LEASE, which a nested launch must never reuse.
+pub const GIVEN_LEASE_ENV: &str = "KUDO_GIVEN_LEASE";
 /// Seconds a claim stays live without a submit.
 pub const CLAIM_TTL_ENV: &str = "KUDO_CLAIM_TTL";
 /// Items the Stop hook may hand over before the lease ends.
