@@ -147,3 +147,43 @@ async fn an_enqueue_is_published() {
     let got = next(&mut rx).await;
     assert_eq!(got.topic, format!("kudo/context/{ctx}/enqueue/enqueued"));
 }
+
+/// A hub that accepts the connection and never answers costs a hook about the
+/// budget per event, not the session.
+#[test]
+fn a_hub_that_hangs_costs_a_hook_about_the_budget() {
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = silent.local_addr().unwrap().to_string();
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for socket in silent.incoming().flatten() {
+            held.push(socket); // accept, never answer
+        }
+    });
+    let dir = std::env::temp_dir().join(format!("kudo-shim-events-hang-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let store = ContextStore::init(&dir).unwrap();
+    let ctx = store.create_context("hung", "# h\n", T0).unwrap();
+    let setup = WorkerSetup {
+        store_dir: dir,
+        context: ctx,
+        lease: "lease-h".into(),
+        claim_ttl: 600,
+        max_turns: 10,
+    };
+    let started = std::time::Instant::now();
+    let reply = hook::run_with(
+        "session-start",
+        r#"{"hook_event_name":"SessionStart"}"#,
+        &setup,
+        T0,
+        Some(events::observer(addr)),
+    );
+    assert_eq!(reply.code, 0);
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+}

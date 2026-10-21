@@ -30,6 +30,7 @@ struct Fixture {
     store: ContextStore,
     book: LeaseBook,
     ctx: ContextId,
+    dir: PathBuf,
 }
 
 impl Fixture {
@@ -43,7 +44,12 @@ impl Fixture {
             store,
             book: LeaseBook::new(&dir.join("leases")),
             ctx,
+            dir,
         }
+    }
+
+    fn store_dir(&self) -> PathBuf {
+        self.dir.join("store")
     }
 
     fn worker(&self, max_turns: u32) -> Worker<'_> {
@@ -483,4 +489,39 @@ fn the_observer_sees_what_the_trace_records() {
     );
     let traced: Vec<&str> = trace_of(&f).iter().map(|e| e.name()).collect();
     assert_eq!(traced, ["lease-start", "handoff"]);
+}
+
+/// An event whose trace could not be written is not published: the channel
+/// says only what the trace holds.
+#[test]
+fn an_event_the_trace_did_not_take_is_not_observed() {
+    use std::sync::{Arc, Mutex};
+    let f = Fixture::new();
+    let seen: Arc<Mutex<u32>> = Arc::default();
+    let w = f.worker(10).with_observer({
+        let seen = seen.clone();
+        Arc::new(
+            move |_: &ContextId, _: &str, _: &kudo_context::TraceEvent| {
+                *seen.lock().unwrap() += 1;
+            },
+        )
+    });
+    // The store's directory goes read-only: the trace write fails.
+    let kinora = f.store_dir().join(".kinora");
+    let ro = |mode| {
+        use std::os::unix::fs::PermissionsExt;
+        for sub in ["staged", "store"] {
+            let _ =
+                std::fs::set_permissions(kinora.join(sub), std::fs::Permissions::from_mode(mode));
+        }
+    };
+    ro(0o555);
+    let started = w.session_start(T0);
+    ro(0o755);
+    let _ = started;
+    assert_eq!(
+        *seen.lock().unwrap(),
+        0,
+        "nothing published that the trace lacks"
+    );
 }
