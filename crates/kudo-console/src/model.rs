@@ -74,6 +74,23 @@ pub struct ConsoleData {
     pub selected: Option<ContextDetail>,
     /// What went wrong reading the selection, said beside the panes.
     pub error: Option<String>,
+    /// Jobs on any node waiting for the author's verdict, oldest first.
+    pub approvals: Vec<ApprovalView>,
     /// The pane being taken over, if any.
     pub terminal: Option<TerminalView>,
+}
+
+/// A job waiting for the author's verdict.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalView {
+    pub node: String,
+    pub job: String,
+    pub argv: Vec<String>,
+    pub cwd: String,
+    /// The workspace that owns it.
+    pub owner: String,
+    pub waited_s: u64,
+    pub left_s: u64,
+    /// The context whose worker asked, when one traced it.
+    pub context: Option<String>,
 }

@@ -54,6 +54,7 @@ fn sample() -> ConsoleData {
             }],
         }),
         error: None,
+        approvals: vec![],
         terminal: Some(TerminalView {
             pane: PaneRef {
                 node: "yolo".into(),

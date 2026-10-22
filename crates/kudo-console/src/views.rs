@@ -130,3 +130,20 @@ pub fn detail(store: &ContextStore, id: &str) -> Result<ContextDetail, Error> {
         trace,
     })
 }
+
+pub fn approvals(
+    _pending: Vec<(String, moco_job::wire::PendingJob)>,
+    _asked: &std::collections::HashMap<(String, String), String>,
+) -> Vec<crate::model::ApprovalView> {
+    Vec::new()
+}
+
+pub fn job_contexts(
+    _store: &ContextStore,
+) -> Result<std::collections::HashMap<(String, String), String>, Error> {
+    Ok(Default::default())
+}
+
+pub fn verdict_from(_name: &str) -> Option<moco_job::wire::WireVerdict> {
+    None
+}
