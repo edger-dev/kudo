@@ -524,7 +524,7 @@ impl ContextStore {
         lease: &str,
         event: &TraceEvent,
         now: Now,
-    ) -> Result<(), Error> {
+    ) -> Result<String, Error> {
         let view = self.view()?;
         view.require_context(ctx)?;
         let seq = (view
@@ -548,14 +548,14 @@ impl ContextStore {
             }
             TraceEvent::LeaseEnd(why) => ("lease-end", "", "", why.as_str()),
             TraceEvent::Wait => ("wait", "", "", ""),
-            TraceEvent::JobStart { .. } | TraceEvent::JobEnd { .. } => {
-                (event.name(), "", "", job_line.as_str())
-            }
+            TraceEvent::JobStart { .. }
+            | TraceEvent::JobEnd { .. }
+            | TraceEvent::ToolCall { .. } => (event.name(), "", "", job_line.as_str()),
         };
         let line = event.to_line();
         // The nonce keeps two equal events of one lease two kinos.
         let content = format!("<!-- kudo trace {lease} #{seq} {} -->\n{line}\n", nonce()?);
-        self.put(
+        let born = self.put(
             "text",
             content.into_bytes(),
             meta([
@@ -571,7 +571,23 @@ impl ContextStore {
             None,
             now,
         )?;
-        Ok(())
+        Ok(born.id)
+    }
+
+    pub fn record_tool_call(
+        &self,
+        _ctx: &ContextId,
+        _lease: &str,
+        _command: &str,
+        _exit: Option<i32>,
+        _output: &str,
+        _now: Now,
+    ) -> Result<String, Error> {
+        Err(Error::Kinora("not yet".into()))
+    }
+
+    pub fn kino_text(&self, _id: &str) -> Result<String, Error> {
+        Err(Error::Kinora("not yet".into()))
     }
 
     /// Record that `lease` runs in the pane `job` on `node`: written by the

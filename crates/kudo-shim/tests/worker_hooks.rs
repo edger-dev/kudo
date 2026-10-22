@@ -367,3 +367,41 @@ fn a_verdict_is_read_from_the_submit_arguments() {
     assert!(close(None, Some("+2h"), None).is_err());
     assert!(close(None, None, Some("a stray note")).is_err());
 }
+
+/// The PostToolUse hook records a shell call and tells the worker the kino to
+/// cite; any other tool is let be.
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+#[test]
+fn a_shell_call_is_recorded_and_its_kino_named() {
+    let (setup, store) = setup();
+    let input = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": { "command": "df -h /" },
+        "tool_response": { "stdout": "/dev/sda1 50% /", "stderr": "", "interrupted": false }
+    })
+    .to_string();
+    let reply = hook::run("post-tool-use", &input, &setup, T0);
+    assert_eq!(reply.code, 0);
+    assert!(reply.stdout.contains("kino://"), "{}", reply.stdout);
+    assert!(
+        reply.stdout.contains("additionalContext"),
+        "{}",
+        reply.stdout
+    );
+    let traced = store.trace(&setup.context).unwrap();
+    assert!(
+        traced.iter().any(|t| matches!(&t.event, kudo_context::TraceEvent::ToolCall { command, .. } if command == "df -h /")),
+        "{traced:?}"
+    );
+
+    let read = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Read",
+        "tool_input": { "file_path": "/etc/hosts" },
+        "tool_response": {}
+    })
+    .to_string();
+    let quiet = hook::run("post-tool-use", &read, &setup, T0 + 1);
+    assert!(quiet.stdout.is_empty());
+}

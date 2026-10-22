@@ -244,3 +244,24 @@ fn the_launch_preanswers_first_run_prompts() {
     );
     assert_eq!(p.argv.last().unwrap(), KICKOFF, "the kickoff stays last");
 }
+
+/// Shell calls are recorded as they return: a PostToolUse hook, for Bash
+/// only, through the shim.
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+#[test]
+fn shell_calls_are_recorded_by_a_post_tool_use_hook() {
+    let p = plan(
+        &setup("l"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &[],
+    );
+    let settings: Value = serde_json::from_str(flag(&p.argv, "--settings")).unwrap();
+    let entry = &settings["hooks"]["PostToolUse"][0];
+    assert_eq!(entry["matcher"], "Bash");
+    assert_eq!(
+        entry["hooks"][0]["command"],
+        "/bin/kudo-shim hook post-tool-use"
+    );
+}

@@ -220,6 +220,9 @@ pub enum TraceEvent {
         waiting: bool,
         argv: String,
     },
+    /// A shell call the worker made, recorded as it returned: the command and
+    /// its exit (the output is in the kino's body).
+    ToolCall { command: String, exit: Option<i32> },
     /// The worker saw that job end: how (`done:0`, `denied:rule`, …), and
     /// under which verdict.
     JobEnd {
@@ -245,6 +248,7 @@ impl TraceEvent {
             Self::Wait => "wait",
             Self::JobStart { .. } => "job-start",
             Self::JobEnd { .. } => "job",
+            Self::ToolCall { .. } => "tool-call",
         }
     }
 
@@ -276,6 +280,7 @@ impl TraceEvent {
                 status,
                 verdict,
             } => format!("{} {node} {job} {status} {verdict}", self.name()),
+            Self::ToolCall { .. } => self.name().to_owned(),
         }
     }
 

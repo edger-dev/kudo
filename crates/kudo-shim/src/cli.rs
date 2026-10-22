@@ -257,7 +257,9 @@ pub fn context_with(
                         format!("submit {} -> {}", short(&claim.0), short(&submission.0))
                     }
                     TraceEvent::LeaseEnd(why) => format!("lease-end {why}"),
-                    TraceEvent::JobStart { .. } | TraceEvent::JobEnd { .. } => t.event.to_line(),
+                    TraceEvent::JobStart { .. }
+                    | TraceEvent::JobEnd { .. }
+                    | TraceEvent::ToolCall { .. } => t.event.to_line(),
                 };
                 let lease = t.lease.get(..8).unwrap_or(&t.lease);
                 out.push_str(&format!("{}  {lease} #{}  {what}\n", t.at, t.seq));

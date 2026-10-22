@@ -230,3 +230,100 @@ fn a_governed_job_is_traced_from_start_to_end() {
     assert_eq!(end.to_line(), "job pc 1792-1-1 done:0 approved-once");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A shell call is recorded with its exit and a capped excerpt of its
+/// output; a submission citing it is established, and one citing another
+/// context's call is not.
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
+#[test]
+fn a_recorded_shell_call_is_evidence_in_its_context() {
+    let (dir, store) = store("trace-toolcall");
+    let ctx = store.create_context("calls", "# calls\n", T0).unwrap();
+    let other = store.create_context("other", "# other\n", T0).unwrap();
+    let long = format!("{}MIDDLE{}", "a".repeat(5000), "z".repeat(5000));
+    let call = store
+        .record_tool_call(&ctx, "lease-t", "df -h /", Some(0), &long, T0)
+        .unwrap();
+    let elsewhere = store
+        .record_tool_call(&other, "lease-o", "uptime", Some(0), "up 3 days", T0)
+        .unwrap();
+    let events: Vec<TraceEvent> = store
+        .trace(&ctx)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.event)
+        .collect();
+    assert_eq!(
+        events,
+        vec![TraceEvent::ToolCall {
+            command: "df -h /".into(),
+            exit: Some(0)
+        }]
+    );
+    let body = store.kino_text(&call).unwrap();
+    assert!(body.contains("df -h /") && body.contains("aaaa") && body.contains("zzzz"));
+    assert!(!body.contains("MIDDLE"), "the middle is cut");
+    assert!(body.len() < 4096 + 512, "capped: {}", body.len());
+
+    store.enqueue(&ctx, "look", T0).unwrap();
+    let claim = store.pull(&ctx, "lease-t", T0, 600).unwrap().unwrap();
+    let sub = Submission {
+        head: "# calls\nroot has room\n".into(),
+        log: "looked".into(),
+        established: vec![
+            kudo_context::Established {
+                claim: "root has room".into(),
+                evidence: vec![call.clone()],
+            },
+            kudo_context::Established {
+                claim: "borrowed".into(),
+                evidence: vec![elsewhere.clone()],
+            },
+        ],
+        ..Default::default()
+    };
+    let done = store.submit(&claim.id, &sub, T0 + 1).unwrap();
+    assert_eq!(done.downgraded, vec!["borrowed".to_owned()]);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A job event's trace kino is evidence too: recording returns its id.
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+#[test]
+fn a_job_event_is_evidence_in_its_context() {
+    let (dir, store) = store("trace-jobevidence");
+    let ctx = store.create_context("jobs", "# jobs\n", T0).unwrap();
+    let end = store
+        .record_trace(
+            &ctx,
+            "lease-j",
+            &TraceEvent::JobEnd {
+                node: "pc".into(),
+                job: "j".into(),
+                status: "done:0".into(),
+                verdict: "seed-allow".into(),
+            },
+            T0,
+        )
+        .unwrap();
+    store.enqueue(&ctx, "look", T0).unwrap();
+    let claim = store.pull(&ctx, "lease-j", T0, 600).unwrap().unwrap();
+    let sub = Submission {
+        head: "# jobs\nran\n".into(),
+        log: "ran".into(),
+        established: vec![kudo_context::Established {
+            claim: "it ran".into(),
+            evidence: vec![end],
+        }],
+        ..Default::default()
+    };
+    assert!(
+        store
+            .submit(&claim.id, &sub, T0 + 1)
+            .unwrap()
+            .downgraded
+            .is_empty()
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
