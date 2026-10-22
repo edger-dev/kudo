@@ -24,6 +24,7 @@ pub mod panes;
 pub mod route;
 pub mod server;
 pub mod startup;
+pub mod waker;
 pub mod worker_tools;
 
 pub use error::ShimError;
