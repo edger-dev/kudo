@@ -39,7 +39,7 @@ fn a_waiting_job_shows_what_is_needed_to_answer_it() {
     for text in [
         "waiting for you",
         "df -h /",
-        "pc",
+        "on pc in /tmp",
         "/tmp",
         "home lab",
         "29 min left",
@@ -87,7 +87,7 @@ mod server_side {
     #[test]
     fn approvals_are_oldest_first_and_name_the_context_that_asked() {
         let mut asked = HashMap::new();
-        asked.insert(("pc".to_owned(), "j-old".to_owned()), "home lab".to_owned());
+        asked.insert("j-old".to_owned(), "home lab".to_owned());
         let views = views::approvals(
             vec![
                 ("yolo".into(), pending("j-new", 1_000)),
@@ -127,11 +127,11 @@ mod server_side {
             )
             .unwrap();
         let asked = views::job_contexts(&store).unwrap();
-        assert_eq!(
-            asked
-                .get(&("pc".to_owned(), "j-1".to_owned()))
-                .map(String::as_str),
-            Some("home lab")
+        let name = asked.get("j-1").expect("the job is named by its context");
+        assert!(name.starts_with("home lab "), "{name}");
+        assert!(
+            name.ends_with(&ctx.0[..12]),
+            "titles need not be unique: {name}"
         );
     }
 
@@ -156,4 +156,42 @@ mod server_side {
         );
         assert_eq!(views::verdict_from("maybe"), None);
     }
+
+    /// Every button sends a verdict the server reads.
+    #[test]
+    fn every_button_sends_a_known_verdict() {
+        for (label, verdict) in kudo_console::shell::VERDICTS {
+            assert!(
+                views::verdict_from(verdict).is_some(),
+                "{label} sends {verdict}"
+            );
+        }
+        assert_eq!(kudo_console::shell::VERDICTS.len(), 4);
+    }
+}
+
+/// An argv reads and edits as one shell-quoted line: an element with a space
+/// stays one element, and an unchanged edit is the same argv.
+#[test]
+fn an_argv_round_trips_through_its_text() {
+    use kudo_console::model::{argv_parse, argv_text};
+    let argv: Vec<String> = ["sh", "-c", "rm -rf /tmp/x", ""]
+        .iter()
+        .map(|a| (*a).to_owned())
+        .collect();
+    let text = argv_text(&argv);
+    assert_ne!(text, "sh -c rm -rf /tmp/x ", "quoted, not joined: {text}");
+    assert_eq!(argv_parse(&text), Some(argv));
+    assert_eq!(argv_parse("   "), None, "an empty edit is refused");
+    assert_eq!(argv_parse("echo 'unclosed"), None);
+}
+
+/// A node whose queue could not be read says so.
+#[test]
+fn an_unreadable_queue_is_said() {
+    let html = render(ConsoleData {
+        approvals_unknown: vec!["edger".into()],
+        ..ConsoleData::default()
+    });
+    assert!(html.contains("queue unknown on edger"), "{html}");
 }

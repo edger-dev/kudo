@@ -62,14 +62,14 @@ pub async fn type_into(node: String, job: String, bytes: Vec<u8>) -> Result<(), 
 }
 
 /// Answer the gate for the job `job` on `node`: `verdict` is `allow-once`,
-/// `allow-always`, `deny-once` or `deny-always`; `edited`, when not empty,
-/// is the argv to run instead (allow verdicts only). What it led to.
+/// `allow-always`, `deny-once` or `deny-always`; `edited`, when given, is the
+/// argv to run instead (allow verdicts only; never empty). What it led to.
 #[server]
 pub async fn decide(
     node: String,
     job: String,
     verdict: String,
-    edited: Vec<String>,
+    edited: Option<Vec<String>>,
 ) -> Result<String, ServerFnError> {
     crate::server::guarded().await?;
     crate::server::decide(node, job, verdict, edited)

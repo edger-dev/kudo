@@ -140,16 +140,17 @@ pub fn detail(store: &ContextStore, id: &str) -> Result<ContextDetail, Error> {
 }
 
 /// Every node's jobs waiting for a verdict, oldest first, each named by the
-/// context whose worker asked (from `asked`, keyed by node and job id).
+/// context whose worker asked (from `asked`, keyed by job id: a node may be
+/// spelled `yolo` by its worker and `edger::yolo` by the hub).
 // implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
 pub fn approvals(
     pending: Vec<(String, moco_job::wire::PendingJob)>,
-    asked: &std::collections::HashMap<(String, String), String>,
+    asked: &std::collections::HashMap<String, String>,
 ) -> Vec<crate::model::ApprovalView> {
     let mut views: Vec<crate::model::ApprovalView> = pending
         .into_iter()
         .map(|(node, job)| crate::model::ApprovalView {
-            context: asked.get(&(node.clone(), job.id.clone())).cloned(),
+            context: asked.get(&job.id).cloned(),
             owner: job.scope.to_string(),
             waited_s: job.waited_ms / 1000,
             left_s: job.left_ms / 1000,
@@ -163,16 +164,21 @@ pub fn approvals(
     views
 }
 
-/// Which context's worker started each job, by node and job id, from the
-/// contexts' job-start events.
+/// Which context's worker started each job, by job id, from the contexts'
+/// job-start events: its title and short id (titles need not be unique).
 pub fn job_contexts(
     store: &ContextStore,
-) -> Result<std::collections::HashMap<(String, String), String>, Error> {
+) -> Result<std::collections::HashMap<String, String>, Error> {
     let mut asked = std::collections::HashMap::new();
     for card in store.contexts()? {
+        let name = format!(
+            "{} {}",
+            card.title,
+            card.id.0.get(..12).unwrap_or(&card.id.0)
+        );
         for entry in store.trace(&card.id)? {
-            if let TraceEvent::JobStart { node, job, .. } = entry.event {
-                asked.insert((node, job), card.title.clone());
+            if let TraceEvent::JobStart { job, .. } = entry.event {
+                asked.insert(job, name.clone());
             }
         }
     }

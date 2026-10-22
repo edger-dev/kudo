@@ -60,6 +60,9 @@ fn short(id: &str) -> &str {
 fn WherePane(data: ConsoleData) -> Element {
     let selection = try_consume_context::<Signal<Selection>>();
     rsx! {
+        if !data.approvals_unknown.is_empty() {
+            p { "queue unknown on {data.approvals_unknown.join(\", \")} (not answering)" }
+        }
         if !data.approvals.is_empty() {
             h3 { "waiting for you" }
             for approval in data.approvals.iter() {
@@ -135,8 +138,9 @@ fn WherePane(data: ConsoleData) -> Element {
     }
 }
 
-/// The verdicts a waiting job offers, as the buttons name them.
-const VERDICTS: &[(&str, &str)] = &[
+/// The verdicts a waiting job offers: the button's label, and the verdict it
+/// sends.
+pub const VERDICTS: &[(&str, &str)] = &[
     ("allow once", "allow-once"),
     ("allow always", "allow-always"),
     ("deny once", "deny-once"),
@@ -148,16 +152,23 @@ const VERDICTS: &[(&str, &str)] = &[
 #[component]
 fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
     let mut editing = use_signal(|| None::<String>);
-    let argv = approval.argv.join(" ");
+    // One verdict at a time: the buttons wait while one is on its way.
+    let mut busy = use_signal(|| false);
+    let argv = crate::model::argv_text(&approval.argv);
     let left = approval.left_s.div_ceil(60);
     let (node, job) = (approval.node.clone(), approval.job.clone());
-    let send = move |verdict: &'static str, edited: Vec<String>| {
+    let send = move |verdict: &'static str, edited: Option<Vec<String>>| {
         let (node, job) = (node.clone(), job.clone());
         async move {
+            if busy() {
+                return;
+            }
+            busy.set(true);
             match crate::api::decide(node, job, verdict.to_owned(), edited).await {
                 Ok(done) => say(done),
                 Err(e) => say(e.to_string()),
             }
+            busy.set(false);
         }
     };
     rsx! {
@@ -174,9 +185,10 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                 for (label, verdict) in VERDICTS.iter().copied() {
                     button {
                         key: "{verdict}",
+                        disabled: busy(),
                         onclick: {
                             let send = send.clone();
-                            move |_| send(verdict, Vec::new())
+                            move |_| send(verdict, None)
                         },
                         "{label}"
                     }
@@ -196,10 +208,21 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                         let text = text.clone();
                         move |e: FormEvent| {
                             e.prevent_default();
-                            let edited: Vec<String> =
-                                text.split_whitespace().map(str::to_owned).collect();
-                            editing.set(None);
-                            send("allow-once", edited)
+                            let send = send.clone();
+                            let edited = crate::model::argv_parse(&text);
+                            if edited.is_some() {
+                                editing.set(None);
+                            }
+                            async move {
+                                match edited {
+                                    Some(argv) => send("allow-once", Some(argv)).await,
+                                    None => say(
+                                        "the edited command is empty or does not parse \
+                                         (unclosed quote?)"
+                                            .to_owned(),
+                                    ),
+                                }
+                            }
                         }
                     },
                     input {
@@ -207,7 +230,7 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                         value: "{text}",
                         oninput: move |e| editing.set(Some(e.value())),
                     }
-                    button { r#type: "submit", "allow this" }
+                    button { r#type: "submit", disabled: busy(), "allow this" }
                 }
             }
         }

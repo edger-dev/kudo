@@ -4156,6 +4156,7 @@ dependencies = [
  "kudo-worker",
  "moco-job",
  "serde",
+ "shlex",
  "tokio",
  "vox",
 ]

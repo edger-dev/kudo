@@ -76,6 +76,9 @@ pub struct ConsoleData {
     pub error: Option<String>,
     /// Jobs on any node waiting for the author's verdict, oldest first.
     pub approvals: Vec<ApprovalView>,
+    /// Nodes whose queue could not be read: nothing shown there is not
+    /// "nothing waiting".
+    pub approvals_unknown: Vec<String>,
     /// The pane being taken over, if any.
     pub terminal: Option<TerminalView>,
 }
@@ -93,4 +96,16 @@ pub struct ApprovalView {
     pub left_s: u64,
     /// The context whose worker asked, when one traced it.
     pub context: Option<String>,
+}
+
+/// An argv as one line a person reads and edits: shell-quoted, so
+/// `["sh", "-c", "rm -rf x"]` never reads like `sh -c rm -rf x`.
+pub fn argv_text(argv: &[String]) -> String {
+    shlex::try_join(argv.iter().map(String::as_str)).unwrap_or_else(|_| format!("{argv:?}"))
+}
+
+/// An edited line back to an argv: `None` when it does not parse or is empty
+/// — an edit never quietly becomes the original command.
+pub fn argv_parse(line: &str) -> Option<Vec<String>> {
+    shlex::split(line).filter(|argv| !argv.is_empty())
 }

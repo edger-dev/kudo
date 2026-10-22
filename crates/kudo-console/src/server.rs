@@ -83,33 +83,42 @@ pub(crate) async fn console_data(selected: Option<String>) -> ConsoleData {
         },
     };
     data.nodes = nodes().await;
-    data.approvals = approvals(&data.nodes).await;
+    (data.approvals, data.approvals_unknown) = approvals(&data.nodes).await;
     data
 }
 
-/// Every node's jobs waiting for a verdict, named by the context that asked.
-/// A node that does not answer (or predates the gate on the wire) shows none.
+/// Every node's jobs waiting for a verdict, named by the context that asked,
+/// asked of all nodes at once; and the nodes whose queue could not be read.
 // implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
-async fn approvals(nodes: &[NodeView]) -> Vec<crate::model::ApprovalView> {
+async fn approvals(nodes: &[NodeView]) -> (Vec<crate::model::ApprovalView>, Vec<String>) {
     if nodes.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     let Ok(hub) = hub().await else {
-        return Vec::new();
+        return (Vec::new(), nodes.iter().map(|n| n.id.clone()).collect());
     };
+    let asks = nodes.iter().map(|node| {
+        let hub = &hub;
+        async move {
+            let ask = kudo_shim::jobs::pending(
+                hub,
+                kudo_shim::route::Target::node(node.id.clone()),
+                kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
+            );
+            let got = tokio::time::timeout(Duration::from_secs(2), ask).await;
+            (node.id.clone(), got)
+        }
+    });
     let mut pending = Vec::new();
-    for node in nodes {
-        let ask = kudo_shim::jobs::pending(
-            &hub,
-            kudo_shim::route::Target::node(node.id.clone()),
-            kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
-        );
-        if let Ok(Ok(reply)) = tokio::time::timeout(Duration::from_secs(2), ask).await {
-            pending.extend(reply.jobs.into_iter().map(|j| (node.id.clone(), j)));
+    let mut unknown = Vec::new();
+    for (node, got) in futures_util::future::join_all(asks).await {
+        match got {
+            Ok(Ok(reply)) => pending.extend(reply.jobs.into_iter().map(|j| (node.clone(), j))),
+            _ => unknown.push(node),
         }
     }
     if pending.is_empty() {
-        return Vec::new();
+        return (Vec::new(), unknown);
     }
     let asked = tokio::task::spawn_blocking(|| {
         store()
@@ -119,7 +128,7 @@ async fn approvals(nodes: &[NodeView]) -> Vec<crate::model::ApprovalView> {
     })
     .await
     .unwrap_or_default();
-    crate::views::approvals(pending, &asked)
+    (crate::views::approvals(pending, &asked), unknown)
 }
 
 /// The human's verdict on a waiting job, sent as the console; what it led to.
@@ -127,11 +136,15 @@ pub(crate) async fn decide(
     node: String,
     job: String,
     verdict: String,
-    edited: Vec<String>,
+    edited: Option<Vec<String>>,
 ) -> Result<String, String> {
     let wire = crate::views::verdict_from(&verdict)
         .ok_or_else(|| format!("{verdict:?} is not a verdict"))?;
-    let edited: Vec<String> = edited.into_iter().filter(|a| !a.is_empty()).collect();
+    // An edit is a whole argv: an empty one is refused, never read as "no
+    // edit" (which would approve the original command).
+    if edited.as_ref().is_some_and(Vec::is_empty) {
+        return Err("an edited command cannot be empty".into());
+    }
     let hub = hub().await?;
     let reply = kudo_shim::jobs::decide(
         &hub,
@@ -140,13 +153,14 @@ pub(crate) async fn decide(
         moco_job::wire::DecideRequest {
             id: job.clone(),
             verdict: wire,
-            edited_argv: edited,
+            edited_argv: edited.unwrap_or_default(),
             caller: moco_job::wire::WireCaller::Console,
         },
     )
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
+    // Either way the queue moved (or was stale): read it again.
     bump();
+    let reply = reply.map_err(|e| e.to_string())?;
     Ok(format!(
         "job {job}: {} under {}",
         kudo_shim::jobs::status_word(&reply.status),

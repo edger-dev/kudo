@@ -117,10 +117,10 @@ you**, oldest first: the argv, the node and directory, the context whose
 worker asked, the owner, and the minutes left before it is denied. The buttons
 are the four verdicts — **allow once**, **allow always** (writes an exact-argv
 rule on that node), **deny once**, **deny always** — and **edit, then allow**,
-which runs your corrected argv instead (split on spaces). The reply says what
+which runs your corrected argv instead (shell-quoted: quote an argument with spaces; an empty or unparsable edit is refused). The reply says what
 the job then did; a verdict that arrives too late runs nothing, and says so.
 
-Only the console's verdict counts: a node refuses one from anyone else.
+Only the console's verdict counts: a node refuses one from anyone else. A node whose queue could not be read is named above the queue (*queue unknown on …*), so silence there is not "nothing waiting".
 
 ## Live updates
 
