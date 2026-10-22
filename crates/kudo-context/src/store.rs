@@ -625,6 +625,22 @@ impl ContextStore {
         self.record_trace_with(ctx, lease, &event, &body, now)
     }
 
+    /// Record that a job a worker started ended (`end`, a
+    /// [`TraceEvent::JobEnd`]), with the first and last 2 KB of what it
+    /// printed. The kino's id, which a submission of this context may cite.
+    // implements: e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@d9656cc142296b3c9017b9d73ca59d326c9a29abd2945a5afd4a73eb6514f593
+    pub fn record_job_end(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+        end: &TraceEvent,
+        output: &str,
+        now: Now,
+    ) -> Result<String, Error> {
+        let body = format!("output:\n\n{}", excerpt(output, OUTPUT_KEPT));
+        self.record_trace_with(ctx, lease, end, &body, now)
+    }
+
     /// A kino's text as stored (its first version), marker stripped.
     pub fn kino_text(&self, id: &str) -> Result<String, Error> {
         let view = self.view()?;

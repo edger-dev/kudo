@@ -406,19 +406,53 @@ impl ShimServer {
         }
     }
 
-    /// Trace the end of a job this worker started (once; best effort).
-    fn trace_end(&self, node: &str, id: &str, end: &moco_job::wire::WaitReply) {
-        if let Some(setup) = &self.worker
-            && let Err(e) = worker_tools::trace_job_end(
-                setup,
-                node,
-                id,
-                &jobs::status_word(&end.status),
-                &jobs::verdict_word(end.verdict),
-                now(),
-            )
-        {
-            eprintln!("kudo: could not trace the end of job {id}: {e}");
+    /// Trace the end of a job this worker started (once; best effort), with
+    /// what it printed; what to tell the worker to cite, when recorded.
+    // implements: e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@d9656cc142296b3c9017b9d73ca59d326c9a29abd2945a5afd4a73eb6514f593
+    async fn trace_end(
+        &self,
+        hub: &HubClient,
+        target: crate::route::Target,
+        connector: &str,
+        node: &str,
+        id: &str,
+        end: &moco_job::wire::WaitReply,
+    ) -> String {
+        let Some(setup) = &self.worker else {
+            return String::new();
+        };
+        if !worker_tools::awaits_end(setup, id).unwrap_or(false) {
+            return String::new();
+        }
+        // What the job printed, as the node keeps it; a job that cannot be
+        // read is recorded without it.
+        let output = jobs::tail(
+            hub,
+            target,
+            connector,
+            TailRequest {
+                id: id.to_owned(),
+                offset: 0,
+            },
+        )
+        .await
+        .map(|t| String::from_utf8_lossy(&t.bytes).into_owned())
+        .unwrap_or_default();
+        match worker_tools::trace_job_end(
+            setup,
+            node,
+            id,
+            &jobs::status_word(&end.status),
+            &jobs::verdict_word(end.verdict),
+            &output,
+            now(),
+        ) {
+            Ok(Some(kino)) => format!(" (recorded with its output as kino://{kino}; cite it)"),
+            Ok(None) => String::new(),
+            Err(e) => {
+                eprintln!("kudo: could not trace the end of job {id}: {e}");
+                String::new()
+            }
         }
     }
 
@@ -753,23 +787,33 @@ impl ShimServer {
             .flatten(),
             _ => None,
         };
+        let mut cite_end = String::new();
         if let (Ok(s), Some(end)) = (&started, &ended) {
-            self.trace_end(&args.node, &s.id, end);
+            cite_end = self
+                .trace_end(
+                    &hub,
+                    target(&args.node, &args.link),
+                    &connector_id(&args.connector),
+                    &args.node,
+                    &s.id,
+                    end,
+                )
+                .await;
         }
         reply(started.map(|s| {
             if let Some(end) = &ended {
                 format!(
-                    "job {} ended {} under {}",
+                    "job {} ended {} under {}{cite_end}",
                     s.id,
                     jobs::status_word(&end.status),
                     jobs::verdict_word(end.verdict)
                 )
             } else if s.waiting {
                 format!(
-                    "job {} is waiting for the author's verdict on node {}: no rule allows \
-                     this exact argv there. job_wait it — it runs once approved, or comes \
-                     back denied (an unanswered request is denied after the node's timeout, \
-                     30 minutes by default).",
+                    "job {} is waiting for the author's verdict on node {}{cite}: no rule \
+                     allows this exact argv there. job_wait it — it runs once approved, or \
+                     comes back denied (an unanswered request is denied after the node's \
+                     timeout, 30 minutes by default).",
                     s.id, args.node
                 )
             } else {
@@ -803,12 +847,22 @@ impl ShimServer {
             std::time::Duration::from_secs(2),
         )
         .await;
+        let mut cite = String::new();
         if let Ok(Some(end)) = &ended {
-            self.trace_end(&args.node, &args.id, end);
+            cite = self
+                .trace_end(
+                    &hub,
+                    target(&args.node, &args.link),
+                    &connector_id(&args.connector),
+                    &args.node,
+                    &args.id,
+                    end,
+                )
+                .await;
         }
         reply(ended.map(|end| match end {
             Some(end) => format!(
-                "job {} ended {} under {}",
+                "job {} ended {} under {}{cite}",
                 args.id,
                 jobs::status_word(&end.status),
                 jobs::verdict_word(end.verdict)
@@ -849,6 +903,7 @@ impl ShimServer {
         // A worker that sees its job end here traces the end, as job_wait does
         // — only for a job it started whose end is not traced yet, so a
         // finished job's every read costs no extra calls.
+        let mut cite = String::new();
         if let Some(setup) = &self.worker
             && let Ok(t) = &tailed
             && t.status.is_terminal()
@@ -863,9 +918,18 @@ impl ShimServer {
             )
             .await
         {
-            self.trace_end(&args.node, &args.id, &end);
+            cite = self
+                .trace_end(
+                    &hub,
+                    target(&args.node, &args.link),
+                    &connector_id(&args.connector),
+                    &args.node,
+                    &args.id,
+                    &end,
+                )
+                .await;
         }
-        reply(tailed.map(|r| jobs::render_tail(&r)))
+        reply(tailed.map(|r| format!("{}{cite}", jobs::render_tail(&r))))
     }
 
     #[tool(

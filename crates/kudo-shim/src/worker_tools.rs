@@ -158,7 +158,7 @@ pub fn inbox(
 
 /// Trace a job this worker started: where, its id there, whether it waits
 /// for the author's verdict, and what it asked to run.
-// implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
+// implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@d9656cc142296b3c9017b9d73ca59d326c9a29abd2945a5afd4a73eb6514f593
 pub fn trace_job_start(
     setup: &WorkerSetup,
     node: &str,
@@ -210,21 +210,23 @@ pub fn awaits_end(setup: &WorkerSetup, job: &str) -> Result<bool, String> {
     Ok(started)
 }
 
-/// Trace the end of a job this worker started, once: `false` when the job is
-/// not one this lease started, or its end is already traced (matched by the
-/// job id; see [`awaits_end`]).
-// implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
+/// Trace the end of a job this worker started, once, with what it printed:
+/// the record's kino id, or `None` when the job is not one this lease
+/// started, or its end is already traced (matched by the job id; see
+/// [`awaits_end`]).
+// implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@d9656cc142296b3c9017b9d73ca59d326c9a29abd2945a5afd4a73eb6514f593
 pub fn trace_job_end(
     setup: &WorkerSetup,
     node: &str,
     job: &str,
     status: &str,
     verdict: &str,
+    output: &str,
     now: Now,
-) -> Result<bool, String> {
+) -> Result<Option<String>, String> {
     use kudo_context::TraceEvent;
     if !awaits_end(setup, job)? {
-        return Ok(false);
+        return Ok(None);
     }
     let store = open(setup)?;
     let event = TraceEvent::JobEnd {
@@ -233,11 +235,11 @@ pub fn trace_job_end(
         status: status.to_owned(),
         verdict: verdict.to_owned(),
     };
-    store
-        .record_trace(&setup.context, &setup.lease, &event, now)
+    let id = store
+        .record_job_end(&setup.context, &setup.lease, &event, output, now)
         .map_err(|e| e.to_string())?;
     publish(setup, &event);
-    Ok(true)
+    Ok(Some(id))
 }
 
 /// A check's verdict from the `submit` tool's arguments: `pass`, `fail`, or

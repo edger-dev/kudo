@@ -49,7 +49,10 @@ otherwise you start the same work twice.
 **Every node is governed.** An ad-hoc command no rule allows waits for the
 author's verdict (from the console); `job_wait` it. A worker traces each job
 it starts, and its end when it sees it, in its context's trace (`job-start`,
-`job`), the job id pointing into the node's audit.
+`job`), the job id pointing into the node's audit. The end record keeps the
+first and last 2 KB of the job's output, and the replies of `job_start`,
+`job_wait` and `job_tail` name each record (`kino://…`) for a submission to
+cite.
 
 **`job_kill` is a stop, not a crash.** A stopped job is not restarted, whatever
 its restart policy says: an explicit stop must not be fought by the supervisor.

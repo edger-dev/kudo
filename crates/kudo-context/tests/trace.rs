@@ -354,7 +354,7 @@ fn a_long_command_is_capped_in_the_line() {
 fn a_job_end_holds_its_output_and_is_evidence() {
     let (dir, store) = store("trace-jobend");
     let ctx = store.create_context("jobs", "# jobs\n", T0).unwrap();
-    let long = format!("{}MIDDLE{}", "a".repeat(5000), "13% /home");
+    let long = format!("{}MIDDLE{}13% /home", "a".repeat(5000), "z".repeat(5000));
     let end = TraceEvent::JobEnd {
         node: "pc".into(),
         job: "1792-1-1".into(),

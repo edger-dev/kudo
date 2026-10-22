@@ -34,7 +34,8 @@ into the submission, so the context's log is the check log.
 A check's result is usually "I ran X and saw Y". Each shell call a worker
 makes is recorded as it returns — the command, its exit, and the first and
 last 2 KB of its output — and the worker is told the kino to cite; a
-governed job's start and end are recorded too. A submission citing these is
+governed job's start and end are recorded too, the end with the same excerpt
+of what the job printed. A submission citing these is
 **established**, not claimed. The record is in the context store (and its
 mirror): whatever a command prints, secrets included, goes with it — keep
 credentials out of output a worker runs.
