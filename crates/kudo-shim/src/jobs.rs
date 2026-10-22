@@ -431,6 +431,9 @@ pub fn render_tail(reply: &TailReply) -> String {
 pub struct Started {
     pub id: String,
     pub waiting: bool,
+    /// The status it was seen in just after the start: already terminal when
+    /// a deny rule refused it (or it finished at once).
+    pub status: moco_job::JobStatus,
 }
 
 /// Start a job on a governed node, and say whether it waits for the author's
@@ -457,6 +460,7 @@ pub async fn start_gated(
     Ok(Started {
         id: started.id,
         waiting: status == moco_job::JobStatus::PendingApproval,
+        status,
     })
 }
 

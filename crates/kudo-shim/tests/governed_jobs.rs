@@ -45,7 +45,7 @@ async fn mesh() -> (String, Arc<JobRegistry>) {
             NodePolicy::new(
                 RuleSet::from_seed(SeedConfig {
                     allow: vec![vec!["echo".into(), "seeded".into()]],
-                    deny: vec![],
+                    deny: vec![vec!["echo".into(), "barred".into()]],
                 }),
                 "/",
             )
@@ -306,4 +306,46 @@ fn a_worker_traces_its_jobs_start_and_end_once() {
             },
         ]
     );
+}
+
+/// A start a deny rule refuses comes back ended, not started.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_denied_start_comes_back_ended() {
+    let (addr, _registry) = mesh().await;
+    let client = connected(&addr).await;
+    let barred = jobs::start_gated(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        adhoc(&["echo", "barred"]),
+    )
+    .await
+    .unwrap();
+    assert!(!barred.waiting);
+    assert!(barred.status.is_terminal(), "{:?}", barred.status);
+    assert_eq!(jobs::status_word(&barred.status), "denied:rule");
+}
+
+/// The end is matched by the job id: a node spelled another way (a peer
+/// hub's `edger::yolo` for `yolo`) still closes the start.
+#[test]
+fn an_end_matches_its_start_by_the_job_id() {
+    let (setup, _store) = worker();
+    worker_tools::trace_job_start(&setup, "yolo", "j-9", false, &["uptime".into()], T0).unwrap();
+    assert!(worker_tools::awaits_end(&setup, "j-9").unwrap());
+    assert!(
+        worker_tools::trace_job_end(&setup, "edger::yolo", "j-9", "done:0", "seed-allow", T0 + 1)
+            .unwrap()
+    );
+    assert!(!worker_tools::awaits_end(&setup, "j-9").unwrap());
+}
+
+/// An argv that reads as nothing still traces and reads back.
+#[test]
+fn an_empty_argv_still_traces() {
+    let (setup, store) = worker();
+    worker_tools::trace_job_start(&setup, "pc", "j-e", true, &[String::new()], T0).unwrap();
+    let events = store.trace(&setup.context).unwrap();
+    assert_eq!(events.len(), 1, "the start must not be dropped");
+    assert!(worker_tools::awaits_end(&setup, "j-e").unwrap());
 }

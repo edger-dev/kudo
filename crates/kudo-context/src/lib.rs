@@ -263,7 +263,7 @@ impl TraceEvent {
                 job,
                 state @ ("waiting" | "running"),
                 argv @ ..,
-            ] if !argv.is_empty() => Self::JobStart {
+            ] => Self::JobStart {
                 node: (*node).to_owned(),
                 job: (*job).to_owned(),
                 waiting: *state == "waiting",

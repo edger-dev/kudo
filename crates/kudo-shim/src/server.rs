@@ -111,9 +111,9 @@ pub struct WaitArgs {
     pub connector: Option<String>,
     /// The job id returned by `job_start_adhoc`.
     pub id: String,
-    /// Wait at most this many seconds (default 300, at most 1500); a job still
+    /// Wait at most this many seconds (default 120, at most 1500); a job still
     /// running or still waiting for a verdict then says so, and you can wait
-    /// again.
+    /// again. Keep it under your client's tool-call timeout.
     pub timeout_s: Option<u64>,
 }
 
@@ -717,8 +717,34 @@ impl ShimServer {
         {
             eprintln!("kudo: could not trace job {}: {e}", s.id);
         }
+        // Refused at the start (a deny rule), or done already: say how it
+        // ended and under which authority, not that it started.
+        let ended = match &started {
+            Ok(s) if s.status.is_terminal() => jobs::wait_for(
+                &hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+                &s.id,
+                std::time::Duration::ZERO,
+                std::time::Duration::ZERO,
+            )
+            .await
+            .ok()
+            .flatten(),
+            _ => None,
+        };
+        if let (Ok(s), Some(end)) = (&started, &ended) {
+            self.trace_end(&args.node, &s.id, end);
+        }
         reply(started.map(|s| {
-            if s.waiting {
+            if let Some(end) = &ended {
+                format!(
+                    "job {} ended {} under {}",
+                    s.id,
+                    jobs::status_word(&end.status),
+                    jobs::verdict_word(end.verdict)
+                )
+            } else if s.waiting {
                 format!(
                     "job {} is waiting for the author's verdict on node {}: no rule allows \
                      this exact argv there. job_wait it — it runs once approved, or comes \
@@ -736,7 +762,7 @@ impl ShimServer {
         name = "job_wait",
         description = "Wait for a job to end — including one waiting for the author's verdict — \
                        and say how it ended and under which authority (a rule, the author's \
-                       approval, or a denial). Comes back after timeout_s (default 300) if it \
+                       approval, or a denial). Comes back after timeout_s (default 120) if it \
                        has not ended yet; wait again. Read its output with job_tail."
     )]
     async fn job_wait(
@@ -747,7 +773,7 @@ impl ShimServer {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
-        let budget = std::time::Duration::from_secs(args.timeout_s.unwrap_or(300).min(1500));
+        let budget = std::time::Duration::from_secs(args.timeout_s.unwrap_or(120).min(1500));
         let ended = jobs::wait_for(
             &hub,
             target(&args.node, &args.link),
@@ -800,10 +826,13 @@ impl ShimServer {
             },
         )
         .await;
-        // A worker that sees its job end here traces the end, as job_wait does.
-        if self.worker.is_some()
+        // A worker that sees its job end here traces the end, as job_wait does
+        // — only for a job it started whose end is not traced yet, so a
+        // finished job's every read costs no extra calls.
+        if let Some(setup) = &self.worker
             && let Ok(t) = &tailed
             && t.status.is_terminal()
+            && worker_tools::awaits_end(setup, &args.id).unwrap_or(false)
             && let Ok(Some(end)) = jobs::wait_for(
                 &hub,
                 target(&args.node, &args.link),

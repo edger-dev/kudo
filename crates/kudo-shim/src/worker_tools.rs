@@ -176,11 +176,43 @@ pub fn trace_job_start(
     };
     store
         .record_trace(&setup.context, &setup.lease, &event, now)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    publish(setup, &event);
+    Ok(())
+}
+
+/// Say a traced job event on the hub, as the loop's own events are, so the
+/// console moves at once. Best effort.
+fn publish(setup: &WorkerSetup, event: &kudo_context::TraceEvent) {
+    if let Some(observe) = crate::events::observer_from_env() {
+        observe(&setup.context, &setup.lease, event);
+    }
+}
+
+/// Whether this lease started `job` and has not traced its end: the only
+/// jobs whose end is this worker's to trace. A job id is unique on its node,
+/// and the node may be spelled more than one way (`yolo`, `edger::yolo`), so
+/// the id alone decides.
+pub fn awaits_end(setup: &WorkerSetup, job: &str) -> Result<bool, String> {
+    use kudo_context::TraceEvent;
+    let store = open(setup)?;
+    let mut started = false;
+    for t in store.trace(&setup.context).map_err(|e| e.to_string())? {
+        if t.lease != setup.lease {
+            continue;
+        }
+        match t.event {
+            TraceEvent::JobStart { job: j, .. } if j == job => started = true,
+            TraceEvent::JobEnd { job: j, .. } if j == job => return Ok(false),
+            _ => {}
+        }
+    }
+    Ok(started)
 }
 
 /// Trace the end of a job this worker started, once: `false` when the job is
-/// not one this lease started, or its end is already traced.
+/// not one this lease started, or its end is already traced (matched by the
+/// job id; see [`awaits_end`]).
 // implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
 pub fn trace_job_end(
     setup: &WorkerSetup,
@@ -191,23 +223,10 @@ pub fn trace_job_end(
     now: Now,
 ) -> Result<bool, String> {
     use kudo_context::TraceEvent;
-    let store = open(setup)?;
-    let mine: Vec<TraceEvent> = store
-        .trace(&setup.context)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .filter(|t| t.lease == setup.lease)
-        .map(|t| t.event)
-        .collect();
-    let started = mine.iter().any(
-        |e| matches!(e, TraceEvent::JobStart { node: n, job: j, .. } if n == node && j == job),
-    );
-    let ended = mine
-        .iter()
-        .any(|e| matches!(e, TraceEvent::JobEnd { node: n, job: j, .. } if n == node && j == job));
-    if !started || ended {
+    if !awaits_end(setup, job)? {
         return Ok(false);
     }
+    let store = open(setup)?;
     let event = TraceEvent::JobEnd {
         node: node.to_owned(),
         job: job.to_owned(),
@@ -217,5 +236,6 @@ pub fn trace_job_end(
     store
         .record_trace(&setup.context, &setup.lease, &event, now)
         .map_err(|e| e.to_string())?;
+    publish(setup, &event);
     Ok(true)
 }

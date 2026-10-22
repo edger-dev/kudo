@@ -24,7 +24,13 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
         .into_iter()
         .map(|c| {
             let mut last: Vec<(String, TraceEvent, String)> = Vec::new();
+            // A lease that ended stays ended, whatever it traces after (a
+            // job a human-driven session ran, say).
+            let mut ended: Vec<String> = Vec::new();
             for entry in store.trace(&c.id)? {
+                if matches!(entry.event, TraceEvent::LeaseEnd(_)) {
+                    ended.push(entry.lease.clone());
+                }
                 match last.iter_mut().find(|(lease, _, _)| *lease == entry.lease) {
                     Some(slot) => {
                         slot.1 = entry.event;
@@ -54,7 +60,9 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
             }
             let workers = last
                 .into_iter()
-                .filter(|(_, event, _)| !matches!(event, TraceEvent::LeaseEnd(_)))
+                .filter(|(lease, event, _)| {
+                    !matches!(event, TraceEvent::LeaseEnd(_)) && !ended.contains(lease)
+                })
                 .map(|(lease, event, at)| WorkerView {
                     last: event.to_line(),
                     quiet: at

@@ -161,3 +161,30 @@ fn a_pane_that_never_traced_goes_quiet_then_leaves() {
         "a day-old dead pane is gone"
     );
 }
+
+/// A lease that ended stays ended in the console, whatever it traces after —
+/// a job its human-driven session ran, say.
+#[test]
+fn an_ended_lease_stays_ended() {
+    let store = store("ended-stays");
+    let ctx = store.create_context("ended", "# ended\n", T0).unwrap();
+    for (n, event) in [
+        TraceEvent::LeaseStart,
+        TraceEvent::LeaseEnd("takeover".into()),
+        TraceEvent::JobStart {
+            node: "pc".into(),
+            job: "j".into(),
+            waiting: false,
+            argv: "uptime".into(),
+        },
+    ]
+    .iter()
+    .enumerate()
+    {
+        store
+            .record_trace(&ctx, "lease-x", event, T0 + n as i64)
+            .unwrap();
+    }
+    let cards = views::contexts(&store, T0 + 10).unwrap();
+    assert!(cards[0].workers.is_empty(), "{:?}", cards[0].workers);
+}
