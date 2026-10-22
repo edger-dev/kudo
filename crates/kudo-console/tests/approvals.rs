@@ -6,10 +6,12 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
-use dioxus::prelude::*;
+mod common;
+
+use kudo_console::badge::{Badge, badge};
 use kudo_console::layout::THREE_PANES;
 use kudo_console::model::{ApprovalView, ConsoleData};
-use kudo_console::shell::Shell;
+use kudo_console::selection::Selection;
 
 fn waiting(node: &str, job: &str, argv: &[&str], waited_s: u64) -> ApprovalView {
     ApprovalView {
@@ -24,8 +26,21 @@ fn waiting(node: &str, job: &str, argv: &[&str], waited_s: u64) -> ApprovalView 
     }
 }
 
+/// The page with the approvals tray open.
 fn render(data: ConsoleData) -> String {
-    dioxus_ssr::render_element(rsx! { Shell { layout: THREE_PANES, data: data } })
+    common::render_with(
+        THREE_PANES,
+        data,
+        Selection {
+            tray: true,
+            ..Selection::default()
+        },
+    )
+}
+
+/// The page with the tray closed.
+fn closed(data: ConsoleData) -> String {
+    common::render_with(THREE_PANES, data, Selection::default())
 }
 
 /// A waiting job shows its node, argv, where it runs, who asked and the time
@@ -37,7 +52,7 @@ fn a_waiting_job_shows_what_is_needed_to_answer_it() {
         ..ConsoleData::default()
     });
     for text in [
-        "waiting for you",
+        "approvals (1)",
         "df -h /",
         "on pc in /tmp",
         "/tmp",
@@ -53,11 +68,74 @@ fn a_waiting_job_shows_what_is_needed_to_answer_it() {
     }
 }
 
-/// Nothing waiting, no queue.
+/// Nothing waiting: the tray says so in a sentence, and offers no verdict.
 #[test]
 fn no_waiting_jobs_no_queue() {
     let html = render(ConsoleData::default());
-    assert!(!html.contains("waiting for you"));
+    assert!(html.contains("nothing is waiting for you"), "{html}");
+    assert!(!html.contains("allow once"), "{html}");
+}
+
+/// The badge tells a trustworthy zero from unknown; a real count wins over
+/// trouble.
+// implements: 85f973554ab08ddde3cb91944354db7fb14ff55a0da506daea7c4643c8646339@85f973554ab08ddde3cb91944354db7fb14ff55a0da506daea7c4643c8646339
+#[test]
+fn the_badge_tells_none_from_unknown() {
+    assert_eq!(badge(0, 0), Badge::None);
+    assert_eq!(badge(2, 0), Badge::Waiting(2));
+    assert_eq!(badge(2, 1), Badge::Waiting(2), "a count wins over trouble");
+    assert_eq!(badge(0, 1), Badge::Unknown(1));
+    assert_eq!(Badge::None.label(), "approvals · none");
+    assert_eq!(Badge::Waiting(1).label(), "1 approval");
+    assert_eq!(Badge::Waiting(3).label(), "3 approvals");
+    assert_eq!(Badge::Unknown(2).label(), "approvals · unknown on 2 nodes");
+
+    let html = closed(ConsoleData::default());
+    assert!(html.contains("data-badge=\"none\""), "{html}");
+    assert!(!html.contains("data-tray"), "closed: {html}");
+    let html = closed(ConsoleData {
+        approvals_unknown: vec!["edger".into()],
+        ..ConsoleData::default()
+    });
+    assert!(html.contains("data-badge=\"unknown\""), "{html}");
+    let html = closed(ConsoleData {
+        approvals: vec![waiting("pc", "j-1", &["df"], 1)],
+        ..ConsoleData::default()
+    });
+    assert!(html.contains("data-badge=\"waiting\""), "{html}");
+    assert!(html.contains("1 approval"), "{html}");
+}
+
+/// The tray is not a block in the list: closed, no verdict is offered in
+/// the page; open, every waiting job is.
+#[test]
+fn the_queue_lives_in_the_tray() {
+    let data = ConsoleData {
+        approvals: vec![waiting("pc", "j-1", &["df"], 1)],
+        ..ConsoleData::default()
+    };
+    assert!(!closed(data.clone()).contains("allow once"));
+    let html = render(data);
+    assert!(html.contains("data-tray"), "{html}");
+    assert!(html.contains("allow once"), "{html}");
+}
+
+/// The always verdicts ask for a second tap that states the exact rule and
+/// the one node it binds; the once verdicts write no rule and go at once.
+// implements: 3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5@3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5
+#[test]
+fn a_standing_verdict_takes_a_second_tap() {
+    use kudo_console::confirm::{kill_text, second_tap};
+    assert_eq!(second_tap("allow-once", "df -h", "pc"), None);
+    assert_eq!(second_tap("deny-once", "df -h", "pc"), None);
+    let allow = second_tap("allow-always", "df -h", "pc").expect("asks again");
+    assert!(allow.contains("df -h") && allow.contains("pc only"), "{allow}");
+    assert!(allow.contains("always allow"), "{allow}");
+    let deny = second_tap("deny-always", "rm -rf /", "edger::yolo").expect("asks again");
+    assert!(deny.contains("always deny") && deny.contains("edger::yolo only"), "{deny}");
+    let kill = kill_text("1792500000000-7-1", "pc");
+    assert!(kill.contains("1792500000000-7-1") && kill.contains("pc"), "{kill}");
+    assert_eq!(kudo_console::confirm::CONFIRM_MS, 10_000);
 }
 
 #[cfg(feature = "server")]
@@ -97,6 +175,17 @@ mod server_side {
         );
         let order: Vec<&str> = views.iter().map(|v| v.job.as_str()).collect();
         assert_eq!(order, vec!["j-old", "j-new"]);
+        // Rows never move under a finger: equal waits keep one order.
+        let tied = |a: &str, b: &str| {
+            views::approvals(
+                vec![(a.into(), pending("j-x", 5_000)), (b.into(), pending("j-x", 5_000))],
+                &HashMap::new(),
+            )
+            .into_iter()
+            .map(|v| v.node)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(tied("pc", "edger"), tied("edger", "pc"));
         assert_eq!(views[0].node, "pc");
         assert_eq!(views[0].context.as_deref(), Some("home lab"));
         assert_eq!(views[0].waited_s, 90);
@@ -186,12 +275,14 @@ fn an_argv_round_trips_through_its_text() {
     assert_eq!(argv_parse("echo 'unclosed"), None);
 }
 
-/// A node whose queue could not be read says so.
+/// A node whose queue could not be read is named in the tray, and the tray
+/// does not claim nothing is waiting.
 #[test]
 fn an_unreadable_queue_is_said() {
     let html = render(ConsoleData {
         approvals_unknown: vec!["edger".into()],
         ..ConsoleData::default()
     });
-    assert!(html.contains("queue unknown on edger"), "{html}");
+    assert!(html.contains("not answering: edger"), "{html}");
+    assert!(!html.contains("nothing is waiting for you"), "{html}");
 }

@@ -5,12 +5,15 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
-use dioxus::prelude::*;
-use kudo_console::layout::{Direction, Layout, PaneKind, STACKED, THREE_PANES};
+mod common;
+
+use common::{focused, panes, render_themed, render_with};
+use kudo_console::layout::{Direction, Layout, Narrow, PaneKind, STACKED, THREE_PANES};
 use kudo_console::model::{
     ConsoleData, ContextCard, ContextDetail, NodeView, PaneRef, TerminalView, TraceRow, WorkerView,
 };
-use kudo_console::shell::Shell;
+use kudo_console::selection::{Selection, Tab};
+use kudo_console::theme::Theme;
 
 fn sample() -> ConsoleData {
     ConsoleData {
@@ -65,22 +68,28 @@ fn sample() -> ConsoleData {
             },
             screen: "claude> waiting for you".into(),
         }),
+        ..ConsoleData::default()
     }
 }
 
+/// The sample's context selected, its worker's pane taken over.
+fn selected() -> Selection {
+    let mut s = Selection::default();
+    s.select_context("c".repeat(64));
+    s.pane = Some(PaneRef {
+        node: "yolo".into(),
+        job: "job-3".into(),
+    });
+    s
+}
+
 fn render(layout: Layout) -> String {
-    let data = sample();
-    dioxus_ssr::render_element(rsx! { Shell { layout: layout, data: data } })
+    render_with(layout, sample(), selected())
 }
 
 /// The order the panes appear in the rendered page.
 fn pane_order(html: &str) -> Vec<&'static str> {
-    let mut found: Vec<(usize, &'static str)> = ["where", "head", "trace", "terminal"]
-        .into_iter()
-        .filter_map(|p| html.find(&format!("data-pane=\"{p}\"")).map(|i| (i, p)))
-        .collect();
-    found.sort();
-    found.into_iter().map(|(_, p)| p).collect()
+    panes(html)
 }
 
 #[test]
@@ -152,4 +161,106 @@ fn a_worker_is_offered_only_on_the_nodes_allowed() {
     let html = render(THREE_PANES);
     assert!(html.contains("start a worker on yolo"), "{html}");
     assert!(!html.contains("start a worker on pc"), "{html}");
+}
+
+/// On a phone one pane fills the screen: the one the selection points at.
+/// Which applies is the layout's value, carried to the stylesheet.
+// implements: 77d223e031a8cefaf954bd0d4708fc301867286d9d92c547811d5335d7caeb90@77d223e031a8cefaf954bd0d4708fc301867286d9d92c547811d5335d7caeb90
+#[test]
+fn a_phone_shows_the_pane_the_selection_points_at() {
+    assert_eq!(THREE_PANES.narrow, Narrow::Drill);
+    let html = render_with(THREE_PANES, sample(), Selection::default());
+    assert!(html.contains("data-narrow=\"drill\""), "{html}");
+    assert_eq!(focused(&html), Some("where"));
+    assert_eq!(panes(&html), ["where"], "nothing selected, only the list");
+
+    let mut s = Selection::default();
+    s.select_context("c".repeat(64));
+    let html = render_with(THREE_PANES, sample(), s.clone());
+    assert_eq!(focused(&html), Some("head"));
+    s.tab = Tab::Trace;
+    let html = render_with(THREE_PANES, sample(), s);
+    assert_eq!(focused(&html), Some("trace"));
+    assert!(
+        html.contains("data-tab=\"head\"") && html.contains("data-tab=\"trace\""),
+        "a phone switches head and trace by tab: {html}"
+    );
+    let html = render(THREE_PANES);
+    assert_eq!(focused(&html), Some("terminal"));
+    assert_eq!(
+        html.matches("data-focus=\"true\"").count(),
+        1,
+        "one pane in focus"
+    );
+}
+
+/// The stylesheet hides every pane but the focused one below the phone
+/// width, and nothing above it.
+#[test]
+fn the_stylesheet_drills_only_on_a_narrow_screen() {
+    let css = kudo_console::style::STYLE;
+    assert!(css.contains("@media (max-width: 720px)"), "{css}");
+    assert!(css.contains("[data-narrow=\"drill\"]"), "{css}");
+    assert!(css.contains(":not([data-focus])"), "{css}");
+    let html = render(THREE_PANES);
+    assert!(html.contains("<style"), "the page carries its stylesheet");
+}
+
+/// A back control appears once something is selected, and where you are is
+/// named in the top bar.
+#[test]
+fn the_top_bar_says_where_you_are_and_steps_back() {
+    let html = render_with(THREE_PANES, sample(), Selection::default());
+    assert!(!html.contains("data-back"), "nothing to step out of: {html}");
+    let html = render(THREE_PANES);
+    assert!(html.contains("data-back"), "{html}");
+    assert!(html.contains("data-crumb"), "{html}");
+    let crumb = &html[html.find("data-crumb").unwrap()..];
+    assert!(crumb.contains("first kudo"), "{crumb}");
+}
+
+/// The nodes are listed beside the contexts, each a way into its jobs, a
+/// peer hub's node marked as such.
+// implements: 2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655@2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655
+#[test]
+fn nodes_are_listed_with_an_icon_by_kind() {
+    let mut data = sample();
+    data.nodes.push(NodeView {
+        id: "edger::yolo".into(),
+        links: vec!["stable".into()],
+        may_start: false,
+    });
+    let html = render_with(THREE_PANES, data, Selection::default());
+    assert!(html.contains("data-node=\"pc\""), "{html}");
+    assert!(html.contains("data-node=\"edger::yolo\""), "{html}");
+    assert_ne!(
+        kudo_console::shell::node_icon("pc"),
+        kudo_console::shell::node_icon("edger::yolo"),
+        "a peer hub's node reads apart"
+    );
+}
+
+/// Light, dark, or the system's: the root says which, and the stylesheet
+/// draws both from one set of tokens.
+// implements: 2dd989d6ce0f4135c0d8d3ab6e99e065ed03fe3dbf1827d5621d289458cd4351@2dd989d6ce0f4135c0d8d3ab6e99e065ed03fe3dbf1827d5621d289458cd4351
+#[test]
+fn the_theme_follows_the_system_unless_picked() {
+    assert_eq!(Theme::default(), Theme::System);
+    assert_eq!(Theme::System.next(), Theme::Dark);
+    assert_eq!(Theme::Dark.next(), Theme::Light);
+    assert_eq!(Theme::Light.next(), Theme::System, "a way back to the system");
+    for t in [Theme::System, Theme::Dark, Theme::Light] {
+        assert_eq!(Theme::from_stored(t.stored()), t);
+    }
+    assert_eq!(Theme::from_stored("purple"), Theme::System);
+
+    let html = render_themed(THREE_PANES, sample(), selected(), Theme::System);
+    assert!(!html.contains("data-theme="), "{html}");
+    let html = render_themed(THREE_PANES, sample(), selected(), Theme::Dark);
+    assert!(html.contains("data-theme=\"dark\""), "{html}");
+    let css = kudo_console::style::STYLE;
+    assert!(css.contains("prefers-color-scheme: dark"), "{css}");
+    assert!(css.contains("[data-theme=\"dark\"]"), "{css}");
+    assert!(css.contains("[data-theme=\"light\"]"), "{css}");
+    assert!(css.contains("--bg"), "colours are tokens: {css}");
 }
