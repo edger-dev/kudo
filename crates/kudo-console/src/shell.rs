@@ -652,8 +652,11 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                 }
                 "owner {approval.owner}"
             }
-            div { class: "row", style: "margin-top:6px;",
-                for (label, verdict) in VERDICTS.iter().copied() {
+            // Allow and deny on rows of their own, a gap between: on a phone a
+            // thumb aimed at one must not land on the other.
+            for allowing in [true, false] {
+              div { class: "row", style: if allowing { "margin-top:6px;" } else { "margin-top:18px;" },
+                for (label, verdict) in VERDICTS.iter().copied().filter(|(_, v)| v.starts_with("allow") == allowing) {
                     button {
                         key: "{verdict}",
                         disabled: busy(),
@@ -680,13 +683,16 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                         }
                     }
                 }
-                button {
-                    onclick: {
-                        let argv = argv.clone();
-                        move |_| editing.set(Some(argv.clone()))
-                    },
-                    "edit, then allow"
+                if allowing {
+                    button {
+                        onclick: {
+                            let argv = argv.clone();
+                            move |_| editing.set(Some(argv.clone()))
+                        },
+                        "edit, then allow"
+                    }
                 }
+              }
             }
             if let Some(text) = editing() {
                 form {

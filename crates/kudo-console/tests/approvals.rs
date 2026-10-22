@@ -300,3 +300,20 @@ fn an_unreadable_queue_is_said() {
     assert!(html.contains("not answering: edger"), "{html}");
     assert!(!html.contains("nothing is waiting for you"), "{html}");
 }
+
+/// Allow and deny sit on rows of their own: a thumb aimed at "allow always"
+/// does not land on "deny once" (found live, 22 Oct).
+#[test]
+fn allow_and_deny_are_on_separate_rows() {
+    let html = render(ConsoleData {
+        approvals: vec![waiting("pc", "j-1", &["df"], 1)],
+        ..ConsoleData::default()
+    });
+    let allow = html.find(">allow always<").expect("allow always");
+    let deny = html.find(">deny once<").expect("deny once");
+    let between = &html[allow..deny];
+    assert!(
+        between.contains("class=\"row\""),
+        "a new row starts between: {between}"
+    );
+}
