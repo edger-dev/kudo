@@ -229,6 +229,31 @@ fn the_launchers_kickoff_prompt_is_not_a_takeover() {
     let _ = block_reason(w.stop(T0 + 1).unwrap());
 }
 
+/// A prompt the CLI delivers itself — a background task finishing — is not
+/// a person taking over: the lease and its claim stay.
+// implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@e60af5df023b9c371fc558a8a11ee450eabe48d03f12b2da11fd01cbe5497874
+#[test]
+fn a_task_notification_is_not_a_takeover() {
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "waiting on a job", T0).unwrap();
+    let w = f.worker(10);
+    let _ = block_reason(w.stop(T0).unwrap()); // the handoff
+    w.user_prompt(
+        "<task-notification>
+<task-id>k40o9r7zg</task-id>
+<status>completed</status>
+         <summary>MCP task k40o9r7z (kudo/job_wait) completed.</summary>
+</task-notification>",
+        T0 + 1,
+    )
+    .unwrap();
+    assert!(
+        f.store.held_by(&f.ctx, LEASE, T0 + 2).unwrap().is_some(),
+        "the claim is still held"
+    );
+    assert_ne!(w.stop(T0 + 2).unwrap(), Stop::Allow(LeaseEnd::Takeover));
+}
+
 #[test]
 fn a_guard_refused_three_times_gives_the_item_back_and_ends_the_lease() {
     let f = Fixture::new();
