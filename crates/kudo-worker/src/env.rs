@@ -49,7 +49,9 @@ pub const WAIT_POLL: u64 = 3;
 /// and an item queued on another machine arrives within this.
 pub const WAIT_SYNC: u64 = 30;
 
-pub const DEFAULT_CLAIM_TTL: i64 = 1800;
+/// A claim's life: longer than a governed node's approval window (30
+/// minutes), so a worker waiting for the author's verdict keeps its item.
+pub const DEFAULT_CLAIM_TTL: i64 = 3600;
 pub const DEFAULT_MAX_TURNS: u32 = 20;
 
 /// The first prompt the launcher sends. UserPromptSubmit sees it like any

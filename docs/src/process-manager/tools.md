@@ -27,7 +27,8 @@ are then not offered, or, if a hub address is set but the hub is down, answer
 | Tool | Use it for |
 |---|---|
 | `job_start` | Start a declared job by name. |
-| `job_start_adhoc` | Run something not in the manifest. |
+| `job_start_adhoc` | Run something not in the manifest. On a governed node an argv no rule allows waits for the author's verdict, and the reply says so. |
+| `job_wait` | Wait for a job to end (approval included); says how, and under which authority. |
 | `job_ensure` | Bring up `@Session` jobs; safe to re-run. |
 | `job_restart` | Re-read the declaration and start again. |
 | `job_kill` | Stop a job. Its record and output stay readable. |
@@ -44,6 +45,11 @@ the owner.
 **A timeout is not a failure.** If a call exceeds its budget the reply says the
 work may still be running. Treat it as unknown, not as "nothing happened" —
 otherwise you start the same work twice.
+
+**Every node is governed.** An ad-hoc command no rule allows waits for the
+author's verdict (from the console); `job_wait` it. A worker traces each job
+it starts, and its end when it sees it, in its context's trace (`job-start`,
+`job`), the job id pointing into the node's audit.
 
 **`job_kill` is a stop, not a crash.** A stopped job is not restarted, whatever
 its restart policy says: an explicit stop must not be fought by the supervisor.

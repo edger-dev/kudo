@@ -19,6 +19,9 @@ use moco_job::wire::{
     MachineReply, MachineRequest, RestartRequest, ScreenReply, ScreenRequest, StartNamedRequest,
     StartReply, StartRequest, StatsReply, StatsRequest, TailReply, TailRequest, WireCaller,
 };
+use moco_job::wire::{
+    DecideReply, DecideRequest, PendingReply, PendingRequest, WaitReply, WaitRequest,
+};
 
 use crate::error::ShimError;
 use crate::hub::HubClient;
@@ -430,47 +433,138 @@ pub struct Started {
     pub waiting: bool,
 }
 
+/// Start a job on a governed node, and say whether it waits for the author's
+/// verdict (no rule allowed its exact argv) rather than running.
+// implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
 pub async fn start_gated(
-    _hub: &HubClient,
-    _target: Target,
-    _connector: &str,
-    _request: StartRequest,
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: StartRequest,
 ) -> Result<Started, ShimError> {
-    Err(ShimError::Hub("not yet".into()))
+    let started = start(hub, target.clone(), connector, request).await?;
+    let status = tail(
+        hub,
+        target,
+        connector,
+        TailRequest {
+            id: started.id.clone(),
+            offset: u64::MAX,
+        },
+    )
+    .await?
+    .status;
+    Ok(Started {
+        id: started.id,
+        waiting: status == moco_job::JobStatus::PendingApproval,
+    })
 }
 
+/// The jobs on a node waiting for a verdict, oldest first.
 pub async fn pending(
-    _hub: &HubClient,
-    _target: Target,
-    _connector: &str,
-) -> Result<moco_job::wire::PendingReply, ShimError> {
-    Err(ShimError::Hub("not yet".into()))
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+) -> Result<PendingReply, ShimError> {
+    let payload = moco_job::wire::encode(&PendingRequest {}).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "pending", payload).await?;
+    moco_job::wire::decode::<PendingReply>(&bytes).map_err(decode_failed)
 }
 
+/// Answer the gate for a pending job — the console's alone; the node refuses
+/// any other caller.
 pub async fn decide(
-    _hub: &HubClient,
-    _target: Target,
-    _connector: &str,
-    _request: moco_job::wire::DecideRequest,
-) -> Result<moco_job::wire::DecideReply, ShimError> {
-    Err(ShimError::Hub("not yet".into()))
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    request: DecideRequest,
+) -> Result<DecideReply, ShimError> {
+    let payload = moco_job::wire::encode(&request).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "decide", payload).await?;
+    moco_job::wire::decode::<DecideReply>(&bytes).map_err(decode_failed)
 }
 
+/// Wait up to `budget` for a job to end, looking every `poll`; its end and
+/// verdict, or `None` while it still runs or waits for a verdict. Polled,
+/// not one long call: a routed call has its own budget, and a verdict can
+/// take half an hour.
 pub async fn wait_for(
-    _hub: &HubClient,
-    _target: Target,
-    _connector: &str,
-    _id: &str,
-    _budget: std::time::Duration,
-    _poll: std::time::Duration,
-) -> Result<Option<moco_job::wire::WaitReply>, ShimError> {
-    Err(ShimError::Hub("not yet".into()))
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+    id: &str,
+    budget: std::time::Duration,
+    poll: std::time::Duration,
+) -> Result<Option<WaitReply>, ShimError> {
+    let until = tokio::time::Instant::now() + budget;
+    loop {
+        let status = tail(
+            hub,
+            target.clone(),
+            connector,
+            TailRequest {
+                id: id.to_owned(),
+                offset: u64::MAX,
+            },
+        )
+        .await?
+        .status;
+        if status.is_terminal() {
+            // Terminal already, so the engine's wait answers at once.
+            let payload = moco_job::wire::encode(&WaitRequest { id: id.to_owned() })
+                .map_err(encode_failed)?;
+            let bytes = route(hub, target, connector, "wait", payload).await?;
+            return moco_job::wire::decode::<WaitReply>(&bytes)
+                .map(Some)
+                .map_err(decode_failed);
+        }
+        if tokio::time::Instant::now() + poll > until {
+            return Ok(None);
+        }
+        tokio::time::sleep(poll).await;
+    }
 }
 
-pub fn status_word(_status: &moco_job::JobStatus) -> String {
-    String::new()
+/// A job's end as one word: `done:0`, `denied:rule`, `killed`, …
+pub fn status_word(status: &moco_job::JobStatus) -> String {
+    use moco_job::{DeniedReason, JobStatus};
+    match status {
+        JobStatus::PendingApproval => "pending".into(),
+        JobStatus::Running => "running".into(),
+        JobStatus::Done { code } => format!("done:{code}"),
+        JobStatus::Killed => "killed".into(),
+        JobStatus::TimedOut => "timed-out".into(),
+        JobStatus::Failed { .. } => "failed".into(),
+        JobStatus::Denied { reason } => format!(
+            "denied:{}",
+            match reason {
+                DeniedReason::Rule => "rule",
+                DeniedReason::Decision => "decision",
+                DeniedReason::NoApprover => "no-approver",
+                DeniedReason::CwdEscape => "cwd-escape",
+                DeniedReason::Withdrawn => "withdrawn",
+            }
+        ),
+        JobStatus::OutcomeUnknown => "outcome-unknown".into(),
+    }
 }
 
-pub fn verdict_word(_verdict: moco_job::Verdict) -> String {
-    String::new()
+/// The authority a job ran (or was refused) under, as one word.
+pub fn verdict_word(verdict: moco_job::Verdict) -> String {
+    use moco_job::Verdict;
+    match verdict {
+        Verdict::Ungoverned => "ungoverned",
+        Verdict::SeedAllow => "seed-allow",
+        Verdict::ApprovedOnce => "approved-once",
+        Verdict::SeedDeny => "seed-deny",
+        Verdict::RejectedOnce => "rejected-once",
+        Verdict::NoApprover => "no-approver",
+        Verdict::StandingAllow => "standing-allow",
+        Verdict::StandingDeny => "standing-deny",
+        Verdict::ApprovedAlways => "approved-always",
+        Verdict::RejectedAlways => "rejected-always",
+        Verdict::Withdrawn => "withdrawn",
+        Verdict::Vouched => "vouched",
+    }
+    .to_owned()
 }

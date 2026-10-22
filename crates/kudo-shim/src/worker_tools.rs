@@ -156,24 +156,66 @@ pub fn inbox(
     ))
 }
 
+/// Trace a job this worker started: where, its id there, whether it waits
+/// for the author's verdict, and what it asked to run.
+// implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
 pub fn trace_job_start(
-    _setup: &WorkerSetup,
-    _node: &str,
-    _job: &str,
-    _waiting: bool,
-    _argv: &[String],
-    _now: Now,
+    setup: &WorkerSetup,
+    node: &str,
+    job: &str,
+    waiting: bool,
+    argv: &[String],
+    now: Now,
 ) -> Result<(), String> {
-    Err("not yet".into())
+    let store = open(setup)?;
+    let event = kudo_context::TraceEvent::JobStart {
+        node: node.to_owned(),
+        job: job.to_owned(),
+        waiting,
+        argv: argv.join(" "),
+    };
+    store
+        .record_trace(&setup.context, &setup.lease, &event, now)
+        .map_err(|e| e.to_string())
 }
 
+/// Trace the end of a job this worker started, once: `false` when the job is
+/// not one this lease started, or its end is already traced.
+// implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
 pub fn trace_job_end(
-    _setup: &WorkerSetup,
-    _node: &str,
-    _job: &str,
-    _status: &str,
-    _verdict: &str,
-    _now: Now,
+    setup: &WorkerSetup,
+    node: &str,
+    job: &str,
+    status: &str,
+    verdict: &str,
+    now: Now,
 ) -> Result<bool, String> {
-    Err("not yet".into())
+    use kudo_context::TraceEvent;
+    let store = open(setup)?;
+    let mine: Vec<TraceEvent> = store
+        .trace(&setup.context)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|t| t.lease == setup.lease)
+        .map(|t| t.event)
+        .collect();
+    let started = mine.iter().any(
+        |e| matches!(e, TraceEvent::JobStart { node: n, job: j, .. } if n == node && j == job),
+    );
+    let ended = mine
+        .iter()
+        .any(|e| matches!(e, TraceEvent::JobEnd { node: n, job: j, .. } if n == node && j == job));
+    if !started || ended {
+        return Ok(false);
+    }
+    let event = TraceEvent::JobEnd {
+        node: node.to_owned(),
+        job: job.to_owned(),
+        status: status.to_owned(),
+        verdict: verdict.to_owned(),
+    };
+    store
+        .record_trace(&setup.context, &setup.lease, &event, now)
+        .map_err(|e| e.to_string())?;
+    Ok(true)
 }

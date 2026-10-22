@@ -195,7 +195,7 @@ fn panes_read_oldest_first() {
 /// its id (the pointer into the node's audit), whether it waited for a
 /// verdict, what it ran — and, when the worker sees it end, how and under
 /// which verdict.
-// implements: e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1
+// implements: e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
 #[test]
 fn a_governed_job_is_traced_from_start_to_end() {
     let (dir, store) = store("trace-job");

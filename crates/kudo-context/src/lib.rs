@@ -222,7 +222,22 @@ impl TraceEvent {
                 format!("{} {} {}", self.name(), claim.0, submission.0)
             }
             Self::LeaseEnd(why) => format!("{} {why}", self.name()),
-            Self::JobStart { .. } | Self::JobEnd { .. } => self.name().to_owned(),
+            Self::JobStart {
+                node,
+                job,
+                waiting,
+                argv,
+            } => format!(
+                "{} {node} {job} {} {argv}",
+                self.name(),
+                if *waiting { "waiting" } else { "running" }
+            ),
+            Self::JobEnd {
+                node,
+                job,
+                status,
+                verdict,
+            } => format!("{} {node} {job} {status} {verdict}", self.name()),
         }
     }
 
@@ -242,6 +257,24 @@ impl TraceEvent {
                 submission: SubmissionId((*s).to_owned()),
             },
             ["lease-end", why] => Self::LeaseEnd((*why).to_owned()),
+            [
+                "job-start",
+                node,
+                job,
+                state @ ("waiting" | "running"),
+                argv @ ..,
+            ] if !argv.is_empty() => Self::JobStart {
+                node: (*node).to_owned(),
+                job: (*job).to_owned(),
+                waiting: *state == "waiting",
+                argv: argv.join(" "),
+            },
+            ["job", node, job, status, verdict] => Self::JobEnd {
+                node: (*node).to_owned(),
+                job: (*job).to_owned(),
+                status: (*status).to_owned(),
+                verdict: (*verdict).to_owned(),
+            },
             _ => return None,
         })
     }

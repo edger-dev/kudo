@@ -527,6 +527,9 @@ impl ContextStore {
             .count()
             + 1)
         .to_string();
+        // A job event's line is its whole record (node, job, state, argv or
+        // verdict), kept as the reason and read back from it.
+        let job_line = event.to_line();
         let (name, claim, submission, reason) = match event {
             TraceEvent::LeaseStart => ("lease-start", "", "", ""),
             TraceEvent::Handoff(c) => ("handoff", c.0.as_str(), "", ""),
@@ -538,7 +541,9 @@ impl ContextStore {
             }
             TraceEvent::LeaseEnd(why) => ("lease-end", "", "", why.as_str()),
             TraceEvent::Wait => ("wait", "", "", ""),
-            TraceEvent::JobStart { .. } | TraceEvent::JobEnd { .. } => ("todo", "", "", ""),
+            TraceEvent::JobStart { .. } | TraceEvent::JobEnd { .. } => {
+                (event.name(), "", "", job_line.as_str())
+            }
         };
         let line = event.to_line();
         // The nonce keeps two equal events of one lease two kinos.
@@ -653,6 +658,7 @@ impl ContextStore {
                         submission: SubmissionId(field(e, SUBMISSION).to_owned()),
                     },
                     "lease-end" => TraceEvent::LeaseEnd(field(e, REASON).to_owned()),
+                    "job-start" | "job" => TraceEvent::from_line(field(e, REASON))?,
                     _ => return None,
                 };
                 Some(TraceEntry {

@@ -5,7 +5,7 @@
 //! the jobs it starts in its context.
 //!
 //! implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
-//! implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1
+//! implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
 
 use std::path::PathBuf;
 use std::sync::Arc;

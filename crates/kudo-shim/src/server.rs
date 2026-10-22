@@ -103,6 +103,20 @@ pub struct TailArgs {
     pub offset: Option<u64>,
 }
 
+/// Wait for a job to end.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct WaitArgs {
+    pub node: String,
+    pub link: Option<String>,
+    pub connector: Option<String>,
+    /// The job id returned by `job_start_adhoc`.
+    pub id: String,
+    /// Wait at most this many seconds (default 300, at most 1500); a job still
+    /// running or still waiting for a verdict then says so, and you can wait
+    /// again.
+    pub timeout_s: Option<u64>,
+}
+
 /// Terminate a job.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
 pub struct KillArgs {
@@ -372,6 +386,22 @@ impl ShimServer {
         Self {
             hub: Arc::new(HubState::Dialled(hub)),
             worker: None,
+        }
+    }
+
+    /// Trace the end of a job this worker started (once; best effort).
+    fn trace_end(&self, node: &str, id: &str, end: &moco_job::wire::WaitReply) {
+        if let Some(setup) = &self.worker
+            && let Err(e) = worker_tools::trace_job_end(
+                setup,
+                node,
+                id,
+                &jobs::status_word(&end.status),
+                &jobs::verdict_word(end.verdict),
+                now(),
+            )
+        {
+            eprintln!("kudo: could not trace the end of job {id}: {e}");
         }
     }
 
@@ -664,23 +694,86 @@ impl ShimServer {
             },
         };
 
-        reply(
-            jobs::start(
-                &hub,
-                target(&args.node, &args.link),
-                &connector_id(&args.connector),
-                StartRequest {
-                    argv: args.argv,
-                    cwd,
-                    deadline_ms: args.timeout_ms.unwrap_or(0),
-                    caller: jobs::session_caller(),
-                    env: vec![],
-                    human_view: moco_job::lens::HumanView::Logs,
-                },
-            )
-            .await
-            .map(|r| format!("started job {}", r.id)),
+        let argv = args.argv.clone();
+        let started = jobs::start_gated(
+            &hub,
+            target(&args.node, &args.link),
+            &connector_id(&args.connector),
+            StartRequest {
+                argv: args.argv,
+                cwd,
+                deadline_ms: args.timeout_ms.unwrap_or(0),
+                caller: jobs::session_caller(),
+                env: vec![],
+                human_view: moco_job::lens::HumanView::Logs,
+            },
         )
+        .await;
+        // A worker traces the jobs it starts, so its context says what ran on
+        // which node under which authority. Best effort: the job is started.
+        if let (Ok(s), Some(setup)) = (&started, &self.worker)
+            && let Err(e) =
+                worker_tools::trace_job_start(setup, &args.node, &s.id, s.waiting, &argv, now())
+        {
+            eprintln!("kudo: could not trace job {}: {e}", s.id);
+        }
+        reply(started.map(|s| {
+            if s.waiting {
+                format!(
+                    "job {} is waiting for the author's verdict on node {}: no rule allows \
+                     this exact argv there. job_wait it — it runs once approved, or comes \
+                     back denied (an unanswered request is denied after the node's timeout, \
+                     30 minutes by default).",
+                    s.id, args.node
+                )
+            } else {
+                format!("started job {}", s.id)
+            }
+        }))
+    }
+
+    #[tool(
+        name = "job_wait",
+        description = "Wait for a job to end — including one waiting for the author's verdict — \
+                       and say how it ended and under which authority (a rule, the author's \
+                       approval, or a denial). Comes back after timeout_s (default 300) if it \
+                       has not ended yet; wait again. Read its output with job_tail."
+    )]
+    async fn job_wait(
+        &self,
+        Parameters(args): Parameters<WaitArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        let budget = std::time::Duration::from_secs(args.timeout_s.unwrap_or(300).min(1500));
+        let ended = jobs::wait_for(
+            &hub,
+            target(&args.node, &args.link),
+            &connector_id(&args.connector),
+            &args.id,
+            budget,
+            std::time::Duration::from_secs(2),
+        )
+        .await;
+        if let Ok(Some(end)) = &ended {
+            self.trace_end(&args.node, &args.id, end);
+        }
+        reply(ended.map(|end| match end {
+            Some(end) => format!(
+                "job {} ended {} under {}",
+                args.id,
+                jobs::status_word(&end.status),
+                jobs::verdict_word(end.verdict)
+            ),
+            None => format!(
+                "job {} has not ended after {}s (still running, or still waiting for a \
+                 verdict); wait again",
+                args.id,
+                budget.as_secs()
+            ),
+        }))
     }
 
     #[tool(
@@ -697,19 +790,33 @@ impl ShimServer {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
-        reply(
-            jobs::tail(
+        let tailed = jobs::tail(
+            &hub,
+            target(&args.node, &args.link),
+            &connector_id(&args.connector),
+            TailRequest {
+                id: args.id.clone(),
+                offset: args.offset.unwrap_or(0),
+            },
+        )
+        .await;
+        // A worker that sees its job end here traces the end, as job_wait does.
+        if self.worker.is_some()
+            && let Ok(t) = &tailed
+            && t.status.is_terminal()
+            && let Ok(Some(end)) = jobs::wait_for(
                 &hub,
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
-                TailRequest {
-                    id: args.id,
-                    offset: args.offset.unwrap_or(0),
-                },
+                &args.id,
+                std::time::Duration::ZERO,
+                std::time::Duration::ZERO,
             )
             .await
-            .map(|r| jobs::render_tail(&r)),
-        )
+        {
+            self.trace_end(&args.node, &args.id, &end);
+        }
+        reply(tailed.map(|r| jobs::render_tail(&r)))
     }
 
     #[tool(
