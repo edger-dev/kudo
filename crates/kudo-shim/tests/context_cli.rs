@@ -277,3 +277,70 @@ fn a_worker_takes_the_lease_it_is_given() {
     assert_eq!(fresh.len(), 36);
     assert!(cli::lease_for(Some("not/a lease".into())).is_err());
 }
+
+/// A due item and a check are enqueued by hand, wait for their time, and
+/// show as not yet due; a context's wake node is declared and shown.
+// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+// implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
+// implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
+#[test]
+fn due_items_checks_and_the_wake_node_by_hand() {
+    let dir = std::env::temp_dir().join(format!("kudo-shim-cli-due-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let id = cli::context(&dir, &args(&["new", "home lab"]), T0).unwrap();
+    let id = id.trim();
+
+    cli::context(
+        &dir,
+        &args(&["enqueue", id, "--due", "+1h", "rotate the key"]),
+        T0,
+    )
+    .unwrap();
+    cli::context(
+        &dir,
+        &args(&[
+            "check",
+            id,
+            "the backup ran",
+            "--pass",
+            "a snapshot newer than 26 hours",
+            "--window",
+            "the last 26 hours",
+            "--due",
+            "+2h",
+        ]),
+        T0,
+    )
+    .unwrap();
+    cli::context(&dir, &args(&["wake-node", id, "yolo"]), T0).unwrap();
+
+    let shown = cli::context(&dir, &args(&["show", id]), T0).unwrap();
+    assert!(shown.contains("0 ready"), "{shown}");
+    assert!(shown.contains("2 not yet due"), "{shown}");
+    assert!(shown.contains("wakes on yolo"), "{shown}");
+
+    let later = cli::context(&dir, &args(&["show", id]), T0 + 2 * 3600).unwrap();
+    assert!(later.contains("2 ready"), "{later}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// When, as typed: `+30m`, `+2h`, `+1d`, or an RFC 3339 time; anything else is
+/// refused, as is a check without a pass condition.
+#[test]
+fn a_due_time_is_relative_or_absolute_and_a_check_needs_its_condition() {
+    assert_eq!(cli::parse_when("+30m", T0), Ok(T0 + 1800));
+    assert_eq!(cli::parse_when("+2h", T0), Ok(T0 + 7200));
+    assert_eq!(cli::parse_when("+1d", T0), Ok(T0 + 86_400));
+    assert_eq!(
+        cli::parse_when("2026-10-21T10:00:00Z", T0),
+        Ok(1_792_576_800)
+    );
+    assert!(cli::parse_when("soon", T0).is_err());
+    assert!(cli::parse_when("+5y", T0).is_err());
+
+    let dir = std::env::temp_dir().join(format!("kudo-shim-cli-chk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let id = cli::context(&dir, &args(&["new", "lab"]), T0).unwrap();
+    assert!(cli::context(&dir, &args(&["check", id.trim(), "the backup ran"]), T0).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}

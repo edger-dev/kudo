@@ -8,6 +8,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+jiff = { workspace = true }
 kudo-context = { path = "../kudo-context" }
 kudo-worker = { path = "../kudo-worker" }
 hub-protocol = { workspace = true }

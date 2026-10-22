@@ -43,7 +43,7 @@ pub enum Stop {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pull {
     /// A claim on the next item.
-    Claimed(Claim),
+    Claimed(Box<Claim>),
     /// Nothing is ready under the context.
     Nothing,
     /// This turn already submitted an item: end the turn, and the Stop hook
@@ -269,7 +269,7 @@ impl<'a> Worker<'a> {
                         self.book.put(&self.cfg.lease, &record)?;
                     }
                     self.trace(&TraceEvent::Pull(claim.id.clone()), now);
-                    Pull::Claimed(claim)
+                    Pull::Claimed(Box::new(claim))
                 }
                 None => Pull::Nothing,
             },

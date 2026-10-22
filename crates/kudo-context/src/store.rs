@@ -57,6 +57,12 @@ const JOB: &str = "kudo::job";
 const SUBMISSION: &str = "kudo::submission";
 const REASON: &str = "kudo::reason";
 const ORIGIN_ID: &str = "kudo::origin_id";
+const DUE: &str = "kudo::due";
+const CHECK: &str = "kudo::check";
+const CHECK_PASS: &str = "kudo::check_pass";
+const CHECK_WINDOW: &str = "kudo::check_window";
+const SNOOZED_FROM: &str = "kudo::snoozed_from";
+const VERDICT: &str = "kudo::verdict";
 
 const SUBMITTED: &str = "submitted";
 const RELEASED: &str = "released";
@@ -752,54 +758,141 @@ impl ContextStore {
 
     /// Enqueue `ask` under the context.
     pub fn enqueue(&self, ctx: &ContextId, ask: &str, now: Now) -> Result<ItemId, Error> {
-        let view = self.view()?;
-        view.require_context(ctx)?;
-        let seq = (view.of_kind_in("item", ctx).len() + 1).to_string();
-        let content = format!("<!-- kudo item {} #{seq} -->\n{ask}", ctx.0);
-        let born = self.put(
-            "markdown",
-            content.into_bytes(),
-            meta([(KIND, "item"), (CONTEXT, &ctx.0), (SEQ, &seq)]),
-            None,
-            now,
-        )?;
-        Ok(ItemId(born.id))
+        self.enqueue_item(ctx, ask, None, None, None, now)
     }
 
+    /// Enqueue `ask`, ready at `due` (epoch seconds) or at once.
+    // implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
     pub fn enqueue_due(
         &self,
         ctx: &ContextId,
         ask: &str,
-        _due: Option<Now>,
+        due: Option<Now>,
         now: Now,
     ) -> Result<ItemId, Error> {
-        self.enqueue(ctx, ask, now)
+        self.enqueue_item(ctx, ask, due, None, None, now)
     }
 
+    /// Enqueue a check: what to look at, its pass condition and evidence
+    /// window, ready at `due` or at once.
+    // implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
     pub fn enqueue_check(
         &self,
         ctx: &ContextId,
         check: &crate::Check,
-        _due: Option<Now>,
+        due: Option<Now>,
         now: Now,
     ) -> Result<ItemId, Error> {
-        self.enqueue(ctx, &check.what, now)
+        if check.what.trim().is_empty() || check.pass.trim().is_empty() {
+            return Err(Error::InvalidCheck(
+                "a check needs what to look at and a pass condition".into(),
+            ));
+        }
+        self.enqueue_item(ctx, &check.what, due, Some(check), None, now)
     }
 
-    pub fn due_ready_count(&self, _ctx: &ContextId, _now: Now) -> Result<usize, Error> {
-        Ok(0)
+    fn enqueue_item(
+        &self,
+        ctx: &ContextId,
+        ask: &str,
+        due: Option<Now>,
+        check: Option<&crate::Check>,
+        snoozed_from: Option<&ItemId>,
+        now: Now,
+    ) -> Result<ItemId, Error> {
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let seq = (view.of_kind_in("item", ctx).len() + 1).to_string();
+        let content = format!("<!-- kudo item {} #{seq} -->\n{ask}", ctx.0);
+        let mut metadata = meta([(KIND, "item"), (CONTEXT, &ctx.0), (SEQ, &seq)]);
+        if let Some(due) = due {
+            metadata.insert(DUE.to_owned(), due.to_string());
+        }
+        if let Some(check) = check {
+            metadata.insert(CHECK.to_owned(), "true".to_owned());
+            metadata.insert(CHECK_PASS.to_owned(), one_line(&check.pass));
+            metadata.insert(CHECK_WINDOW.to_owned(), one_line(&check.window));
+        }
+        if let Some(origin) = snoozed_from {
+            metadata.insert(SNOOZED_FROM.to_owned(), origin.0.clone());
+        }
+        let born = self.put("markdown", content.into_bytes(), metadata, None, now)?;
+        Ok(ItemId(born.id))
     }
 
-    pub fn not_yet_due(&self, _ctx: &ContextId, _now: Now) -> Result<Vec<Item>, Error> {
-        Ok(Vec::new())
+    /// How many items with a due time are ready now: what the waker wakes
+    /// for (an item with no due time waits for a person).
+    // implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+    pub fn due_ready_count(&self, ctx: &ContextId, now: Now) -> Result<usize, Error> {
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        Ok(view
+            .ready(ctx, now)
+            .iter()
+            .filter(|(item, _)| due_of(item).is_some())
+            .count())
     }
 
-    pub fn declare_wake_node(&self, _ctx: &ContextId, _node: &str, _now: Now) -> Result<(), Error> {
+    /// The items not yet due, soonest first.
+    pub fn not_yet_due(&self, ctx: &ContextId, now: Now) -> Result<Vec<Item>, Error> {
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let mut later: Vec<&Event> = view
+            .of_kind_in("item", ctx)
+            .into_iter()
+            .filter(|item| due_of(item).is_some_and(|due| due > now))
+            .filter(|item| {
+                !view
+                    .claims_on(&item.id)
+                    .iter()
+                    .any(|(_, outcome)| *outcome == Some(SUBMITTED))
+            })
+            .collect();
+        later.sort_by_key(|item| (due_of(item), seq_of(item)));
+        later.into_iter().map(|item| self.item_of(item)).collect()
+    }
+
+    /// Declare the node this context's woken workers start on; the latest
+    /// declaration wins.
+    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
+    pub fn declare_wake_node(&self, ctx: &ContextId, node: &str, now: Now) -> Result<(), Error> {
+        let node = node.trim();
+        if node.is_empty() || node.contains(char::is_whitespace) {
+            return Err(Error::InvalidCheck(format!("{node:?} is not a node name")));
+        }
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let seq = (view.of_kind_in("wake", ctx).len() + 1).to_string();
+        let content = format!("<!-- kudo wake {} {} -->\nwake {node}\n", ctx.0, nonce()?);
+        self.put(
+            "text",
+            content.into_bytes(),
+            meta([(KIND, "wake"), (CONTEXT, &ctx.0), (NODE, node), (SEQ, &seq)]),
+            None,
+            now,
+        )?;
         Ok(())
     }
 
-    pub fn wake_node(&self, _ctx: &ContextId) -> Result<Option<String>, Error> {
-        Ok(None)
+    /// Where this context's woken workers start: the declared wake node,
+    /// else its first repo's node (by name), else `None` (the waker's own).
+    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
+    pub fn wake_node(&self, ctx: &ContextId) -> Result<Option<String>, Error> {
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let declared = view
+            .of_kind_in("wake", ctx)
+            .into_iter()
+            .max_by_key(|e| (e.ts.clone(), seq_of(e)))
+            .map(|e| field(e, NODE).to_owned());
+        if declared.is_some() {
+            return Ok(declared);
+        }
+        Ok(self
+            .repos_in(&view, ctx)?
+            .into_iter()
+            .next()
+            .map(|r| r.node))
     }
 
     /// Whether an item is ready to pull: not submitted, and not held by a live
@@ -903,6 +996,30 @@ impl ContextStore {
         let ctx = ContextId(field(claim_event, CONTEXT).to_owned());
         let item = field(claim_event, ITEM).to_owned();
 
+        // A check closes with a verdict; nothing else takes one.
+        // implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
+        let item_event = view
+            .by_id
+            .get(&item)
+            .and_then(|events| events.first())
+            .ok_or_else(|| Error::UnknownClaim(claim.0.clone()))?;
+        let is_check = field(item_event, CHECK) == "true";
+        match (&submission.check, is_check) {
+            (None, true) => return Err(Error::CheckNeedsVerdict(claim.0.clone())),
+            (Some(_), false) => return Err(Error::NotACheck(claim.0.clone())),
+            (Some(close), true) => {
+                if let crate::CheckVerdict::Snooze { until } = close.verdict
+                    && until <= now
+                {
+                    return Err(Error::InvalidCheck(format!(
+                        "a snooze looks again later: {until} is not after now ({now})"
+                    )));
+                }
+            }
+            (None, false) => {}
+        }
+        let snoozed = self.item_of(item_event)?;
+
         // The new head must build on the head as it is now: every tip, if
         // two submits raced and forked it.
         let tips = view.tips(&ctx)?;
@@ -949,33 +1066,54 @@ impl ContextStore {
         let view = self.view()?;
         let checked = view.check_evidence(&ctx, submission);
         let seq = (view.of_kind_in("submission", &ctx).len() + 1).to_string();
-        let content = format!(
+        let mut content = format!(
             "<!-- kudo submission {} -->\n{}",
             claim.0,
             render(submission, &checked, &head_version)
         );
+        let verdict = submission.check.as_ref().map(|close| match close.verdict {
+            crate::CheckVerdict::Pass => "pass".to_owned(),
+            crate::CheckVerdict::Fail => "fail".to_owned(),
+            crate::CheckVerdict::Snooze { until } => format!("snooze until {}", ts(until)),
+        });
+        if let (Some(close), Some(verdict)) = (&submission.check, &verdict) {
+            content.push_str(&format!(
+                "\n## Check\n\nverdict: {verdict}\nnote: {}\n",
+                one_line(&close.note)
+            ));
+        }
         let cited = checked.kinos().join(",");
-        let born = self.put(
-            "markdown",
-            content.into_bytes(),
-            meta([
-                (KIND, "submission"),
-                (CONTEXT, &ctx.0),
-                (ITEM, &item),
-                (CLAIM, &claim.0),
-                (SEQ, &seq),
-                (HEAD, &head_version),
-                (EVIDENCE, &cited),
-            ]),
-            None,
-            now,
-        )?;
+        let mut metadata = meta([
+            (KIND, "submission"),
+            (CONTEXT, &ctx.0),
+            (ITEM, &item),
+            (CLAIM, &claim.0),
+            (SEQ, &seq),
+            (HEAD, &head_version),
+            (EVIDENCE, &cited),
+        ]);
+        if let Some(verdict) = &verdict {
+            metadata.insert(VERDICT.to_owned(), verdict.clone());
+        }
+        let born = self.put("markdown", content.into_bytes(), metadata, None, now)?;
         self.settle(&ctx, claim, SUBMITTED, now)?;
+        // A snooze looks again later: the same check, due then.
+        let requeued = match submission.check.as_ref().map(|c| c.verdict) {
+            Some(crate::CheckVerdict::Snooze { until }) => Some(self.enqueue_item(
+                &ctx,
+                &snoozed.ask,
+                Some(until),
+                snoozed.check.as_ref(),
+                Some(&snoozed.id),
+                now,
+            )?),
+            _ => None,
+        };
         Ok(Submitted {
             id: SubmissionId(born.id),
             downgraded: checked.downgraded,
             unresolved: checked.unresolved,
-            requeued: None,
+            requeued,
         })
     }
 
@@ -1183,9 +1321,21 @@ impl ContextStore {
             id: ItemId(event.id.clone()),
             seq: seq_of(event),
             ask: strip_marker(&self.read(&event.hash)?),
-            due: None,
-            check: None,
-            snoozed_from: None,
+            due: due_of(event),
+            check: (field(event, CHECK) == "true").then(|| crate::Check {
+                what: String::new(),
+                pass: field(event, CHECK_PASS).to_owned(),
+                window: field(event, CHECK_WINDOW).to_owned(),
+            }),
+            snoozed_from: Some(field(event, SNOOZED_FROM))
+                .filter(|s| !s.is_empty())
+                .map(|s| ItemId(s.to_owned())),
+        })
+        .map(|mut item: Item| {
+            if let Some(check) = &mut item.check {
+                check.what = item.ask.clone();
+            }
+            item
         })
     }
 
@@ -1383,8 +1533,15 @@ impl View {
     /// Every ready item under `ctx`, oldest first, with the attempt its next
     /// claim takes.
     fn ready(&self, ctx: &ContextId, now: Now) -> Vec<(&Event, u32)> {
-        let mut items = self.of_kind_in("item", ctx);
-        items.sort_by_key(|e| seq_of(e));
+        let mut items: Vec<&Event> = self
+            .of_kind_in("item", ctx)
+            .into_iter()
+            // Not before its time (kudo::queue::due-items).
+            .filter(|item| due_of(item).is_none_or(|due| due <= now))
+            .collect();
+        // Items with no due time first, in order; then the due, oldest due
+        // first.
+        items.sort_by_key(|e| (due_of(e).unwrap_or(0), seq_of(e)));
         items
             .into_iter()
             .filter_map(|item| {
@@ -1605,6 +1762,11 @@ fn field<'a>(event: &'a Event, key: &str) -> &'a str {
         .get(key)
         .map(String::as_str)
         .unwrap_or_default()
+}
+
+/// An item's due time, if it has one.
+fn due_of(event: &Event) -> Option<Now> {
+    field(event, DUE).parse().ok()
 }
 
 fn seq_of(event: &Event) -> u64 {

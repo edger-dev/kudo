@@ -4195,6 +4195,7 @@ dependencies = [
  "facet-json 0.50.0-rc.5",
  "hub",
  "hub-protocol",
+ "jiff",
  "kudo-context",
  "kudo-node",
  "kudo-worker",

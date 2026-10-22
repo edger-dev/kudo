@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use kudo_context::{ContextId, ContextStore, Repo, TraceEvent};
 
 const USAGE: &str = "usage: kudo-shim context new <title>\n       \
-                     kudo-shim context enqueue <context> <ask>\n       \
+                     kudo-shim context enqueue <context> [--due <when>] <ask>\n       \
+                     kudo-shim context check <context> <what> --pass <condition> [--window <window>] [--due <when>]\n       \
+                     kudo-shim context wake-node <context> <node>\n       \
                      kudo-shim context show <context>\n       \
                      kudo-shim context list\n       \
                      kudo-shim context trace <context>\n       \
@@ -30,6 +32,30 @@ pub fn default_store_dir() -> Option<PathBuf> {
                 .map(|h| Path::new(&h).join(".local/state"))
         })?;
     Some(state.join("kudo/contexts"))
+}
+
+/// A due time as typed: `+<n>m`, `+<n>h`, `+<n>d` from now, or an RFC 3339
+/// time.
+// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+pub fn parse_when(when: &str, now: i64) -> Result<i64, String> {
+    let bad = || format!("{when:?} is not a time: write +30m, +2h, +1d, or an RFC 3339 time");
+    if let Some(rel) = when.strip_prefix('+') {
+        let (n, unit) = rel.split_at(rel.len().saturating_sub(1));
+        let n: i64 = n.parse().map_err(|_| bad())?;
+        let secs = match unit {
+            "m" => 60,
+            "h" => 3600,
+            "d" => 86_400,
+            _ => return Err(bad()),
+        };
+        return n
+            .checked_mul(secs)
+            .and_then(|d| now.checked_add(d))
+            .ok_or_else(bad);
+    }
+    when.parse::<jiff::Timestamp>()
+        .map(|t| t.as_second())
+        .map_err(|_| bad())
 }
 
 /// Run `kudo-shim context <args…>` against the store in `store_dir`; the text
@@ -67,6 +93,52 @@ pub fn context_with(
                 .map_err(|e| e.to_string())?;
             Ok(format!("{}\n", id.0))
         }
+        ["enqueue", ctx, "--due", when, ask @ ..] if !ask.join(" ").trim().is_empty() => {
+            let due = parse_when(when, now)?;
+            let store = open_store(store_dir, mirror, true)?;
+            let ctx = named(&store, ctx)?;
+            let item = store
+                .enqueue_due(&ctx, &ask.join(" "), Some(due), now)
+                .map_err(|e| e.to_string())?;
+            Ok(format!("{}\n", item.0))
+        }
+        ["check", ctx, what, flags @ ..] => {
+            let mut check = kudo_context::Check {
+                what: (*what).to_owned(),
+                ..Default::default()
+            };
+            let mut due = None;
+            let mut rest = flags;
+            while let [flag, value, tail @ ..] = rest {
+                match *flag {
+                    "--pass" => check.pass = (*value).to_owned(),
+                    "--window" => check.window = (*value).to_owned(),
+                    "--due" => due = Some(parse_when(value, now)?),
+                    _ => return Err(USAGE.to_owned()),
+                }
+                rest = tail;
+            }
+            if !rest.is_empty() {
+                return Err(USAGE.to_owned());
+            }
+            if check.window.is_empty() {
+                check.window = "now".to_owned();
+            }
+            let store = open_store(store_dir, mirror, true)?;
+            let ctx = named(&store, ctx)?;
+            let item = store
+                .enqueue_check(&ctx, &check, due, now)
+                .map_err(|e| e.to_string())?;
+            Ok(format!("{}\n", item.0))
+        }
+        ["wake-node", ctx, node] => {
+            let store = open_store(store_dir, mirror, true)?;
+            let ctx = named(&store, ctx)?;
+            store
+                .declare_wake_node(&ctx, node, now)
+                .map_err(|e| e.to_string())?;
+            Ok(format!("{} wakes on {node}\n", ctx.0))
+        }
         ["enqueue", _, ask @ ..] if ask.join(" ").trim().is_empty() => {
             Err("an empty ask: say what to do".to_owned())
         }
@@ -101,6 +173,18 @@ pub fn context_with(
                 log.len(),
                 inbox.len()
             );
+            let later = store.not_yet_due(&ctx, now).map_err(|e| e.to_string())?;
+            if let Some(next) = later.first() {
+                let at = next
+                    .due
+                    .and_then(|d| jiff::Timestamp::from_second(d).ok())
+                    .map(|t| t.to_string())
+                    .unwrap_or_default();
+                out.push_str(&format!("{} not yet due (next at {at})\n", later.len()));
+            }
+            if let Some(node) = store.wake_node(&ctx).map_err(|e| e.to_string())? {
+                out.push_str(&format!("wakes on {node}\n"));
+            }
             for repo in store.repos(&ctx).map_err(|e| e.to_string())? {
                 out.push_str(&format!(
                     "repo {} @ {}: {}\n",
