@@ -29,6 +29,16 @@ the same check again, due at that time; nothing repeats on its own, so a
 recurring check is one the worker snoozes each time. The verdict is written
 into the submission, so the context's log is the check log.
 
+## Evidence
+
+A check's result is usually "I ran X and saw Y". Each shell call a worker
+makes is recorded as it returns — the command, its exit, and the first and
+last 2 KB of its output — and the worker is told the kino to cite; a
+governed job's start and end are recorded too. A submission citing these is
+**established**, not claimed. The record is in the context store (and its
+mirror): whatever a command prints, secrets included, goes with it — keep
+credentials out of output a worker runs.
+
 ## Waking
 
 `kudo-shim waker` runs as a user service on one node. Once a minute it looks

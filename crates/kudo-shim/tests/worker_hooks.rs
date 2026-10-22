@@ -161,7 +161,7 @@ fn pre_compact_ends_the_lease() {
 #[test]
 fn an_unknown_event_is_refused_loudly() {
     let (s, _store) = setup();
-    let reply = hook::run("post-tool-use", "{}", &s, T0);
+    let reply = hook::run("frobnicate", "{}", &s, T0);
     assert_ne!(reply.code, 0);
 }
 

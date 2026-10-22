@@ -241,7 +241,16 @@ fn finished_panes_are_the_wakers_whose_lease_ended() {
     let done = kudo_shim::waker::finished_panes(&store, &ctx).unwrap();
     let jobs: Vec<&str> = done.iter().map(|p| p.job.as_str()).collect();
     assert_eq!(jobs, vec!["job-w"]);
-    assert_eq!(store.panes(&ctx).unwrap()[0].by, "waker");
+    let by = |job: &str| {
+        store
+            .panes(&ctx)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.job == job)
+            .map(|p| p.by)
+    };
+    assert_eq!(by("job-w").as_deref(), Some("waker"));
+    assert_eq!(by("job-c").as_deref(), Some("console"));
 }
 
 /// The default node is one the waker may start on: its own when allowed,

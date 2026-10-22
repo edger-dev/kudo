@@ -123,7 +123,58 @@ pub fn run_with(
                 .unwrap_or_default();
             worker.user_prompt(prompt, now).map(|()| HookReply::quiet())
         }
+        // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+        "post-tool-use" => return post_tool_use(&input, &store, setup, now),
         other => return HookReply::failed(format!("no hook named `{other}`")),
     };
     result.unwrap_or_else(HookReply::failed)
+}
+
+/// A shell call just returned: record it in the lease's trace and tell the
+/// worker the kino to cite. Any other tool is let be. Best effort: a failed
+/// record never fails the call.
+fn post_tool_use(
+    input: &Value,
+    store: &kudo_context::ContextStore,
+    setup: &WorkerSetup,
+    now: Now,
+) -> HookReply {
+    if input.get("tool_name").and_then(Value::as_str) != Some("Bash") {
+        return HookReply::quiet();
+    }
+    let command = input
+        .pointer("/tool_input/command")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let response = input.get("tool_response").cloned().unwrap_or(Value::Null);
+    let text = |key: &str| {
+        response
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+    };
+    let mut output = text("stdout").to_owned();
+    if !text("stderr").is_empty() {
+        output.push_str("\n[stderr]\n");
+        output.push_str(text("stderr"));
+    }
+    let exit = ["exit_code", "exitCode", "returnCode", "code"]
+        .iter()
+        .find_map(|k| response.get(*k).and_then(Value::as_i64))
+        .and_then(|c| i32::try_from(c).ok());
+    match store.record_tool_call(&setup.context, &setup.lease, command, exit, &output, now) {
+        Ok(id) => HookReply::json(&json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": format!(
+                    "kudo recorded this shell call as kino://{id}: cite it as evidence for \
+                     what it showed."
+                ),
+            }
+        })),
+        Err(e) => {
+            eprintln!("kudo: could not record the shell call: {e}");
+            HookReply::quiet()
+        }
+    }
 }

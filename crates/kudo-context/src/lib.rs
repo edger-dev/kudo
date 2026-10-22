@@ -280,7 +280,11 @@ impl TraceEvent {
                 status,
                 verdict,
             } => format!("{} {node} {job} {status} {verdict}", self.name()),
-            Self::ToolCall { .. } => self.name().to_owned(),
+            Self::ToolCall { command, exit } => format!(
+                "{} {} {command}",
+                self.name(),
+                exit.map_or_else(|| "?".to_owned(), |c| c.to_string())
+            ),
         }
     }
 
@@ -311,6 +315,10 @@ impl TraceEvent {
                 job: (*job).to_owned(),
                 waiting: *state == "waiting",
                 argv: argv.join(" "),
+            },
+            ["tool-call", exit, command @ ..] => Self::ToolCall {
+                exit: exit.parse().ok(),
+                command: command.join(" "),
             },
             ["job", node, job, status, verdict] => Self::JobEnd {
                 node: (*node).to_owned(),

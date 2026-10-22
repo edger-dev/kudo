@@ -728,12 +728,14 @@ impl ShimServer {
         )
         .await;
         // A worker traces the jobs it starts, so its context says what ran on
-        // which node under which authority. Best effort: the job is started.
-        if let (Ok(s), Some(setup)) = (&started, &self.worker)
-            && let Err(e) =
-                worker_tools::trace_job_start(setup, &args.node, &s.id, s.waiting, &argv, now())
-        {
-            eprintln!("kudo: could not trace job {}: {e}", s.id);
+        // which node under which authority; the trace kino is citable. Best
+        // effort: the job is started.
+        let mut cite = String::new();
+        if let (Ok(s), Some(setup)) = (&started, &self.worker) {
+            match worker_tools::trace_job_start(setup, &args.node, &s.id, s.waiting, &argv, now()) {
+                Ok(id) => cite = format!(" (recorded as kino://{id})"),
+                Err(e) => eprintln!("kudo: could not trace job {}: {e}", s.id),
+            }
         }
         // Refused at the start (a deny rule), or done already: say how it
         // ended and under which authority, not that it started.
@@ -771,7 +773,7 @@ impl ShimServer {
                     s.id, args.node
                 )
             } else {
-                format!("started job {}", s.id)
+                format!("started job {}{cite}", s.id)
             }
         }))
     }

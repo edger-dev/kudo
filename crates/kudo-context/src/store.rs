@@ -525,6 +525,19 @@ impl ContextStore {
         event: &TraceEvent,
         now: Now,
     ) -> Result<String, Error> {
+        self.record_trace_with(ctx, lease, event, "", now)
+    }
+
+    /// [`record_trace`], with a body below the event's line (a tool call's
+    /// output); the trace kino's id.
+    fn record_trace_with(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+        event: &TraceEvent,
+        body: &str,
+        now: Now,
+    ) -> Result<String, Error> {
         let view = self.view()?;
         view.require_context(ctx)?;
         let seq = (view
@@ -554,7 +567,12 @@ impl ContextStore {
         };
         let line = event.to_line();
         // The nonce keeps two equal events of one lease two kinos.
-        let content = format!("<!-- kudo trace {lease} #{seq} {} -->\n{line}\n", nonce()?);
+        let mut content = format!("<!-- kudo trace {lease} #{seq} {} -->\n{line}\n", nonce()?);
+        if !body.is_empty() {
+            content.push('\n');
+            content.push_str(body);
+            content.push('\n');
+        }
         let born = self.put(
             "text",
             content.into_bytes(),
@@ -574,20 +592,41 @@ impl ContextStore {
         Ok(born.id)
     }
 
+    /// Record a shell call `lease` made, as it returned: the command, its
+    /// exit, and the first and last 2 KB of its output. The kino's id, which
+    /// a submission of this context may cite.
+    // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
     pub fn record_tool_call(
         &self,
-        _ctx: &ContextId,
-        _lease: &str,
-        _command: &str,
-        _exit: Option<i32>,
-        _output: &str,
-        _now: Now,
+        ctx: &ContextId,
+        lease: &str,
+        command: &str,
+        exit: Option<i32>,
+        output: &str,
+        now: Now,
     ) -> Result<String, Error> {
-        Err(Error::Kinora("not yet".into()))
+        let command = one_line(command);
+        let event = TraceEvent::ToolCall {
+            command: command.clone(),
+            exit,
+        };
+        let exit = exit.map_or_else(|| "unknown".to_owned(), |c| c.to_string());
+        let body = format!(
+            "$ {command}\n(exit {exit})\n\n{}",
+            excerpt(output, OUTPUT_KEPT)
+        );
+        self.record_trace_with(ctx, lease, &event, &body, now)
     }
 
-    pub fn kino_text(&self, _id: &str) -> Result<String, Error> {
-        Err(Error::Kinora("not yet".into()))
+    /// A kino's text as stored (its first version), marker stripped.
+    pub fn kino_text(&self, id: &str) -> Result<String, Error> {
+        let view = self.view()?;
+        let event = view
+            .by_id
+            .get(id)
+            .and_then(|events| events.first())
+            .ok_or_else(|| Error::Kinora(format!("no kino {id}")))?;
+        Ok(strip_marker(&self.read(&event.hash)?))
     }
 
     /// Record that `lease` runs in the pane `job` on `node`: written by the
@@ -702,7 +741,7 @@ impl ContextStore {
                         submission: SubmissionId(field(e, SUBMISSION).to_owned()),
                     },
                     "lease-end" => TraceEvent::LeaseEnd(field(e, REASON).to_owned()),
-                    "job-start" | "job" => TraceEvent::from_line(field(e, REASON))?,
+                    "job-start" | "job" | "tool-call" => TraceEvent::from_line(field(e, REASON))?,
                     _ => return None,
                 };
                 Some(TraceEntry {
@@ -1489,8 +1528,12 @@ impl View {
             .filter(|(_, events)| {
                 events.iter().any(|b| {
                     b.parents.is_empty()
-                        && matches!(field(b, KIND), "cite" | "submission")
                         && field(b, CONTEXT) == ctx.0
+                        && (matches!(field(b, KIND), "cite" | "submission")
+                            // The loop's own records of what ran.
+                            // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+                            || (field(b, KIND) == "trace"
+                                && matches!(field(b, EVENT), "tool-call" | "job-start" | "job")))
                 })
             })
             .flat_map(|(id, events)| {
@@ -1841,6 +1884,31 @@ fn field<'a>(event: &'a Event, key: &str) -> &'a str {
         .get(key)
         .map(String::as_str)
         .unwrap_or_default()
+}
+
+/// How much of a shell call's output a trace keeps: this much from each end.
+const OUTPUT_KEPT: usize = 2048;
+
+/// The first and last `keep` bytes of `text` (on character boundaries), the
+/// middle cut and said so.
+fn excerpt(text: &str, keep: usize) -> String {
+    if text.len() <= 2 * keep {
+        return text.to_owned();
+    }
+    let mut head = keep;
+    while !text.is_char_boundary(head) {
+        head -= 1;
+    }
+    let mut tail = text.len() - keep;
+    while !text.is_char_boundary(tail) {
+        tail += 1;
+    }
+    format!(
+        "{}\n… ({} bytes cut) …\n{}",
+        &text[..head],
+        tail - head,
+        &text[tail..]
+    )
 }
 
 /// An item's due time, if it has one.

@@ -70,6 +70,19 @@ pub fn plan(
     // An unattended pane has no person to answer a prompt: no tips, and no
     // project MCP servers offered (the worker's MCP config is strict).
     // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697
+    let mut hooks = hooks;
+    // Shell calls are recorded as they return, as citable evidence.
+    // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+    hooks.insert(
+        "PostToolUse".to_owned(),
+        json!([{
+            "matcher": "Bash",
+            "hooks": [{
+                "type": "command",
+                "command": format!("{} hook post-tool-use", shell_quote(&shim_str)),
+            }],
+        }]),
+    );
     let settings = json!({ "hooks": hooks, "spinnerTipsEnabled": false });
 
     let mut server_env: Map<String, Value> = setup

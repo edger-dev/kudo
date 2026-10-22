@@ -166,7 +166,7 @@ pub fn trace_job_start(
     waiting: bool,
     argv: &[String],
     now: Now,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let store = open(setup)?;
     let event = kudo_context::TraceEvent::JobStart {
         node: node.to_owned(),
@@ -174,11 +174,11 @@ pub fn trace_job_start(
         waiting,
         argv: argv.join(" "),
     };
-    store
+    let id = store
         .record_trace(&setup.context, &setup.lease, &event, now)
         .map_err(|e| e.to_string())?;
     publish(setup, &event);
-    Ok(())
+    Ok(id)
 }
 
 /// Say a traced job event on the hub, as the loop's own events are, so the
