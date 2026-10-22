@@ -201,7 +201,7 @@ async fn run_waker() -> i32 {
         );
         return 2;
     };
-    let own = kudo_shim::cli::node_name();
+    let own = kudo_shim::waker::default_node(&kudo_shim::cli::node_name(), &nodes);
     let mut backoff = kudo_shim::waker::Backoff::default();
     let quiet = kudo_worker::env::DEFAULT_CLAIM_TTL;
     println!(

@@ -29,6 +29,8 @@ pub const BACKOFF_MAX: i64 = 4 * 3600;
 #[derive(Debug, Default)]
 pub struct Backoff {
     next: std::collections::HashMap<ContextId, (Now, i64)>,
+    /// Finished panes already stopped (or found gone): looked at once.
+    stopped: std::collections::HashSet<String>,
 }
 
 impl Backoff {
@@ -84,10 +86,25 @@ pub fn due_contexts(
     own_node: &str,
     quiet_after: i64,
 ) -> Result<Vec<Wake>, Error> {
+    due_contexts_with(store, now, own_node, quiet_after, &[])
+}
+
+/// [`due_contexts`], knowing which panes' jobs are already gone (killed by
+/// hand): those no longer count as a worker on its way.
+// implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+pub fn due_contexts_with(
+    store: &ContextStore,
+    now: Now,
+    own_node: &str,
+    quiet_after: i64,
+    gone: &[String],
+) -> Result<Vec<Wake>, Error> {
     let mut wakes = Vec::new();
     for card in store.contexts()? {
         let ctx = card.id;
-        if store.due_ready_count(&ctx, now)? == 0 || runs_a_worker(store, &ctx, now, quiet_after)? {
+        if store.due_ready_count(&ctx, now)? == 0
+            || runs_a_worker(store, &ctx, now, quiet_after, gone)?
+        {
             continue;
         }
         let node = store
@@ -104,6 +121,7 @@ fn runs_a_worker(
     ctx: &ContextId,
     now: Now,
     quiet_after: i64,
+    gone: &[String],
 ) -> Result<bool, Error> {
     // Each lease's last word, and whether it ended.
     let mut leases: Vec<(String, i64, bool)> = Vec::new();
@@ -132,7 +150,9 @@ fn runs_a_worker(
         return Ok(true);
     }
     Ok(store.panes(ctx)?.iter().any(|pane| {
-        now - pane.at <= PANE_GRACE && !leases.iter().any(|(l, _, _)| *l == pane.lease)
+        now - pane.at <= PANE_GRACE
+            && !gone.contains(&pane.job)
+            && !leases.iter().any(|(l, _, _)| *l == pane.lease)
     }))
 }
 
@@ -146,9 +166,65 @@ pub async fn wake_once(
     quiet_after: i64,
     backoff: &mut Backoff,
 ) -> Vec<String> {
+    let mut said = Vec::new();
+    // What the store says about panes: the waker's finished ones, and the
+    // recent ones still counting as a worker on its way.
+    let panes = {
+        let store = store.clone();
+        tokio::task::spawn_blocking(move || -> Result<_, Error> {
+            let mut finished = Vec::new();
+            let mut recent = Vec::new();
+            for card in store.contexts()? {
+                // A day back is enough: older panes were looked at, or are
+                // long gone.
+                finished.extend(
+                    finished_panes(&store, &card.id)?
+                        .into_iter()
+                        .filter(|p| now - p.at <= 86_400),
+                );
+                recent.extend(
+                    store
+                        .panes(&card.id)?
+                        .into_iter()
+                        .filter(|p| now - p.at <= PANE_GRACE),
+                );
+            }
+            Ok((finished, recent))
+        })
+        .await
+    };
+    let (finished, recent) = match panes {
+        Ok(Ok(panes)) => panes,
+        Ok(Err(e)) => return vec![format!("could not read the store: {e}")],
+        Err(e) => return vec![format!("could not read the store: {e}")],
+    };
+    // A finished worker's pane is stopped once; one already gone is let be.
+    for pane in finished {
+        if backoff.stopped.contains(&pane.job) {
+            continue;
+        }
+        if job_running(hub, &pane).await {
+            stop(hub, &pane).await;
+            said.push(format!(
+                "stopped pane {} on {} (its lease ended)",
+                pane.job, pane.node
+            ));
+        }
+        backoff.stopped.insert(pane.job);
+    }
+    // A recent pane whose job is gone (killed by hand) holds nothing back.
+    let mut gone = Vec::new();
+    for pane in recent {
+        if !job_running(hub, &pane).await {
+            gone.push(pane.job);
+        }
+    }
     let due = {
         let (store, own) = (store.clone(), own_node.to_owned());
-        tokio::task::spawn_blocking(move || due_contexts(&store, now, &own, quiet_after)).await
+        tokio::task::spawn_blocking(move || {
+            due_contexts_with(&store, now, &own, quiet_after, &gone)
+        })
+        .await
     };
     let wakes = match due {
         Ok(Ok(wakes)) => wakes,
@@ -158,7 +234,6 @@ pub async fn wake_once(
     // Contexts with nothing due any more start afresh next time.
     let waking: Vec<ContextId> = wakes.iter().map(|w| w.context.clone()).collect();
     backoff.next.retain(|ctx, _| waking.contains(ctx));
-    let mut said = Vec::new();
     for wake in wakes {
         if !backoff.may_wake(&wake.context, now) {
             continue;
@@ -190,36 +265,83 @@ pub async fn wake_once(
                 pane.job, pane.node
             ));
         }
-        let line =
-            match crate::panes::start(hub, store.clone(), &wake.context.0, &wake.node, now).await {
-                Ok(pane) => format!(
-                    "woke a worker for {} on {} (job {}, lease {})",
-                    wake.context.0, wake.node, pane.job, pane.lease
-                ),
-                Err(e) => format!("could not wake {} on {}: {e}", wake.context.0, wake.node),
-            };
+        let line = match crate::panes::start_by(
+            hub,
+            store.clone(),
+            &wake.context.0,
+            &wake.node,
+            now,
+            "waker",
+        )
+        .await
+        {
+            Ok(pane) => format!(
+                "woke a worker for {} on {} (job {}, lease {})",
+                wake.context.0, wake.node, pane.job, pane.lease
+            ),
+            Err(e) => format!("could not wake {} on {}: {e}", wake.context.0, wake.node),
+        };
         said.push(line);
     }
     said
 }
 
-pub fn due_contexts_with(
-    store: &ContextStore,
-    now: Now,
-    own_node: &str,
-    quiet_after: i64,
-    _gone: &[String],
-) -> Result<Vec<Wake>, Error> {
-    due_contexts(store, now, own_node, quiet_after)
-}
-
+/// The panes the waker started whose lease has ended: stopped, so a finished
+/// worker's agent session and its MCP servers do not outlive the work. A pane
+/// a person started is never among them.
+// implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
 pub fn finished_panes(
-    _store: &ContextStore,
-    _ctx: &ContextId,
+    store: &ContextStore,
+    ctx: &ContextId,
 ) -> Result<Vec<kudo_context::PaneRecord>, Error> {
-    Ok(Vec::new())
+    let ended: Vec<String> = store
+        .trace(ctx)?
+        .into_iter()
+        .filter(|e| matches!(e.event, TraceEvent::LeaseEnd(_)))
+        .map(|e| e.lease)
+        .collect();
+    Ok(store
+        .panes(ctx)?
+        .into_iter()
+        .filter(|p| p.by == "waker" && ended.contains(&p.lease))
+        .collect())
 }
 
-pub fn default_node(own: &str, _allowed: &[String]) -> String {
-    own.to_owned()
+/// The node woken workers default to: the waker's own when it may start
+/// there, else the first node it may start on.
+pub fn default_node(own: &str, allowed: &[String]) -> String {
+    if allowed.iter().any(|n| n == own) {
+        return own.to_owned();
+    }
+    allowed.first().cloned().unwrap_or_else(|| own.to_owned())
+}
+
+/// Whether a pane's job still runs on its node; a job the node no longer
+/// knows, or cannot say, counts as not running.
+async fn job_running(hub: &HubClient, pane: &kudo_context::PaneRecord) -> bool {
+    crate::jobs::tail(
+        hub,
+        crate::route::Target::node(pane.node.clone()),
+        crate::jobs::DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::TailRequest {
+            id: pane.job.clone(),
+            offset: u64::MAX,
+        },
+    )
+    .await
+    .is_ok_and(|t| !t.status.is_terminal())
+}
+
+/// Stop a pane's job, as the console.
+async fn stop(hub: &HubClient, pane: &kudo_context::PaneRecord) {
+    let _ = crate::jobs::kill(
+        hub,
+        crate::route::Target::node(pane.node.clone()),
+        crate::jobs::DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::KillRequest {
+            id: pane.job.clone(),
+            caller: moco_job::wire::WireCaller::Console,
+        },
+    )
+    .await;
 }

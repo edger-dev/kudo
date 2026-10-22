@@ -72,6 +72,18 @@ pub async fn start(
     node: &str,
     now: i64,
 ) -> Result<PaneRecord, String> {
+    start_by(hub, store, context, node, now, "console").await
+}
+
+/// [`start`], recording who started the pane (`console` or `waker`).
+pub async fn start_by(
+    hub: &HubClient,
+    store: std::sync::Arc<ContextStore>,
+    context: &str,
+    node: &str,
+    now: i64,
+    by: &str,
+) -> Result<PaneRecord, String> {
     let named = worker_nodes_from(|k| std::env::var(k).ok());
     if !may_start(node, named.as_deref()) {
         let named = named.unwrap_or_default();
@@ -129,12 +141,12 @@ pub async fn start(
         node: node.to_owned(),
         job: reply.id.clone(),
         at: now,
-        by: "console".to_owned(),
+        by: by.to_owned(),
     };
     let recorded = {
         let (store, ctx, pane) = (store.clone(), ctx.clone(), pane.clone());
         tokio::task::spawn_blocking(move || {
-            store.record_pane(&ctx, &pane.lease, &pane.node, &pane.job, now)
+            store.record_pane_by(&ctx, &pane.lease, &pane.node, &pane.job, &pane.by, now)
         })
         .await
         .map_err(|e| e.to_string())

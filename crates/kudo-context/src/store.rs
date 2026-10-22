@@ -54,6 +54,7 @@ const ORIGIN: &str = "kudo::origin";
 const EVENT: &str = "kudo::event";
 const NODE: &str = "kudo::node";
 const JOB: &str = "kudo::job";
+const BY: &str = "kudo::by";
 const SUBMISSION: &str = "kudo::submission";
 const REASON: &str = "kudo::reason";
 const ORIGIN_ID: &str = "kudo::origin_id";
@@ -584,6 +585,21 @@ impl ContextStore {
         job: &str,
         now: Now,
     ) -> Result<(), Error> {
+        self.record_pane_by(ctx, lease, node, job, "console", now)
+    }
+
+    /// Record a pane, naming who started it (`console` or `waker`): the
+    /// waker stops only the panes it started.
+    // implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+    pub fn record_pane_by(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+        node: &str,
+        job: &str,
+        by: &str,
+        now: Now,
+    ) -> Result<(), Error> {
         let view = self.view()?;
         view.require_context(ctx)?;
         let content = format!(
@@ -599,23 +615,12 @@ impl ContextStore {
                 (LEASE, lease),
                 (NODE, node),
                 (JOB, job),
+                (BY, by),
             ]),
             None,
             now,
         )?;
         Ok(())
-    }
-
-    pub fn record_pane_by(
-        &self,
-        ctx: &ContextId,
-        lease: &str,
-        node: &str,
-        job: &str,
-        _by: &str,
-        now: Now,
-    ) -> Result<(), Error> {
-        self.record_pane(ctx, lease, node, job, now)
     }
 
     /// The panes recorded under the context.
@@ -631,7 +636,11 @@ impl ContextStore {
                 node: field(e, NODE).to_owned(),
                 job: field(e, JOB).to_owned(),
                 at: e.ts.parse::<jiff::Timestamp>().map_or(0, |t| t.as_second()),
-                by: String::new(),
+                // Panes recorded before this field were the console's.
+                by: Some(field(e, BY))
+                    .filter(|b| !b.is_empty())
+                    .unwrap_or("console")
+                    .to_owned(),
             })
             .collect())
     }

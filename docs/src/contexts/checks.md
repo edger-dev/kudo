@@ -45,6 +45,10 @@ waker's own node. The waker starts workers only on the nodes in
 `KUDO_CONSOLE_WORKER_NODES`, and never for an ordinary item: those wait for a
 person to start a worker. A context it woke is not woken again for 15 minutes, then 30, doubling up
 to 4 hours while its due item stays unanswered; a pane that never traced is
-stopped before another starts. It refuses to run without
-`KUDO_CONSOLE_WORKER_NODES`. It needs `KUDO_HUB_ADDR`, and the mirror settings
+stopped before another starts. Once the lease of a
+pane it started has ended, it stops that pane, so a finished worker's
+session does not linger (it never stops a pane a person started); a pane
+whose job is already gone holds nothing back. Woken workers default to the
+waker's own node when it is one it may start on, else the first such node.
+It refuses to run without `KUDO_CONSOLE_WORKER_NODES`. It needs `KUDO_HUB_ADDR`, and the mirror settings
 (`KUDO_CONTEXT_MIRROR`, `AWS_*`) to see what other machines queued.
