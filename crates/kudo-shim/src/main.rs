@@ -192,17 +192,35 @@ async fn run_waker() -> i32 {
             return 2;
         }
     };
+    // The nodes it may start on are the console's, and must be said: unset,
+    // the launch policy would allow any node.
+    let Some(nodes) = kudo_shim::panes::worker_nodes_from(|k| std::env::var(k).ok()) else {
+        eprintln!(
+            "the waker starts workers only on the nodes named in {}: set it",
+            kudo_shim::panes::WORKER_NODES_ENV
+        );
+        return 2;
+    };
     let own = kudo_shim::cli::node_name();
+    let mut backoff = kudo_shim::waker::Backoff::default();
     let quiet = kudo_worker::env::DEFAULT_CLAIM_TTL;
     println!(
-        "kudo waker: looking every {}s; woken workers default to {own}",
-        kudo_shim::waker::EVERY.as_secs()
+        "kudo waker: looking every {}s; workers start on {}; woken workers default to {own}",
+        kudo_shim::waker::EVERY.as_secs(),
+        nodes.join(", ")
     );
     loop {
         match tokio::time::timeout(Duration::from_secs(5), HubClient::dial(&addr)).await {
             Ok(Ok(hub)) => {
-                for line in
-                    kudo_shim::waker::wake_once(&hub, store.clone(), unix_now(), &own, quiet).await
+                for line in kudo_shim::waker::wake_once(
+                    &hub,
+                    store.clone(),
+                    unix_now(),
+                    &own,
+                    quiet,
+                    &mut backoff,
+                )
+                .await
                 {
                     println!("{line}");
                 }

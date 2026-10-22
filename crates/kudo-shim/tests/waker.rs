@@ -120,3 +120,78 @@ fn a_recent_pane_means_no_wake() {
     assert!(wakes(&store, T0 + 60).is_empty());
     assert_eq!(wakes(&store, T0 + 15 * 60 + 1).len(), 1);
 }
+
+/// A context woken once is not woken again until its back-off passes: 15
+/// minutes, doubling while its due item stays unanswered, up to 4 hours; it
+/// resets once nothing is due there.
+#[test]
+fn a_woken_context_backs_off() {
+    use kudo_shim::waker::Backoff;
+    let ctx = ContextId("c".repeat(64));
+    let mut backoff = Backoff::default();
+    assert!(backoff.may_wake(&ctx, T0));
+    backoff.woke(&ctx, T0);
+    assert!(!backoff.may_wake(&ctx, T0 + 14 * 60));
+    assert!(backoff.may_wake(&ctx, T0 + 15 * 60));
+    backoff.woke(&ctx, T0 + 15 * 60);
+    assert!(!backoff.may_wake(&ctx, T0 + 15 * 60 + 29 * 60), "doubled");
+    assert!(backoff.may_wake(&ctx, T0 + 15 * 60 + 30 * 60));
+    for n in 0..10 {
+        backoff.woke(&ctx, T0 + n);
+    }
+    assert!(
+        !backoff.may_wake(&ctx, T0 + 9 + 4 * 3600 - 1),
+        "capped at 4 hours"
+    );
+    assert!(backoff.may_wake(&ctx, T0 + 9 + 4 * 3600));
+    backoff.settled(&ctx);
+    backoff.woke(&ctx, T0);
+    assert!(
+        backoff.may_wake(&ctx, T0 + 15 * 60),
+        "reset after it settled"
+    );
+}
+
+/// Panes that never traced and are past their grace: the waker stops them
+/// before starting another, so they do not pile up.
+#[test]
+fn stale_panes_are_the_untraced_past_their_grace() {
+    let store = store();
+    let ctx = due_check(&store, "lab", T0);
+    store
+        .record_pane(&ctx, "lease-a", "yolo", "job-a", T0)
+        .unwrap();
+    store
+        .record_pane(&ctx, "lease-b", "yolo", "job-b", T0)
+        .unwrap();
+    store
+        .record_trace(&ctx, "lease-b", &TraceEvent::LeaseStart, T0 + 5)
+        .unwrap();
+    let stale = kudo_shim::waker::stale_panes(&store, &ctx, T0 + 15 * 60 + 1).unwrap();
+    let jobs: Vec<&str> = stale.iter().map(|p| p.job.as_str()).collect();
+    assert_eq!(jobs, vec!["job-a"]);
+    assert!(
+        kudo_shim::waker::stale_panes(&store, &ctx, T0 + 60)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Without a repo or a declaration, the first repo's node is the default.
+#[test]
+fn the_first_repos_node_is_the_default() {
+    let store = store();
+    let ctx = due_check(&store, "lab", T0);
+    store
+        .declare_repo(
+            &ctx,
+            &kudo_context::Repo {
+                name: "flakes".into(),
+                node: "pc".into(),
+                path: "/home/yj/.flakes".into(),
+            },
+            T0,
+        )
+        .unwrap();
+    assert_eq!(wakes(&store, T0)[0].node, "pc");
+}

@@ -18,6 +18,55 @@ pub const PANE_GRACE: i64 = 15 * 60;
 /// How often the waker looks.
 pub const EVERY: Duration = Duration::from_secs(60);
 
+/// The first wait before a context is woken again, and the longest.
+pub const BACKOFF_FIRST: i64 = 15 * 60;
+pub const BACKOFF_MAX: i64 = 4 * 3600;
+
+/// How soon each context may be woken again. A woken worker that does not
+/// answer its due item (stuck, ended, at a prompt) must not cost a session a
+/// minute: each wake doubles the wait, up to [`BACKOFF_MAX`], until nothing
+/// is due there.
+#[derive(Debug, Default)]
+pub struct Backoff {
+    next: std::collections::HashMap<ContextId, (Now, i64)>,
+}
+
+impl Backoff {
+    /// Whether `ctx` may be woken at `now`.
+    pub fn may_wake(&self, ctx: &ContextId, now: Now) -> bool {
+        self.next.get(ctx).is_none_or(|(at, _)| now >= *at)
+    }
+
+    /// `ctx` was woken (or a wake was tried) at `now`.
+    pub fn woke(&mut self, ctx: &ContextId, now: Now) {
+        let wait = self
+            .next
+            .get(ctx)
+            .map_or(BACKOFF_FIRST, |(_, wait)| (wait * 2).min(BACKOFF_MAX));
+        self.next.insert(ctx.clone(), (now + wait, wait));
+    }
+
+    /// Nothing is due under `ctx` any more: the next wake starts afresh.
+    pub fn settled(&mut self, ctx: &ContextId) {
+        self.next.remove(ctx);
+    }
+}
+
+/// The panes under `ctx` that never traced and are past [`PANE_GRACE`]: a
+/// worker stuck at a startup prompt, or dead. Stopped before another starts.
+pub fn stale_panes(
+    store: &ContextStore,
+    ctx: &ContextId,
+    now: Now,
+) -> Result<Vec<kudo_context::PaneRecord>, Error> {
+    let traced: Vec<String> = store.trace(ctx)?.into_iter().map(|e| e.lease).collect();
+    Ok(store
+        .panes(ctx)?
+        .into_iter()
+        .filter(|p| now - p.at > PANE_GRACE && !traced.contains(&p.lease))
+        .collect())
+}
+
 /// A worker to start: for which context, on which node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Wake {
@@ -95,6 +144,7 @@ pub async fn wake_once(
     now: Now,
     own_node: &str,
     quiet_after: i64,
+    backoff: &mut Backoff,
 ) -> Vec<String> {
     let due = {
         let (store, own) = (store.clone(), own_node.to_owned());
@@ -105,8 +155,41 @@ pub async fn wake_once(
         Ok(Err(e)) => return vec![format!("could not read the store: {e}")],
         Err(e) => return vec![format!("could not read the store: {e}")],
     };
+    // Contexts with nothing due any more start afresh next time.
+    let waking: Vec<ContextId> = wakes.iter().map(|w| w.context.clone()).collect();
+    backoff.next.retain(|ctx, _| waking.contains(ctx));
     let mut said = Vec::new();
     for wake in wakes {
+        if !backoff.may_wake(&wake.context, now) {
+            continue;
+        }
+        backoff.woke(&wake.context, now);
+        // A pane that never traced is stuck or dead: stop it first, so panes
+        // do not pile up on the node.
+        let stale = {
+            let (store, ctx) = (store.clone(), wake.context.clone());
+            tokio::task::spawn_blocking(move || stale_panes(&store, &ctx, now))
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .unwrap_or_default()
+        };
+        for pane in stale {
+            let _ = crate::jobs::kill(
+                hub,
+                crate::route::Target::node(pane.node.clone()),
+                crate::jobs::DEFAULT_JOB_CONNECTOR,
+                moco_job::wire::KillRequest {
+                    id: pane.job.clone(),
+                    caller: moco_job::wire::WireCaller::Console,
+                },
+            )
+            .await;
+            said.push(format!(
+                "stopped pane {} on {} (never traced)",
+                pane.job, pane.node
+            ));
+        }
         let line =
             match crate::panes::start(hub, store.clone(), &wake.context.0, &wake.node, now).await {
                 Ok(pane) => format!(

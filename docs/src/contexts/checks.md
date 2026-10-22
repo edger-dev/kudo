@@ -43,5 +43,8 @@ kudo-shim context wake-node <context> yolo
 Without one, the node of the context's first repo (by name), else the
 waker's own node. The waker starts workers only on the nodes in
 `KUDO_CONSOLE_WORKER_NODES`, and never for an ordinary item: those wait for a
-person to start a worker. It needs `KUDO_HUB_ADDR`, and the mirror settings
+person to start a worker. A context it woke is not woken again for 15 minutes, then 30, doubling up
+to 4 hours while its due item stays unanswered; a pane that never traced is
+stopped before another starts. It refuses to run without
+`KUDO_CONSOLE_WORKER_NODES`. It needs `KUDO_HUB_ADDR`, and the mirror settings
 (`KUDO_CONTEXT_MIRROR`, `AWS_*`) to see what other machines queued.
