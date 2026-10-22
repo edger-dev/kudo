@@ -60,6 +60,12 @@ fn short(id: &str) -> &str {
 fn WherePane(data: ConsoleData) -> Element {
     let selection = try_consume_context::<Signal<Selection>>();
     rsx! {
+        if !data.approvals.is_empty() {
+            h3 { "waiting for you" }
+            for approval in data.approvals.iter() {
+                ApprovalCard { key: "{approval.node}-{approval.job}", approval: approval.clone() }
+            }
+        }
         h3 { "nodes" }
         for node in data.nodes.iter() {
             div { key: "{node.id}", "{node.id} ({node.links.join(\", \")})" }
@@ -123,6 +129,85 @@ fn WherePane(data: ConsoleData) -> Element {
                         },
                         "start a worker on {node.id}"
                     }
+                }
+            }
+        }
+    }
+}
+
+/// The verdicts a waiting job offers, as the buttons name them.
+const VERDICTS: &[(&str, &str)] = &[
+    ("allow once", "allow-once"),
+    ("allow always", "allow-always"),
+    ("deny once", "deny-once"),
+    ("deny always", "deny-always"),
+];
+
+/// One job waiting for the author's verdict: what it would run, where, who
+/// asked, how long is left — and the verdicts, plus edit-then-allow.
+#[component]
+fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
+    let mut editing = use_signal(|| None::<String>);
+    let argv = approval.argv.join(" ");
+    let left = approval.left_s.div_ceil(60);
+    let (node, job) = (approval.node.clone(), approval.job.clone());
+    let send = move |verdict: &'static str, edited: Vec<String>| {
+        let (node, job) = (node.clone(), job.clone());
+        async move {
+            match crate::api::decide(node, job, verdict.to_owned(), edited).await {
+                Ok(done) => say(done),
+                Err(e) => say(e.to_string()),
+            }
+        }
+    };
+    rsx! {
+        div { style: "border:1px solid #c90;padding:6px;margin-bottom:6px;",
+            div { b { "{argv}" } }
+            div { "on {approval.node} in {approval.cwd} · {left} min left" }
+            div {
+                if let Some(context) = &approval.context {
+                    "asked by {context} · "
+                }
+                "owner {approval.owner}"
+            }
+            div { style: "display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;",
+                for (label, verdict) in VERDICTS.iter().copied() {
+                    button {
+                        key: "{verdict}",
+                        onclick: {
+                            let send = send.clone();
+                            move |_| send(verdict, Vec::new())
+                        },
+                        "{label}"
+                    }
+                }
+                button {
+                    onclick: {
+                        let argv = argv.clone();
+                        move |_| editing.set(Some(argv.clone()))
+                    },
+                    "edit, then allow"
+                }
+            }
+            if let Some(text) = editing() {
+                form {
+                    onsubmit: {
+                        let send = send.clone();
+                        let text = text.clone();
+                        move |e: FormEvent| {
+                            e.prevent_default();
+                            let edited: Vec<String> =
+                                text.split_whitespace().map(str::to_owned).collect();
+                            editing.set(None);
+                            send("allow-once", edited)
+                        }
+                    },
+                    input {
+                        style: "width:80%;",
+                        value: "{text}",
+                        oninput: move |e| editing.set(Some(e.value())),
+                    }
+                    button { r#type: "submit", "allow this" }
                 }
             }
         }

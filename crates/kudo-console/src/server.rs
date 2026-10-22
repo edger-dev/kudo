@@ -83,7 +83,75 @@ pub(crate) async fn console_data(selected: Option<String>) -> ConsoleData {
         },
     };
     data.nodes = nodes().await;
+    data.approvals = approvals(&data.nodes).await;
     data
+}
+
+/// Every node's jobs waiting for a verdict, named by the context that asked.
+/// A node that does not answer (or predates the gate on the wire) shows none.
+// implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
+async fn approvals(nodes: &[NodeView]) -> Vec<crate::model::ApprovalView> {
+    if nodes.is_empty() {
+        return Vec::new();
+    }
+    let Ok(hub) = hub().await else {
+        return Vec::new();
+    };
+    let mut pending = Vec::new();
+    for node in nodes {
+        let ask = kudo_shim::jobs::pending(
+            &hub,
+            kudo_shim::route::Target::node(node.id.clone()),
+            kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
+        );
+        if let Ok(Ok(reply)) = tokio::time::timeout(Duration::from_secs(2), ask).await {
+            pending.extend(reply.jobs.into_iter().map(|j| (node.id.clone(), j)));
+        }
+    }
+    if pending.is_empty() {
+        return Vec::new();
+    }
+    let asked = tokio::task::spawn_blocking(|| {
+        store()
+            .ok()
+            .and_then(|s| crate::views::job_contexts(&s).ok())
+            .unwrap_or_default()
+    })
+    .await
+    .unwrap_or_default();
+    crate::views::approvals(pending, &asked)
+}
+
+/// The human's verdict on a waiting job, sent as the console; what it led to.
+pub(crate) async fn decide(
+    node: String,
+    job: String,
+    verdict: String,
+    edited: Vec<String>,
+) -> Result<String, String> {
+    let wire = crate::views::verdict_from(&verdict)
+        .ok_or_else(|| format!("{verdict:?} is not a verdict"))?;
+    let edited: Vec<String> = edited.into_iter().filter(|a| !a.is_empty()).collect();
+    let hub = hub().await?;
+    let reply = kudo_shim::jobs::decide(
+        &hub,
+        kudo_shim::route::Target::node(node),
+        kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::DecideRequest {
+            id: job.clone(),
+            verdict: wire,
+            edited_argv: edited,
+            caller: moco_job::wire::WireCaller::Console,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    bump();
+    Ok(format!(
+        "job {job}: {} under {}",
+        kudo_shim::jobs::status_word(&reply.status),
+        kudo_shim::jobs::verdict_word(reply.verdict)
+    ))
 }
 
 /// A recorded pane's screen.

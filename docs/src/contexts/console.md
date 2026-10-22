@@ -109,6 +109,19 @@ PORT=8080 KUDO_CONSOLE_HOSTS=8080.yolo.incus \
 The console still binds 127.0.0.1, where yolo's Caddy forwards. It has no
 login, so anyone the ingress lets in can use it.
 
+## Answering the gate
+
+Every node is governed, so a command no rule allows waits for **your**
+verdict. Such jobs show at the top of the *where* pane, under **waiting for
+you**, oldest first: the argv, the node and directory, the context whose
+worker asked, the owner, and the minutes left before it is denied. The buttons
+are the four verdicts — **allow once**, **allow always** (writes an exact-argv
+rule on that node), **deny once**, **deny always** — and **edit, then allow**,
+which runs your corrected argv instead (split on spaces). The reply says what
+the job then did; a verdict that arrives too late runs nothing, and says so.
+
+Only the console's verdict counts: a node refuses one from anyone else.
+
 ## Live updates
 
 The server subscribes to the hub's `kudo/` events and the page long-polls a

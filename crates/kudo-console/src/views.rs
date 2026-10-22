@@ -139,19 +139,54 @@ pub fn detail(store: &ContextStore, id: &str) -> Result<ContextDetail, Error> {
     })
 }
 
+/// Every node's jobs waiting for a verdict, oldest first, each named by the
+/// context whose worker asked (from `asked`, keyed by node and job id).
+// implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
 pub fn approvals(
-    _pending: Vec<(String, moco_job::wire::PendingJob)>,
-    _asked: &std::collections::HashMap<(String, String), String>,
+    pending: Vec<(String, moco_job::wire::PendingJob)>,
+    asked: &std::collections::HashMap<(String, String), String>,
 ) -> Vec<crate::model::ApprovalView> {
-    Vec::new()
+    let mut views: Vec<crate::model::ApprovalView> = pending
+        .into_iter()
+        .map(|(node, job)| crate::model::ApprovalView {
+            context: asked.get(&(node.clone(), job.id.clone())).cloned(),
+            owner: job.scope.to_string(),
+            waited_s: job.waited_ms / 1000,
+            left_s: job.left_ms / 1000,
+            argv: job.argv,
+            cwd: job.cwd,
+            job: job.id,
+            node,
+        })
+        .collect();
+    views.sort_by(|a, b| b.waited_s.cmp(&a.waited_s));
+    views
 }
 
+/// Which context's worker started each job, by node and job id, from the
+/// contexts' job-start events.
 pub fn job_contexts(
-    _store: &ContextStore,
+    store: &ContextStore,
 ) -> Result<std::collections::HashMap<(String, String), String>, Error> {
-    Ok(Default::default())
+    let mut asked = std::collections::HashMap::new();
+    for card in store.contexts()? {
+        for entry in store.trace(&card.id)? {
+            if let TraceEvent::JobStart { node, job, .. } = entry.event {
+                asked.insert((node, job), card.title.clone());
+            }
+        }
+    }
+    Ok(asked)
 }
 
-pub fn verdict_from(_name: &str) -> Option<moco_job::wire::WireVerdict> {
-    None
+/// The verdict a button names.
+pub fn verdict_from(name: &str) -> Option<moco_job::wire::WireVerdict> {
+    use moco_job::wire::WireVerdict;
+    Some(match name {
+        "allow-once" => WireVerdict::AllowOnce,
+        "allow-always" => WireVerdict::AllowAlways,
+        "deny-once" => WireVerdict::DenyOnce,
+        "deny-always" => WireVerdict::DenyAlways,
+        _ => return None,
+    })
 }
