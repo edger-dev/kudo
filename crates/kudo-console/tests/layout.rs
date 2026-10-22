@@ -31,6 +31,8 @@ fn sample() -> ConsoleData {
             title: "first kudo".into(),
             ready: 1,
             submitted: 2,
+            later: 1,
+            next_due: Some("2026-10-22T10:00:00Z".into()),
             workers: vec![WorkerView {
                 lease: "lease-1".into(),
                 last: "pull 1234".into(),

@@ -79,7 +79,14 @@ pub fn contexts(store: &ContextStore, now: Now) -> Result<Vec<ContextCard>, Erro
                     pane: pane_of(lease),
                 }))
                 .collect();
+            let later = store.not_yet_due(&c.id, now)?;
             Ok(ContextCard {
+                later: later.len(),
+                next_due: later
+                    .first()
+                    .and_then(|i| i.due)
+                    .and_then(|d| jiff::Timestamp::from_second(d).ok())
+                    .map(|t| t.to_string()),
                 ready: store.ready_count(&c.id, now)?,
                 submitted: store.log(&c.id)?.len(),
                 id: c.id.0,

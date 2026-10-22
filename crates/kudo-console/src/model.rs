@@ -44,6 +44,9 @@ pub struct ContextCard {
     pub title: String,
     pub ready: usize,
     pub submitted: usize,
+    /// Items not yet due, and when the next one is.
+    pub later: usize,
+    pub next_due: Option<String>,
     pub workers: Vec<WorkerView>,
 }
 

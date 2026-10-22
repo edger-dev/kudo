@@ -188,3 +188,21 @@ fn an_ended_lease_stays_ended() {
     let cards = views::contexts(&store, T0 + 10).unwrap();
     assert!(cards[0].workers.is_empty(), "{:?}", cards[0].workers);
 }
+
+/// A card counts the items not yet due and names the next one's time.
+// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+#[test]
+fn a_card_counts_what_is_not_yet_due() {
+    let store = store("not-yet-due");
+    let ctx = store.create_context("lab", "# lab\n", T0).unwrap();
+    store
+        .enqueue_due(&ctx, "later", Some(T0 + 3600), T0)
+        .unwrap();
+    store
+        .enqueue_due(&ctx, "sooner", Some(T0 + 600), T0)
+        .unwrap();
+    let card = views::contexts(&store, T0).unwrap().remove(0);
+    assert_eq!(card.ready, 0);
+    assert_eq!(card.later, 2);
+    assert_eq!(card.next_due.as_deref(), Some("2026-10-20T12:50:00Z"));
+}

@@ -87,7 +87,12 @@ fn WherePane(data: ConsoleData) -> Element {
                     }
                 },
                 div { b { "{card.title}" } " {short(&card.id)}" }
-                div { "{card.ready} ready, {card.submitted} submitted" }
+                div {
+                    "{card.ready} ready, {card.submitted} submitted"
+                    if let Some(next) = &card.next_due {
+                        ", {card.later} later (next {next})"
+                    }
+                }
                 for worker in card.workers.iter() {
                     div { key: "{worker.lease}", style: "padding-left:1em;",
                         "worker {short(&worker.lease)}: {worker.last}"
