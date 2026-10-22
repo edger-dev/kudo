@@ -28,19 +28,21 @@ fn waiting(node: &str, job: &str, argv: &[&str], waited_s: u64) -> ApprovalView 
 
 /// The page with the approvals tray open.
 fn render(data: ConsoleData) -> String {
-    common::render_with(
+    let html = common::render_with(
         THREE_PANES,
         data,
         Selection {
             tray: true,
             ..Selection::default()
         },
-    )
+    );
+    common::markup(&html).to_owned()
 }
 
 /// The page with the tray closed.
 fn closed(data: ConsoleData) -> String {
-    common::render_with(THREE_PANES, data, Selection::default())
+    let html = common::render_with(THREE_PANES, data, Selection::default());
+    common::markup(&html).to_owned()
 }
 
 /// A waiting job shows its node, argv, where it runs, who asked and the time
@@ -129,12 +131,21 @@ fn a_standing_verdict_takes_a_second_tap() {
     assert_eq!(second_tap("allow-once", "df -h", "pc"), None);
     assert_eq!(second_tap("deny-once", "df -h", "pc"), None);
     let allow = second_tap("allow-always", "df -h", "pc").expect("asks again");
-    assert!(allow.contains("df -h") && allow.contains("pc only"), "{allow}");
+    assert!(
+        allow.contains("df -h") && allow.contains("pc only"),
+        "{allow}"
+    );
     assert!(allow.contains("always allow"), "{allow}");
     let deny = second_tap("deny-always", "rm -rf /", "edger::yolo").expect("asks again");
-    assert!(deny.contains("always deny") && deny.contains("edger::yolo only"), "{deny}");
+    assert!(
+        deny.contains("always deny") && deny.contains("edger::yolo only"),
+        "{deny}"
+    );
     let kill = kill_text("1792500000000-7-1", "pc");
-    assert!(kill.contains("1792500000000-7-1") && kill.contains("pc"), "{kill}");
+    assert!(
+        kill.contains("1792500000000-7-1") && kill.contains("pc"),
+        "{kill}"
+    );
     assert_eq!(kudo_console::confirm::CONFIRM_MS, 10_000);
 }
 
@@ -178,7 +189,10 @@ mod server_side {
         // Rows never move under a finger: equal waits keep one order.
         let tied = |a: &str, b: &str| {
             views::approvals(
-                vec![(a.into(), pending("j-x", 5_000)), (b.into(), pending("j-x", 5_000))],
+                vec![
+                    (a.into(), pending("j-x", 5_000)),
+                    (b.into(), pending("j-x", 5_000)),
+                ],
                 &HashMap::new(),
             )
             .into_iter()

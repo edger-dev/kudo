@@ -5,6 +5,8 @@
 
 pub mod api;
 pub mod app;
+pub mod badge;
+pub mod confirm;
 #[cfg(feature = "server")]
 pub mod guard;
 pub mod layout;
@@ -13,5 +15,7 @@ pub mod selection;
 #[cfg(feature = "server")]
 mod server;
 pub mod shell;
+pub mod style;
+pub mod theme;
 #[cfg(feature = "server")]
 pub mod views;

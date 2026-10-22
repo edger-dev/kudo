@@ -211,7 +211,10 @@ fn the_stylesheet_drills_only_on_a_narrow_screen() {
 #[test]
 fn the_top_bar_says_where_you_are_and_steps_back() {
     let html = render_with(THREE_PANES, sample(), Selection::default());
-    assert!(!html.contains("data-back"), "nothing to step out of: {html}");
+    assert!(
+        !html.contains("data-back"),
+        "nothing to step out of: {html}"
+    );
     let html = render(THREE_PANES);
     assert!(html.contains("data-back"), "{html}");
     assert!(html.contains("data-crumb"), "{html}");
@@ -248,16 +251,23 @@ fn the_theme_follows_the_system_unless_picked() {
     assert_eq!(Theme::default(), Theme::System);
     assert_eq!(Theme::System.next(), Theme::Dark);
     assert_eq!(Theme::Dark.next(), Theme::Light);
-    assert_eq!(Theme::Light.next(), Theme::System, "a way back to the system");
+    assert_eq!(
+        Theme::Light.next(),
+        Theme::System,
+        "a way back to the system"
+    );
     for t in [Theme::System, Theme::Dark, Theme::Light] {
         assert_eq!(Theme::from_stored(t.stored()), t);
     }
     assert_eq!(Theme::from_stored("purple"), Theme::System);
 
     let html = render_themed(THREE_PANES, sample(), selected(), Theme::System);
-    assert!(!html.contains("data-theme="), "{html}");
+    assert!(!html.contains("class=\"kudo-shell\" data-theme"), "{html}");
     let html = render_themed(THREE_PANES, sample(), selected(), Theme::Dark);
-    assert!(html.contains("data-theme=\"dark\""), "{html}");
+    assert!(
+        html.contains("class=\"kudo-shell\" data-theme=\"dark\""),
+        "{html}"
+    );
     let css = kudo_console::style::STYLE;
     assert!(css.contains("prefers-color-scheme: dark"), "{css}");
     assert!(css.contains("[data-theme=\"dark\"]"), "{css}");

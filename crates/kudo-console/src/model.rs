@@ -84,6 +84,55 @@ pub struct ConsoleData {
     pub approvals_unknown: Vec<String>,
     /// The pane being taken over, if any.
     pub terminal: Option<TerminalView>,
+    /// The selected node's jobs.
+    pub jobs: Option<NodeJobs>,
+    /// The selected job's output, as far as the page has followed it.
+    pub output: Option<JobOutput>,
+}
+
+/// A node's governed jobs, as its view lists them.
+// implements: 2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655@2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeJobs {
+    pub node: String,
+    /// Waiting first, then running, then ended; newest first within each.
+    pub jobs: Vec<JobView>,
+    /// Why the jobs could not be read: then the list is not "none".
+    pub error: Option<String>,
+}
+
+/// One job on a node, in words.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobView {
+    pub id: String,
+    /// `pending`, `running`, `done:0`, `killed`…
+    pub state: String,
+    /// `ok`, `warn`, `bad` or `idle`, for the stylesheet.
+    pub tone: String,
+    /// The argv, shell-quoted.
+    pub argv: String,
+    pub cwd: String,
+    /// The authority it ran (or was refused) under.
+    pub verdict: String,
+    /// `waiting 3 min`, `running 2 h`, `started 1 d ago`.
+    pub phase: String,
+    /// Waiting or running: it can still be killed.
+    pub live: bool,
+}
+
+/// A job's output, from where the page started following it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobOutput {
+    pub node: String,
+    pub job: String,
+    pub text: String,
+    /// Where the next read starts.
+    pub next_offset: u64,
+    /// Output lost before this, because the node keeps a bounded scrollback.
+    pub skipped: u64,
+    pub state: String,
+    pub tone: String,
+    pub live: bool,
 }
 
 /// A job waiting for the author's verdict.

@@ -5,7 +5,7 @@
 
 use dioxus::prelude::*;
 
-use crate::model::{ConsoleData, PaneRef, TerminalView};
+use crate::model::{ConsoleData, JobOutput, NodeJobs, PaneRef, TerminalView};
 
 /// Everything the panes draw from, with `selected` (an id or unique prefix)
 /// as the selected context.
@@ -73,6 +73,35 @@ pub async fn decide(
 ) -> Result<String, ServerFnError> {
     crate::server::guarded().await?;
     crate::server::decide(node, job, verdict, edited)
+        .await
+        .map_err(ServerFnError::new)
+}
+
+/// A node's governed jobs, for the node view's poll.
+#[server]
+pub async fn node_jobs(node: String) -> Result<NodeJobs, ServerFnError> {
+    crate::server::guarded().await?;
+    Ok(crate::server::node_jobs(node).await)
+}
+
+/// A job's output from `offset`, with its state, for the job view's poll.
+#[server]
+pub async fn job_output(
+    node: String,
+    job: String,
+    offset: u64,
+) -> Result<JobOutput, ServerFnError> {
+    crate::server::guarded().await?;
+    crate::server::job_output(node, job, offset)
+        .await
+        .map_err(ServerFnError::new)
+}
+
+/// Kill the job `job` on `node`, as the console; what it led to.
+#[server]
+pub async fn kill_job(node: String, job: String) -> Result<String, ServerFnError> {
+    crate::server::guarded().await?;
+    crate::server::kill_job(node, job)
         .await
         .map_err(ServerFnError::new)
 }

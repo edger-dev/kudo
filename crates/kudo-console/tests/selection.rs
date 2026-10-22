@@ -99,7 +99,12 @@ fn the_fragment_round_trips() {
     let mut n = Selection::default();
     n.select_node("odd name&=#/%".into());
     n.select_job("1792500000000-7-2".into());
-    assert_eq!(Selection::from_fragment(&n.fragment()), n, "{}", n.fragment());
+    assert_eq!(
+        Selection::from_fragment(&n.fragment()),
+        n,
+        "{}",
+        n.fragment()
+    );
 }
 
 /// A fragment that does not parse, or names a job without its node, selects

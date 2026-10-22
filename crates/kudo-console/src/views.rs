@@ -167,8 +167,116 @@ pub fn approvals(
             node,
         })
         .collect();
-    views.sort_by(|a, b| b.waited_s.cmp(&a.waited_s));
+    // Oldest first; equal waits keep one order, so rows never move under a
+    // finger.
+    views.sort_by(|a, b| {
+        b.waited_s
+            .cmp(&a.waited_s)
+            .then_with(|| a.node.cmp(&b.node))
+            .then_with(|| a.job.cmp(&b.job))
+    });
     views
+}
+
+/// A span of seconds in the fewest words: `40 s`, `3 min`, `2 h`, `4 d`.
+fn span(secs: u64) -> String {
+    match secs {
+        s if s < 90 => format!("{s} s"),
+        s if s < 90 * 60 => format!("{} min", s / 60),
+        s if s < 48 * 3600 => format!("{} h", s / 3600),
+        s => format!("{} d", s / 86_400),
+    }
+}
+
+/// A job's state as one word and its tone: `ok`, `warn`, `bad` or `idle`.
+fn state_tone(status: &moco_job::JobStatus) -> (String, &'static str) {
+    use moco_job::JobStatus;
+    let tone = match status {
+        JobStatus::PendingApproval => "warn",
+        JobStatus::Running | JobStatus::Done { code: 0 } => "ok",
+        JobStatus::OutcomeUnknown => "idle",
+        _ => "bad",
+    };
+    (kudo_shim::jobs::status_word(status), tone)
+}
+
+/// When a job was created, from its id (`<unix ms, 13 digits>-<pid>-<seq>`).
+fn created_ms(id: &str) -> Option<u64> {
+    id.split('-').next()?.parse().ok()
+}
+
+/// A node's jobs in words: waiting first, then running, then ended; newest
+/// first within each.
+// implements: 2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655@2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655
+pub fn job_views(jobs: Vec<moco_job::wire::JobSummary>, now_ms: u64) -> Vec<crate::model::JobView> {
+    use moco_job::JobStatus;
+    let rank = |status: &JobStatus| match status {
+        JobStatus::PendingApproval => 0,
+        JobStatus::Running => 1,
+        _ => 2,
+    };
+    let mut jobs = jobs;
+    jobs.sort_by(|a, b| {
+        rank(&a.status)
+            .cmp(&rank(&b.status))
+            .then_with(|| created_ms(&b.id).cmp(&created_ms(&a.id)))
+            .then_with(|| b.id.cmp(&a.id))
+    });
+    jobs.into_iter()
+        .map(|job| {
+            let (state, tone) = state_tone(&job.status);
+            let phase = match job.status {
+                JobStatus::PendingApproval => format!("waiting {}", span(job.phase_s)),
+                JobStatus::Running => format!("running {}", span(job.phase_s)),
+                _ => match created_ms(&job.id) {
+                    Some(at) => format!("started {} ago", span(now_ms.saturating_sub(at) / 1000)),
+                    None => "ended".to_owned(),
+                },
+            };
+            crate::model::JobView {
+                live: matches!(job.status, JobStatus::PendingApproval | JobStatus::Running),
+                argv: crate::model::argv_text(&job.argv),
+                verdict: kudo_shim::jobs::verdict_word(job.verdict),
+                cwd: job.cwd,
+                tone: tone.to_owned(),
+                state,
+                phase,
+                id: job.id,
+            }
+        })
+        .collect()
+}
+
+/// A job's output from a tail, as text (lossily where it is not UTF-8).
+pub fn job_output(
+    node: &str,
+    job: &str,
+    reply: &moco_job::wire::TailReply,
+) -> crate::model::JobOutput {
+    let (state, tone) = state_tone(&reply.status);
+    // A character cut by the end of this read is left for the next one,
+    // rather than shown as a replacement character.
+    let cut = match std::str::from_utf8(&reply.bytes) {
+        Err(e) if e.error_len().is_none() => reply.bytes.len() - e.valid_up_to(),
+        _ => 0,
+    };
+    let kept = reply
+        .bytes
+        .get(..reply.bytes.len() - cut)
+        .unwrap_or_default();
+    crate::model::JobOutput {
+        node: node.to_owned(),
+        job: job.to_owned(),
+        text: String::from_utf8_lossy(kept).into_owned(),
+        next_offset: reply.next_offset.saturating_sub(cut as u64),
+        skipped: reply.skipped,
+        live: matches!(
+            reply.status,
+            moco_job::JobStatus::PendingApproval | moco_job::JobStatus::Running
+        ),
+        state,
+        tone: tone.to_owned(),
+    }
 }
 
 /// Which context's worker started each job, by job id, from the contexts'

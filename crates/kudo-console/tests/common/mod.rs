@@ -43,6 +43,7 @@ pub fn render_themed(
 
 /// The panes the page shows, in order, and the one in focus on a phone.
 pub fn panes(html: &str) -> Vec<&'static str> {
+    let html = markup(html);
     let mut found: Vec<(usize, &'static str)> =
         ["where", "head", "trace", "jobs", "job", "terminal"]
             .into_iter()
@@ -52,8 +53,14 @@ pub fn panes(html: &str) -> Vec<&'static str> {
     found.into_iter().map(|(_, p)| p).collect()
 }
 
+/// The page after its stylesheet, whose selectors name the same attributes.
+pub fn markup(html: &str) -> &str {
+    html.rsplit("</style>").next().unwrap_or(html)
+}
+
 /// The pane marked as the one a phone shows.
 pub fn focused(html: &str) -> Option<&'static str> {
+    let html = markup(html);
     ["where", "head", "trace", "jobs", "job", "terminal"]
         .into_iter()
         .find(|p| {

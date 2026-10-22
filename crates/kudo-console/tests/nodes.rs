@@ -7,7 +7,7 @@
 
 mod common;
 
-use common::{focused, panes, render_with};
+use common::{focused, markup, panes};
 use kudo_console::layout::THREE_PANES;
 use kudo_console::model::{ConsoleData, JobOutput, JobView, NodeJobs};
 use kudo_console::selection::Selection;
@@ -37,6 +37,14 @@ fn data() -> ConsoleData {
         }),
         ..ConsoleData::default()
     }
+}
+
+fn render_with(
+    layout: kudo_console::layout::Layout,
+    data: ConsoleData,
+    selection: Selection,
+) -> String {
+    markup(&common::render_with(layout, data, selection)).to_owned()
 }
 
 fn on_node(job: Option<&str>) -> Selection {
@@ -120,7 +128,10 @@ fn a_job_shows_its_output_and_a_kill_while_it_runs() {
     let html = render_with(THREE_PANES, d.clone(), on_node(Some("j-2")));
     assert_eq!(focused(&html), Some("job"));
     assert!(html.contains("building…"), "{html}");
-    assert!(html.contains("data-follow"), "the output view follows: {html}");
+    assert!(
+        html.contains("data-follow"),
+        "the output view follows: {html}"
+    );
     assert!(html.contains(">kill</button>"), "{html}");
 
     let out = d.output.as_mut().unwrap();

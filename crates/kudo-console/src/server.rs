@@ -11,7 +11,7 @@ use std::time::Duration;
 use dioxus::prelude::ServerFnError;
 use kudo_context::ContextStore;
 
-use crate::model::{ConsoleData, NodeView, PaneRef, TerminalView};
+use crate::model::{ConsoleData, JobOutput, NodeJobs, NodeView, PaneRef, TerminalView};
 
 /// Bumped by every event the hub carries under `kudo/`, and by the console's
 /// own writes.
@@ -166,6 +166,82 @@ pub(crate) async fn decide(
         kudo_shim::jobs::status_word(&reply.status),
         kudo_shim::jobs::verdict_word(reply.verdict)
     ))
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
+
+/// A node's governed jobs, in words; a node that cannot be read says why.
+// implements: 2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655@2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655
+pub(crate) async fn node_jobs(node: String) -> NodeJobs {
+    let read = async {
+        let hub = hub().await?;
+        let ask = kudo_shim::jobs::list(
+            &hub,
+            kudo_shim::route::Target::node(node.clone()),
+            kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
+        );
+        match tokio::time::timeout(Duration::from_secs(3), ask).await {
+            Ok(Ok(reply)) => Ok(reply.jobs),
+            Ok(Err(e)) => Err(e.to_string()),
+            Err(_) => Err(format!("{node} did not answer")),
+        }
+    };
+    match read.await {
+        Ok(jobs) => NodeJobs {
+            jobs: crate::views::job_views(jobs, now_ms()),
+            node,
+            error: None,
+        },
+        Err(e) => NodeJobs {
+            node,
+            jobs: Vec::new(),
+            error: Some(e),
+        },
+    }
+}
+
+/// A job's output from `offset`.
+pub(crate) async fn job_output(
+    node: String,
+    job: String,
+    offset: u64,
+) -> Result<JobOutput, String> {
+    let hub = hub().await?;
+    let reply = kudo_shim::jobs::tail(
+        &hub,
+        kudo_shim::route::Target::node(node.clone()),
+        kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::TailRequest {
+            id: job.clone(),
+            offset,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(crate::views::job_output(&node, &job, &reply))
+}
+
+/// Kill a job, as the console; what it led to.
+pub(crate) async fn kill_job(node: String, job: String) -> Result<String, String> {
+    let hub = hub().await?;
+    let reply = kudo_shim::jobs::kill(
+        &hub,
+        kudo_shim::route::Target::node(node.clone()),
+        kudo_shim::jobs::DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::KillRequest {
+            id: job,
+            caller: moco_job::wire::WireCaller::Console,
+        },
+    )
+    .await;
+    bump();
+    let reply = reply.map_err(|e| e.to_string())?;
+    Ok(format!("job {} on {node}: asked to stop", reply.id))
 }
 
 /// A recorded pane's screen.

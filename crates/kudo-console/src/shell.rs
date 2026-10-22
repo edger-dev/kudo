@@ -1,33 +1,75 @@
 //! The shell: places panes by the layout value and renders each by its kind.
-//! No pane fetches anything; each draws from the data it is handed.
+//! No pane fetches anything; each draws from the data it is handed. Around
+//! the panes: the top bar (back, where you are, the approvals badge, the
+//! theme) and the approvals tray.
 //!
 //! implements: ed06836e3296e0ea5caad3e2ca7a972c911743ad1a4f87f149c069132dadac35@115b689ab32e5a9a4ace6a21d50e463c4927e1f41c42513e2b0de4a21166cd97
+//! implements: 77d223e031a8cefaf954bd0d4708fc301867286d9d92c547811d5335d7caeb90@77d223e031a8cefaf954bd0d4708fc301867286d9d92c547811d5335d7caeb90
+//! implements: 85f973554ab08ddde3cb91944354db7fb14ff55a0da506daea7c4643c8646339@85f973554ab08ddde3cb91944354db7fb14ff55a0da506daea7c4643c8646339
 
 use dioxus::prelude::*;
 
-use crate::layout::{Direction, Layout, PaneKind};
+use crate::badge::badge;
+use crate::confirm::{CONFIRM_MS, kill_text, second_tap, verdict_hint};
+use crate::layout::{Direction, Layout, Narrow, PaneKind};
 use crate::model::ConsoleData;
-use crate::selection::{Notice, Selection};
+use crate::selection::{Notice, Outcome, Selection, Tab};
+use crate::theme::Theme;
 
-/// The panes of `layout`, drawn from `data`.
+/// The panes of `layout`, drawn from `data`, under the page's selection.
 #[component]
 pub fn Shell(layout: Layout, data: ConsoleData) -> Element {
+    let selection = try_consume_context::<Signal<Selection>>();
+    let sel = selection.map(|s| s.read().clone()).unwrap_or_default();
+    let theme = try_consume_context::<Signal<Theme>>()
+        .map(|t| t())
+        .unwrap_or_default();
     let direction = match layout.direction {
         Direction::Row => "row",
         Direction::Column => "column",
     };
+    let narrow = match layout.narrow {
+        Narrow::Drill => "drill",
+        Narrow::Same => "same",
+    };
+    let focus = sel.focus();
+    let notice = try_consume_context::<Signal<Notice>>().and_then(|n| n.read().0.clone());
     rsx! {
         div {
             class: "kudo-shell",
-            "data-direction": direction,
-            style: "display:flex;flex-direction:{direction};height:100vh;font-family:monospace;",
-            for pane in layout.panes.iter() {
-                div {
-                    key: "{pane.kind:?}",
-                    "data-pane": pane_name(pane.kind),
-                    style: "flex:{pane.grow};overflow:auto;padding:8px;border:1px solid #ccc;",
-                    {render(pane.kind, &data)}
+            "data-theme": theme.attr(),
+            "data-narrow": narrow,
+            style { dangerous_inner_html: crate::style::STYLE }
+            TopBar { data: data.clone(), selection: sel.clone() }
+            if let Some(error) = data.error.clone() {
+                div { class: "kudo-band", "{error}" }
+            }
+            if let Some(said) = notice {
+                div { class: "kudo-band",
+                    "{said}"
+                    button {
+                        onclick: move |_| {
+                            if let Some(mut n) = try_consume_context::<Signal<Notice>>() {
+                                n.set(Notice(None));
+                            }
+                        },
+                        "×"
+                    }
                 }
+            }
+            div { class: "kudo-panes", "data-direction": direction,
+                for pane in layout.panes.iter().filter(|p| sel.shows(p.kind)) {
+                    div {
+                        key: "{pane.kind:?}",
+                        "data-pane": pane_name(pane.kind),
+                        "data-focus": (pane.kind == focus).then_some("true"),
+                        style: "flex:{pane.grow};",
+                        {render(pane.kind, &data, &sel)}
+                    }
+                }
+            }
+            if sel.tray {
+                Tray { data: data.clone() }
             }
         }
     }
@@ -38,16 +80,20 @@ fn pane_name(kind: PaneKind) -> &'static str {
         PaneKind::Where => "where",
         PaneKind::Head => "head",
         PaneKind::Trace => "trace",
+        PaneKind::Jobs => "jobs",
+        PaneKind::Job => "job",
         PaneKind::Terminal => "terminal",
     }
 }
 
 /// The renderer for a pane's kind.
-fn render(kind: PaneKind, data: &ConsoleData) -> Element {
+fn render(kind: PaneKind, data: &ConsoleData, sel: &Selection) -> Element {
     match kind {
-        PaneKind::Where => rsx! { WherePane { data: data.clone() } },
-        PaneKind::Head => rsx! { HeadPane { data: data.clone() } },
-        PaneKind::Trace => rsx! { TracePane { data: data.clone() } },
+        PaneKind::Where => rsx! { WherePane { data: data.clone(), selection: sel.clone() } },
+        PaneKind::Head => rsx! { HeadPane { data: data.clone(), tab: sel.tab } },
+        PaneKind::Trace => rsx! { TracePane { data: data.clone(), tab: sel.tab } },
+        PaneKind::Jobs => rsx! { JobsPane { data: data.clone(), selection: sel.clone() } },
+        PaneKind::Job => rsx! { JobPane { data: data.clone(), selection: sel.clone() } },
         PaneKind::Terminal => rsx! { TerminalPane { data: data.clone() } },
     }
 }
@@ -56,88 +102,429 @@ fn short(id: &str) -> &str {
     id.get(..12).unwrap_or(id)
 }
 
-#[component]
-fn WherePane(data: ConsoleData) -> Element {
-    let selection = try_consume_context::<Signal<Selection>>();
-    rsx! {
-        if !data.approvals_unknown.is_empty() {
-            p { "queue unknown on {data.approvals_unknown.join(\", \")} (not answering)" }
+/// Change the page's selection (nothing, when rendered without a page).
+fn select(change: impl FnOnce(&mut Selection)) {
+    if let Some(mut selection) = try_consume_context::<Signal<Selection>>() {
+        change(&mut selection.write());
+    }
+}
+
+/// Step out one level. Where the page pushed history for the level, it is
+/// the browser's back — so the phone's own back and this one agree.
+pub fn step_back() {
+    if crate::app::history_back() {
+        return;
+    }
+    select(Selection::back);
+}
+
+/// A node's icon by kind: a peer hub's node reads apart from this hub's.
+pub fn node_icon(id: &str) -> &'static str {
+    if id.contains("::") { "⇄" } else { "▣" }
+}
+
+/// Where you are, in words.
+fn crumb(data: &ConsoleData, sel: &Selection) -> String {
+    let mut parts = vec!["kudo".to_owned()];
+    if let Some(c) = &sel.context {
+        let title = data
+            .selected
+            .as_ref()
+            .filter(|d| &d.id == c)
+            .map(|d| d.title.clone())
+            .or_else(|| {
+                data.contexts
+                    .iter()
+                    .find(|k| &k.id == c)
+                    .map(|k| k.title.clone())
+            })
+            .unwrap_or_else(|| short(c).to_owned());
+        parts.push(title);
+        if sel.tab == Tab::Trace {
+            parts.push("trace".to_owned());
         }
-        if !data.approvals.is_empty() {
-            h3 { "waiting for you" }
-            for approval in data.approvals.iter() {
-                ApprovalCard { key: "{approval.node}-{approval.job}", approval: approval.clone() }
+    }
+    if let Some(n) = &sel.node {
+        parts.push(n.clone());
+    }
+    if let Some(j) = &sel.job {
+        parts.push(format!("job {j}"));
+    }
+    if let Some(p) = &sel.pane {
+        parts.push(format!("pane {} on {}", p.job, p.node));
+    }
+    parts.join(" › ")
+}
+
+#[component]
+fn TopBar(data: ConsoleData, selection: Selection) -> Element {
+    let state = badge(data.approvals.len(), data.approvals_unknown.len());
+    let theme = try_consume_context::<Signal<Theme>>();
+    let current = theme.map(|t| t()).unwrap_or_default();
+    rsx! {
+        div { class: "kudo-top",
+            if selection.depth() > 0 {
+                button { "data-back": "true", onclick: move |_| step_back(), "‹ back" }
+            }
+            span { class: "crumb", "data-crumb": "true", "{crumb(&data, &selection)}" }
+            button {
+                class: "badge",
+                "data-badge": state.state(),
+                title: state.hint(),
+                onclick: move |_| select(|s| s.tray = true),
+                "{state.label()}"
+            }
+            button {
+                class: "theme",
+                title: current.label(),
+                onclick: move |_| {
+                    if let Some(mut theme) = theme {
+                        let next = theme().next();
+                        theme.set(next);
+                    }
+                },
+                "◐"
             }
         }
-        h3 { "nodes" }
-        for node in data.nodes.iter() {
-            div { key: "{node.id}", "{node.id} ({node.links.join(\", \")})" }
-        }
+    }
+}
+
+#[component]
+fn WherePane(data: ConsoleData, selection: Selection) -> Element {
+    rsx! {
         h3 { "contexts" }
+        if data.contexts.is_empty() {
+            p { class: "muted", "no contexts yet" }
+        }
         for card in data.contexts.iter() {
             div {
                 key: "{card.id}",
-                style: "cursor:pointer;margin-bottom:6px;",
+                class: "item",
+                "data-selected": (selection.context.as_ref() == Some(&card.id)).then_some("true"),
                 onclick: {
                     let id = card.id.clone();
-                    move |_| {
-                        if let Some(mut selection) = selection {
-                            selection.write().context = Some(id.clone());
-                        }
-                    }
+                    move |_| select(|s| s.select_context(id.clone()))
                 },
-                div { b { "{card.title}" } " {short(&card.id)}" }
-                div {
-                    "{card.ready} ready, {card.submitted} submitted"
+                div { span { class: "title", "{card.title}" } span { class: "muted", " {short(&card.id)}" } }
+                div { class: "muted",
+                    "{card.ready} ready · {card.submitted} submitted"
                     if let Some(next) = &card.next_due {
-                        ", {card.later} later (next {next})"
+                        " · {card.later} later (next {next})"
                     }
                 }
-                for worker in card.workers.iter() {
-                    div { key: "{worker.lease}", style: "padding-left:1em;",
-                        "worker {short(&worker.lease)}: {worker.last}"
-                        if worker.quiet {
-                            " (quiet — likely gone)"
-                        }
-                        if let Some(pane) = worker.pane.clone() {
-                            button {
-                                style: "margin-left:6px;",
-                                onclick: move |e: MouseEvent| {
-                                    e.stop_propagation();
-                                    if let Some(mut selection) = selection {
-                                        selection.write().pane = Some(pane.clone());
-                                    }
-                                },
-                                "take over"
-                            }
-                        }
-                    }
-                }
-                for node in data.nodes.iter().filter(|n| n.may_start) {
-                    button {
-                        key: "start-{node.id}",
-                        style: "margin:2px;",
-                        onclick: {
-                            let context = card.id.clone();
-                            let node = node.id.clone();
-                            move |e: MouseEvent| {
-                                e.stop_propagation();
-                                let (context, node) = (context.clone(), node.clone());
-                                async move {
-                                    match crate::api::start_worker(context, node).await {
-                                        Ok(pane) => {
-                                            if let Some(mut selection) = selection {
-                                                selection.write().pane = Some(pane);
-                                            }
-                                        }
-                                        Err(e) => say(e.to_string()),
-                                    }
+                div { class: "workers",
+                    for worker in card.workers.iter() {
+                        div { key: "{worker.lease}", class: "row",
+                            span {
+                                "worker {short(&worker.lease)}: {worker.last}"
+                                if worker.quiet {
+                                    " (quiet — likely gone)"
                                 }
                             }
-                        },
-                        "start a worker on {node.id}"
+                            if let Some(pane) = worker.pane.clone() {
+                                button {
+                                    onclick: move |e: MouseEvent| {
+                                        e.stop_propagation();
+                                        let pane = pane.clone();
+                                        select(|s| s.pane = Some(pane));
+                                    },
+                                    "take over"
+                                }
+                            }
+                        }
                     }
                 }
+                div { class: "row",
+                    for node in data.nodes.iter().filter(|n| n.may_start) {
+                        button {
+                            key: "start-{node.id}",
+                            onclick: {
+                                let context = card.id.clone();
+                                let node = node.id.clone();
+                                move |e: MouseEvent| {
+                                    e.stop_propagation();
+                                    let (context, node) = (context.clone(), node.clone());
+                                    async move {
+                                        match crate::api::start_worker(context, node).await {
+                                            Ok(pane) => select(|s| s.pane = Some(pane)),
+                                            Err(e) => say(e.to_string()),
+                                        }
+                                    }
+                                }
+                            },
+                            "start a worker on {node.id}"
+                        }
+                    }
+                }
+            }
+        }
+        h3 { "nodes" }
+        if data.nodes.is_empty() {
+            p { class: "muted", "no nodes (is the hub up?)" }
+        }
+        for node in data.nodes.iter() {
+            div {
+                key: "{node.id}",
+                class: "item",
+                "data-node": "{node.id}",
+                "data-selected": (selection.node.as_ref() == Some(&node.id)).then_some("true"),
+                onclick: {
+                    let id = node.id.clone();
+                    move |_| select(|s| s.select_node(id.clone()))
+                },
+                "{node_icon(&node.id)} {node.id} "
+                span { class: "muted", "{node.links.join(\", \")}" }
+            }
+        }
+    }
+}
+
+/// Head or trace, on a phone, where only one of them shows.
+#[component]
+fn Tabs(tab: Tab) -> Element {
+    rsx! {
+        div { class: "tabs narrow-only",
+            button {
+                "data-tab": "head",
+                "data-on": (tab == Tab::Head).then_some("true"),
+                onclick: move |_| select(|s| s.tab = Tab::Head),
+                "head"
+            }
+            button {
+                "data-tab": "trace",
+                "data-on": (tab == Tab::Trace).then_some("true"),
+                onclick: move |_| select(|s| s.tab = Tab::Trace),
+                "trace"
+            }
+        }
+    }
+}
+
+#[component]
+fn HeadPane(data: ConsoleData, tab: Tab) -> Element {
+    let mut ask = use_signal(String::new);
+    match &data.selected {
+        None => rsx! {
+            Tabs { tab }
+            p { class: "muted", "loading the context…" }
+        },
+        Some(detail) => {
+            let context = detail.id.clone();
+            rsx! {
+                Tabs { tab }
+                h3 { "{detail.title}" }
+                form {
+                    class: "row",
+                    onsubmit: move |e: FormEvent| {
+                        e.prevent_default();
+                        let context = context.clone();
+                        let text = ask();
+                        async move {
+                            if text.trim().is_empty() {
+                                return;
+                            }
+                            match crate::api::enqueue(context, text).await {
+                                Ok(_) => ask.set(String::new()),
+                                Err(e) => say(e.to_string()),
+                            }
+                        }
+                    },
+                    input {
+                        placeholder: "enqueue an ask under this context",
+                        value: "{ask}",
+                        oninput: move |e| ask.set(e.value()),
+                    }
+                    button { r#type: "submit", "enqueue" }
+                }
+                if detail.forked {
+                    p { class: "muted", "the head is forked: the next submit folds the tips together" }
+                }
+                pre { "{detail.head}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn TracePane(data: ConsoleData, tab: Tab) -> Element {
+    match &data.selected {
+        None => rsx! {
+            Tabs { tab }
+            p { class: "muted", "no trace" }
+        },
+        Some(detail) => rsx! {
+            Tabs { tab }
+            h3 { "trace" }
+            for row in detail.trace.iter() {
+                div { key: "{row.lease}-{row.seq}", class: "trace-row",
+                    span { class: "muted", "{row.at}  {short(&row.lease)} #{row.seq}  " }
+                    "{row.line}"
+                }
+            }
+        },
+    }
+}
+
+/// A node's jobs: waiting, running, recently ended.
+// implements: 2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655@2d5dba56c923d44ea12676229e18088a19394679ab5dfcbbb25b10b08b438655
+#[component]
+fn JobsPane(data: ConsoleData, selection: Selection) -> Element {
+    let node = selection.node.clone().unwrap_or_default();
+    let Some(jobs) = data.jobs.clone().filter(|j| j.node == node) else {
+        return rsx! {
+            h3 { "{node_icon(&node)} {node}" }
+            p { class: "muted", "reading the jobs on {node}…" }
+        };
+    };
+    rsx! {
+        h3 { "{node_icon(&node)} {node} · jobs" }
+        if let Some(error) = &jobs.error {
+            p { class: "kudo-band", "the jobs on {node} could not be read: {error}" }
+        } else if jobs.jobs.is_empty() {
+            p { class: "muted", "no jobs on {node}" }
+        }
+        for job in jobs.jobs.iter() {
+            div {
+                key: "{job.id}",
+                class: "item job",
+                "data-job": "{job.id}",
+                "data-tone": "{job.tone}",
+                "data-selected": (selection.job.as_ref() == Some(&job.id)).then_some("true"),
+                onclick: {
+                    let id = job.id.clone();
+                    move |_| select(|s| s.select_job(id.clone()))
+                },
+                div {
+                    span { class: "state", "{job.state}" }
+                    " {job.argv}"
+                }
+                div { class: "muted", "{job.cwd} · {job.verdict} · {job.phase}" }
+            }
+        }
+    }
+}
+
+/// One job's output, followed while it runs, and a kill after a second tap.
+#[component]
+fn JobPane(data: ConsoleData, selection: Selection) -> Element {
+    let node = selection.node.clone().unwrap_or_default();
+    let job = selection.job.clone().unwrap_or_default();
+    let listed = data
+        .jobs
+        .as_ref()
+        .and_then(|j| j.jobs.iter().find(|v| v.id == job).cloned());
+    let output = data
+        .output
+        .clone()
+        .filter(|o| o.node == node && o.job == job);
+    let live = output
+        .as_ref()
+        .map(|o| o.live)
+        .or(listed.as_ref().map(|l| l.live))
+        .unwrap_or(false);
+    rsx! {
+        h3 { "job {job} on {node}" }
+        if let Some(listed) = &listed {
+            div { class: "row", "data-tone": "{listed.tone}",
+                span { class: "state", "{listed.state}" }
+                span { "{listed.argv}" }
+            }
+            div { class: "muted", "{listed.cwd} · {listed.verdict} · {listed.phase}" }
+        }
+        if live {
+            KillButton { node: node.clone(), job: job.clone() }
+        }
+        match output {
+            None => rsx! { p { class: "muted", "reading its output…" } },
+            Some(out) => rsx! {
+                if out.skipped > 0 {
+                    p { class: "muted", "{out.skipped} bytes of earlier output were dropped by the node" }
+                }
+                div { class: "row", "data-tone": "{out.tone}",
+                    span { class: "state", "{out.state}" }
+                }
+                div { class: "follow", "data-follow": "true",
+                    pre { "{out.text}" }
+                }
+            },
+        }
+    }
+}
+
+/// Kill a job: the first tap says what the second will do.
+// implements: 3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5@3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5
+#[component]
+fn KillButton(node: String, job: String) -> Element {
+    let mut armed = use_signal(|| false);
+    let mut busy = use_signal(|| false);
+    let text = kill_text(&job, &node);
+    rsx! {
+        div { class: "row",
+            button {
+                class: if armed() { "armed" } else { "bad" },
+                disabled: busy(),
+                onclick: move |_| {
+                    if !armed() {
+                        armed.set(true);
+                        spawn(async move {
+                            crate::app::pause(CONFIRM_MS).await;
+                            armed.set(false);
+                        });
+                        return;
+                    }
+                    armed.set(false);
+                    busy.set(true);
+                    let (node, job) = (node.clone(), job.clone());
+                    spawn(async move {
+                        match crate::api::kill_job(node, job).await {
+                            Ok(done) => said(done),
+                            Err(e) => say(e.to_string()),
+                        }
+                        busy.set(false);
+                    });
+                },
+                if armed() { "{text}" } else { "kill" }
+            }
+        }
+    }
+}
+
+/// The approvals tray: every waiting job, the nodes that could not be read,
+/// the last outcome. It stays open after a verdict; Esc, × or back close it.
+#[component]
+fn Tray(data: ConsoleData) -> Element {
+    let outcome = try_consume_context::<Signal<Outcome>>().and_then(|o| o.read().0.clone());
+    rsx! {
+        div { class: "tray-dim", onclick: move |_| step_back() }
+        div {
+            class: "tray",
+            "data-tray": "true",
+            tabindex: "0",
+            onmounted: move |e: MountedEvent| async move {
+                let _ = e.set_focus(true).await;
+            },
+            onkeydown: move |e: KeyboardEvent| {
+                if e.key() == Key::Escape {
+                    step_back();
+                }
+            },
+            div { class: "row",
+                h3 { style: "flex:1;", "approvals ({data.approvals.len()})" }
+                button { onclick: move |_| step_back(), "×" }
+            }
+            if let Some(outcome) = outcome {
+                p { class: "outcome", "{outcome}" }
+            }
+            if !data.approvals_unknown.is_empty() {
+                p { class: "unknown",
+                    "not answering: {data.approvals_unknown.join(\", \")} (retrying)"
+                }
+            }
+            if data.approvals.is_empty() && data.approvals_unknown.is_empty() {
+                p { class: "muted", "nothing is waiting for you" }
+            }
+            for approval in data.approvals.iter() {
+                ApprovalCard { key: "{approval.node}-{approval.job}", approval: approval.clone() }
             }
         }
     }
@@ -153,12 +540,17 @@ pub const VERDICTS: &[(&str, &str)] = &[
 ];
 
 /// One job waiting for the author's verdict: what it would run, where, who
-/// asked, how long is left — and the verdicts, plus edit-then-allow.
+/// asked, how long is left — and the verdicts, plus edit-then-allow. The
+/// always verdicts take a second tap.
+// implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
+// implements: 3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5@3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5
 #[component]
 fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
     let mut editing = use_signal(|| None::<String>);
     // One verdict at a time: the buttons wait while one is on its way.
     let mut busy = use_signal(|| false);
+    // The always verdict waiting for its second tap.
+    let mut armed = use_signal(|| None::<&'static str>);
     let argv = crate::model::argv_text(&approval.argv);
     let left = approval.left_s.div_ceil(60);
     let (node, job) = (approval.node.clone(), approval.job.clone());
@@ -170,44 +562,68 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
             }
             busy.set(true);
             match crate::api::decide(node, job, verdict.to_owned(), edited).await {
-                Ok(done) => say(done),
+                Ok(done) => said(done),
                 Err(e) => say(e.to_string()),
             }
             busy.set(false);
         }
     };
     rsx! {
-        div { style: "border:1px solid #c90;padding:6px;margin-bottom:6px;",
-            div { b { "{argv}" } }
+        div { class: "card",
+            div { class: "argv", "{argv}" }
             div { "on {approval.node} in {approval.cwd} · {left} min left" }
-            div {
+            div { class: "muted",
                 if let Some(context) = &approval.context {
                     "asked by {context} · "
                 }
                 "owner {approval.owner}"
             }
-            div { style: "display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;",
+            div { class: "row", style: "margin-top:6px;",
                 for (label, verdict) in VERDICTS.iter().copied() {
                     button {
                         key: "{verdict}",
                         disabled: busy(),
+                        class: if armed() == Some(verdict) { "armed" } else if verdict.starts_with("deny") { "bad" } else { "" },
+                        title: verdict_hint(verdict, &argv, &approval.node),
                         onclick: {
                             let send = send.clone();
-                            move |_| send(verdict, None)
+                            let confirm = second_tap(verdict, &argv, &approval.node);
+                            move |_| {
+                                if confirm.is_some() && armed() != Some(verdict) {
+                                    armed.set(Some(verdict));
+                                    spawn(async move {
+                                        crate::app::pause(CONFIRM_MS).await;
+                                        if armed() == Some(verdict) {
+                                            armed.set(None);
+                                        }
+                                    });
+                                    return;
+                                }
+                                armed.set(None);
+                                spawn(send(verdict, None));
+                            }
                         },
-                        "{label}"
+                        if armed() == Some(verdict) {
+                            {second_tap(verdict, &argv, &approval.node).unwrap_or_default()}
+                        } else {
+                            "{label}"
+                        }
                     }
                 }
                 button {
                     onclick: {
                         let argv = argv.clone();
-                        move |_| editing.set(Some(argv.clone()))
+                        move |_| {
+                            armed.set(None);
+                            editing.set(Some(argv.clone()));
+                        }
                     },
                     "edit, then allow"
                 }
             }
             if let Some(text) = editing() {
                 form {
+                    class: "row",
                     onsubmit: {
                         let send = send.clone();
                         let text = text.clone();
@@ -231,7 +647,6 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                         }
                     },
                     input {
-                        style: "width:80%;",
                         value: "{text}",
                         oninput: move |e| editing.set(Some(e.value())),
                     }
@@ -242,39 +657,17 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
     }
 }
 
-#[component]
-fn HeadPane(data: ConsoleData) -> Element {
-    match &data.selected {
-        None => rsx! { p { "select a context" } },
-        Some(detail) => rsx! {
-            h3 { "{detail.title}" }
-            if detail.forked {
-                p { "the head is forked: the next submit folds the tips together" }
-            }
-            pre { "{detail.head}" }
-        },
-    }
-}
-
-#[component]
-fn TracePane(data: ConsoleData) -> Element {
-    match &data.selected {
-        None => rsx! { p { "no trace" } },
-        Some(detail) => rsx! {
-            h3 { "trace" }
-            for row in detail.trace.iter() {
-                div { key: "{row.lease}-{row.seq}",
-                    "{row.at}  {short(&row.lease)} #{row.seq}  {row.line}"
-                }
-            }
-        },
-    }
-}
-
 /// Say what failed, above the panes (when the page provides the notice).
 fn say(text: String) {
     if let Some(mut notice) = try_consume_context::<Signal<Notice>>() {
         notice.set(Notice(Some(text)));
+    }
+}
+
+/// Say what an action led to, in the tray (when the page provides it).
+fn said(text: String) {
+    if let Some(mut outcome) = try_consume_context::<Signal<Outcome>>() {
+        outcome.set(Outcome(Some(text)));
     }
 }
 
@@ -330,9 +723,8 @@ struct Typed {
 /// A worker's pane, taken over: its screen, and keys to type into it.
 #[component]
 fn TerminalPane(data: ConsoleData) -> Element {
-    let selection = try_consume_context::<Signal<Selection>>();
     let Some(terminal) = data.terminal.clone() else {
-        return rsx! { p { "take over a worker to see its pane" } };
+        return rsx! { p { class: "muted", "reading the pane…" } };
     };
     let mut typed = use_signal(String::new);
     // One queue for everything typed into the pane: each send waits for the
@@ -358,19 +750,13 @@ fn TerminalPane(data: ConsoleData) -> Element {
     let direct = key.clone();
     let line_pane = terminal.pane.clone();
     rsx! {
-        h3 {
-            "pane {terminal.pane.job} on {terminal.pane.node} "
-            button {
-                onclick: move |_| {
-                    if let Some(mut selection) = selection {
-                        selection.write().pane = None;
-                    }
-                },
-                "close"
-            }
+        div { class: "row",
+            h3 { style: "flex:1;", "pane {terminal.pane.job} on {terminal.pane.node}" }
+            button { onclick: move |_| step_back(), "close" }
         }
-        pre { style: "background:#111;color:#ddd;padding:6px;white-space:pre;", "{terminal.screen}" }
+        pre { class: "term", "{terminal.screen}" }
         form {
+            class: "row",
             onsubmit: move |e: FormEvent| {
                 e.prevent_default();
                 let line = typed();
@@ -384,7 +770,6 @@ fn TerminalPane(data: ConsoleData) -> Element {
                 });
             },
             input {
-                style: "width:60%;",
                 placeholder: "type into the pane (Enter sends)",
                 value: "{typed}",
                 oninput: move |e| typed.set(e.value()),
@@ -398,7 +783,7 @@ fn TerminalPane(data: ConsoleData) -> Element {
             }
             button { r#type: "submit", "send" }
         }
-        div {
+        div { class: "row",
             for (label, bytes) in KEYS.iter().copied() {
                 button {
                     key: "{label}",
