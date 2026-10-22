@@ -154,6 +154,16 @@ pub struct SubmitArgs {
     /// which your new head builds on.
     #[serde(default)]
     pub base: Option<String>,
+    /// Only for a check: `pass`, `fail` or `snooze`.
+    #[serde(default)]
+    pub verdict: Option<String>,
+    /// With `snooze`: when to look again — `+30m`, `+2h`, `+1d`, or an RFC
+    /// 3339 time.
+    #[serde(default)]
+    pub snooze_until: Option<String>,
+    /// With a verdict: what you saw, in a line.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// One established line.
@@ -174,9 +184,10 @@ pub struct RuledOutArg {
 }
 
 impl SubmitArgs {
-    /// The typed submission this call hands the engine.
-    fn submission(&self) -> kudo_context::Submission {
-        kudo_context::Submission {
+    /// The typed submission this call hands the engine, or why its verdict
+    /// cannot stand.
+    fn submission(&self, now: kudo_context::Now) -> Result<kudo_context::Submission, String> {
+        Ok(kudo_context::Submission {
             head: self.head.clone(),
             log: self.log.clone(),
             established: self
@@ -198,8 +209,13 @@ impl SubmitArgs {
                 .collect(),
             gaps: self.gaps.clone(),
             base: self.base.as_deref().map(split_versions),
-            check: None,
-        }
+            check: worker_tools::check_close(
+                self.verdict.as_deref(),
+                self.snooze_until.as_deref(),
+                self.note.as_deref(),
+                now,
+            )?,
+        })
     }
 }
 
@@ -455,13 +471,14 @@ impl ShimServer {
                        short log, and what you established (each line with evidence: kino \
                        ids or http(s) URLs), claimed, ruled out and could not see. A line \
                        whose evidence does not resolve lands as claimed. The head is \
-                       superseded, never edited; the claim is settled."
+                       superseded, never edited; the claim is settled. A check's claim also \
+                       takes its verdict (pass, fail, or snooze with snooze_until) and a note."
     )]
     async fn submit(
         &self,
         Parameters(args): Parameters<SubmitArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.worker_call(|s, now| worker_tools::submit(s, &args.claim, &args.submission(), now))
+        self.worker_call(|s, now| worker_tools::submit(s, &args.claim, &args.submission(now)?, now))
     }
 
     #[tool(

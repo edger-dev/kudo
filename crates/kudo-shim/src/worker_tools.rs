@@ -240,11 +240,47 @@ pub fn trace_job_end(
     Ok(true)
 }
 
+/// A check's verdict from the `submit` tool's arguments: `pass`, `fail`, or
+/// `snooze` with when to look again (`until`), always with a note; `None`
+/// when no verdict was given. Anything else is refused, saying how to fix it.
+// implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
 pub fn check_close(
-    _verdict: Option<&str>,
-    _until: Option<&str>,
-    _note: Option<&str>,
-    _now: Now,
+    verdict: Option<&str>,
+    until: Option<&str>,
+    note: Option<&str>,
+    now: Now,
 ) -> Result<Option<kudo_context::CheckClose>, String> {
-    Err("not yet".into())
+    use kudo_context::{CheckClose, CheckVerdict};
+    let Some(verdict) = verdict else {
+        return match until {
+            Some(_) => Err("snooze_until goes with verdict `snooze`".into()),
+            None => Ok(None),
+        };
+    };
+    let note = note
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .ok_or("a verdict needs a note: say what you saw")?;
+    let verdict = match (verdict, until) {
+        ("pass", None) => CheckVerdict::Pass,
+        ("fail", None) => CheckVerdict::Fail,
+        ("snooze", Some(until)) => CheckVerdict::Snooze {
+            until: crate::cli::parse_when(until, now)?,
+        },
+        ("snooze", None) => {
+            return Err("a snooze needs snooze_until: when to look again".into());
+        }
+        ("pass" | "fail", Some(_)) => {
+            return Err("snooze_until goes with verdict `snooze` only".into());
+        }
+        (other, _) => {
+            return Err(format!(
+                "{other:?} is not a verdict: use pass, fail or snooze"
+            ));
+        }
+    };
+    Ok(Some(CheckClose {
+        verdict,
+        note: note.to_owned(),
+    }))
 }

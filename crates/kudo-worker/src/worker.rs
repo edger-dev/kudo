@@ -117,8 +117,19 @@ impl<'a> Worker<'a> {
                 .map(|v| self.store.head_version(v))
                 .collect::<Result<Vec<_>, Error>>()?
         };
+        // A check says what passes it and how it closes.
+        // implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
+        let check = claim.item.check.as_ref().map_or(String::new(), |c| {
+            format!(
+                "\n\nThis is a check. It passes when: {}. Judge it on this evidence \
+                 window: {}. Close it in `submit` with a verdict — `pass`, `fail`, or \
+                 `snooze` with `snooze_until` (+30m, +2h, +1d, or an RFC 3339 time) to \
+                 look again then — and a `note` saying what you saw.",
+                c.pass, c.window
+            )
+        });
         Ok(format!(
-            "Claim {id} (attempt {attempt}) under context {ctx}:\n\n{ask}\n\n{heads}\n\n\
+            "Claim {id} (attempt {attempt}) under context {ctx}:\n\n{ask}{check}\n\n{heads}\n\n\
              Work it, then call `submit` with claim id {id}, the full new head built \
              on the one above, a short log and what you established with its \
              evidence. Call `release` instead if you cannot finish it.",
