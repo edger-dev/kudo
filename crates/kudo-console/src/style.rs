@@ -49,7 +49,8 @@ html, body { margin: 0; padding: 0; }
 .kudo-shell button:hover { background: var(--hover); }
 .kudo-shell button:disabled { opacity: .5; cursor: default; }
 .kudo-shell button.bad { color: var(--bad); border-color: var(--bad); }
-.kudo-shell button.armed { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); white-space: normal; text-align: left; }
+.kudo-shell button.armed { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad); }
+.kudo-shell .confirm { color: var(--bad); margin: 6px 0; font-weight: 600; }
 .kudo-shell input {
   font: inherit; color: var(--fg); background: var(--panel);
   border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;

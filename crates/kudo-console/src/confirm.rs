@@ -15,18 +15,18 @@ pub fn second_tap(verdict: &str, argv: &str, node: &str) -> Option<String> {
         _ => return None,
     };
     Some(format!(
-        "tap again to {word} exactly `{argv}` on {node} only (writes a rule)"
+        "tap the same button again to {word} exactly `{argv}` on {node} only (writes a rule)"
     ))
 }
 
 /// What a verdict's button explains on hover.
 pub fn verdict_hint(verdict: &str, argv: &str, node: &str) -> String {
     second_tap(verdict, argv, node)
-        .map(|t| t.replacen("tap again to ", "", 1))
+        .map(|t| t.replacen("tap the same button again to ", "", 1))
         .unwrap_or_else(|| "this job only; no rule is written".to_owned())
 }
 
 /// What the second tap of a kill would do.
 pub fn kill_text(job: &str, node: &str) -> String {
-    format!("tap again to kill job {job} on {node}")
+    format!("tap kill again to kill job {job} on {node}")
 }

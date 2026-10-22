@@ -561,8 +561,11 @@ fn KillButton(node: String, job: String) -> Element {
                         busy.set(false);
                     });
                 },
-                if armed { "{text}" } else { "kill" }
+                "kill"
             }
+        }
+        if armed {
+            p { class: "confirm", "{text}" }
         }
         if let Some((failed, said)) = result() {
             p { class: if failed { "result failed" } else { "result" }, "{said}" }
@@ -676,11 +679,10 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                                 spawn(send(verdict, None));
                             }
                         },
-                        if is_armed(&format!("{verdict}:{key}")) {
-                            {second_tap(verdict, &argv, &approval.node).unwrap_or_default()}
-                        } else {
-                            "{label}"
-                        }
+                        // The armed button keeps its label (and so its size):
+                        // nothing moves under the thumb coming back for the
+                        // second tap. What it will do is said below the rows.
+                        "{label}"
                     }
                 }
                 if allowing {
@@ -693,6 +695,9 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                     }
                 }
               }
+            }
+            for (_, verdict) in VERDICTS.iter().copied().filter(|(_, v)| is_armed(&format!("{v}:{key}"))) {
+                p { class: "confirm", "{second_tap(verdict, &argv, &approval.node).unwrap_or_default()}" }
             }
             if let Some(text) = editing() {
                 form {
