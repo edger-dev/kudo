@@ -15,6 +15,7 @@
 
 - [The context store mirror](./contexts/mirror.md)
 - [The console](./contexts/console.md)
+- [Due items and checks](./contexts/checks.md)
 
 # RFCs
 

@@ -29,9 +29,11 @@ usage:
   kudo-shim hook <event>         answer a worker's CLI hook (session-start, stop,
                                  pre-compact, user-prompt-submit)
   kudo-shim context <command>    drive a context by hand (new, enqueue, show,
-                                 list, trace, why, repo add)
+                                 list, trace, why, repo add, check, wake-node)
   kudo-shim worker <context> [--repo <name>]
                                  start a worker session here
+  kudo-shim waker                wake a worker when a context's check comes due
+                                 (a user service on one node)
   kudo-shim --version | --help
 ";
 
@@ -57,6 +59,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(run_hook(
             args.get(2).map(String::as_str).unwrap_or_default(),
         ));
+    }
+
+    // The waker: a long-running loop on one node.
+    if args.get(1).map(String::as_str) == Some("waker") {
+        std::process::exit(run_waker().await);
     }
 
     // The local commands: drive a context by hand, start a worker here.
@@ -160,4 +167,49 @@ fn unix_now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
         .unwrap_or(0)
+}
+
+/// `kudo-shim waker`: once a minute, wake a worker for each context whose
+/// check came due and that runs none. Runs until stopped.
+// implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+async fn run_waker() -> i32 {
+    let Some(dir) = kudo_shim::cli::default_store_dir() else {
+        eprintln!("cannot find the context store: set KUDO_CONTEXT_STORE");
+        return 2;
+    };
+    let Some(addr) = hub_addr_from_env() else {
+        eprintln!("the waker starts workers through the hub: set KUDO_HUB_ADDR");
+        return 2;
+    };
+    let store = match kudo_shim::cli::open_store(
+        &dir,
+        kudo_shim::cli::mirror_from_env().as_deref(),
+        true,
+    ) {
+        Ok(store) => Arc::new(store),
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+    let own = kudo_shim::cli::node_name();
+    let quiet = kudo_worker::env::DEFAULT_CLAIM_TTL;
+    println!(
+        "kudo waker: looking every {}s; woken workers default to {own}",
+        kudo_shim::waker::EVERY.as_secs()
+    );
+    loop {
+        match tokio::time::timeout(Duration::from_secs(5), HubClient::dial(&addr)).await {
+            Ok(Ok(hub)) => {
+                for line in
+                    kudo_shim::waker::wake_once(&hub, store.clone(), unix_now(), &own, quiet).await
+                {
+                    println!("{line}");
+                }
+            }
+            Ok(Err(e)) => eprintln!("kudo waker: the hub at {addr}: {e}"),
+            Err(_) => eprintln!("kudo waker: the hub at {addr} did not answer"),
+        }
+        tokio::time::sleep(kudo_shim::waker::EVERY).await;
+    }
 }
