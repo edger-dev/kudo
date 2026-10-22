@@ -198,6 +198,7 @@ impl SubmitArgs {
                 .collect(),
             gaps: self.gaps.clone(),
             base: self.base.as_deref().map(split_versions),
+            check: None,
         }
     }
 }

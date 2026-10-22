@@ -766,6 +766,42 @@ impl ContextStore {
         Ok(ItemId(born.id))
     }
 
+    pub fn enqueue_due(
+        &self,
+        ctx: &ContextId,
+        ask: &str,
+        _due: Option<Now>,
+        now: Now,
+    ) -> Result<ItemId, Error> {
+        self.enqueue(ctx, ask, now)
+    }
+
+    pub fn enqueue_check(
+        &self,
+        ctx: &ContextId,
+        check: &crate::Check,
+        _due: Option<Now>,
+        now: Now,
+    ) -> Result<ItemId, Error> {
+        self.enqueue(ctx, &check.what, now)
+    }
+
+    pub fn due_ready_count(&self, _ctx: &ContextId, _now: Now) -> Result<usize, Error> {
+        Ok(0)
+    }
+
+    pub fn not_yet_due(&self, _ctx: &ContextId, _now: Now) -> Result<Vec<Item>, Error> {
+        Ok(Vec::new())
+    }
+
+    pub fn declare_wake_node(&self, _ctx: &ContextId, _node: &str, _now: Now) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn wake_node(&self, _ctx: &ContextId) -> Result<Option<String>, Error> {
+        Ok(None)
+    }
+
     /// Whether an item is ready to pull: not submitted, and not held by a live
     /// claim.
     pub fn has_ready(&self, ctx: &ContextId, now: Now) -> Result<bool, Error> {
@@ -939,6 +975,7 @@ impl ContextStore {
             id: SubmissionId(born.id),
             downgraded: checked.downgraded,
             unresolved: checked.unresolved,
+            requeued: None,
         })
     }
 
@@ -1146,6 +1183,9 @@ impl ContextStore {
             id: ItemId(event.id.clone()),
             seq: seq_of(event),
             ask: strip_marker(&self.read(&event.hash)?),
+            due: None,
+            check: None,
+            snoozed_from: None,
         })
     }
 

@@ -31,6 +31,12 @@ pub enum Error {
     Mirror(String),
     /// The claim is held by another lease.
     ClaimNotHeld { claim: String, lease: String },
+    /// A check's claim was submitted without a verdict.
+    CheckNeedsVerdict(String),
+    /// A verdict was given for a claim on an item that is not a check.
+    NotACheck(String),
+    /// A check, or a check's verdict, that cannot stand: why.
+    InvalidCheck(String),
 }
 
 impl fmt::Display for Error {
@@ -55,6 +61,16 @@ impl fmt::Display for Error {
             }
             Self::InvalidRepo(why) => write!(f, "invalid repo: {why}"),
             Self::Mirror(why) => write!(f, "the context store mirror refused this machine: {why}"),
+            Self::CheckNeedsVerdict(claim) => write!(
+                f,
+                "claim {claim} is on a check: submit it with a verdict (pass, fail, or snooze \
+                 until a time) and a note"
+            ),
+            Self::NotACheck(claim) => write!(
+                f,
+                "claim {claim} is not on a check: submit it without a verdict"
+            ),
+            Self::InvalidCheck(why) => write!(f, "check: {why}"),
             Self::ClaimNotHeld { claim, lease } => {
                 write!(f, "claim {claim} is not held by lease {lease}")
             }

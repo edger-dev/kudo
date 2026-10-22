@@ -58,8 +58,42 @@ pub struct Item {
     pub id: ItemId,
     /// Enqueue order within its context, from 1.
     pub seq: u64,
-    /// The ask, as typed.
+    /// The ask, as typed (a check's: what to look at).
     pub ask: String,
+    /// When it becomes ready; `None` for ready at once.
+    pub due: Option<Now>,
+    /// The check it is, if it is one.
+    pub check: Option<Check>,
+    /// The check item a snooze re-queued this one from.
+    pub snoozed_from: Option<ItemId>,
+}
+
+/// A check: what to look at, the measurable condition that passes it, and
+/// the evidence window it is judged on.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Check {
+    pub what: String,
+    pub pass: String,
+    pub window: String,
+}
+
+/// How a check closes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckVerdict {
+    Pass,
+    Fail,
+    /// Look again at `until` (epoch seconds): the check is enqueued again,
+    /// due then.
+    Snooze {
+        until: Now,
+    },
+}
+
+/// A check's verdict and the note that goes with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckClose {
+    pub verdict: CheckVerdict,
+    pub note: String,
 }
 
 /// A worker's claim on an item: exclusive until settled or past its deadline.
@@ -97,6 +131,8 @@ pub struct Submission {
     /// The head versions the new head builds on, when not the claim's own
     /// base — after a refusal, the versions it handed back.
     pub base: Option<Vec<String>>,
+    /// A check's verdict: required on a check's claim, refused on any other.
+    pub check: Option<CheckClose>,
 }
 
 /// A rough edge filed from inside the work.
@@ -139,6 +175,8 @@ pub struct Submitted {
     pub downgraded: Vec<String>,
     /// Evidence entries that did not resolve.
     pub unresolved: Vec<String>,
+    /// The check a snooze enqueued again.
+    pub requeued: Option<ItemId>,
 }
 
 /// A repo a context spans: by name, on a node, at a path there.
