@@ -10,7 +10,7 @@
 //! | `session-start`      | the head and the worker's rules as added context   |
 //! | `stop`               | `{"decision":"block","reason":…}`, or nothing      |
 //! | `pre-compact`        | ends the lease                                     |
-//! | `user-prompt-submit` | ends the lease unless it is the launcher's kickoff |
+//! | `user-prompt-submit` | ends the lease unless it is the launcher's kickoff or the CLI's own task notification |
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 

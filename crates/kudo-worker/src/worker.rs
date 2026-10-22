@@ -330,9 +330,16 @@ impl<'a> Worker<'a> {
 
     /// UserPromptSubmit: a human took over; the lease ends, and an open claim
     /// is released.
+    // implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@e60af5df023b9c371fc558a8a11ee450eabe48d03f12b2da11fd01cbe5497874
     pub fn user_prompt(&self, prompt: &str, now: Now) -> Result<(), Error> {
-        if prompt.trim() == crate::KICKOFF {
+        let prompt = prompt.trim();
+        if prompt == crate::KICKOFF {
             return Ok(()); // the launcher's own first prompt
+        }
+        // The CLI's own delivery — a background task (a long job_wait) that
+        // finished — reaches this hook as a prompt; no person typed it.
+        if prompt.starts_with("<task-notification>") {
+            return Ok(());
         }
         self.end_releasing(LeaseEnd::Takeover, now)
     }
