@@ -234,7 +234,7 @@ fn a_governed_job_is_traced_from_start_to_end() {
 /// A shell call is recorded with its exit and a capped excerpt of its
 /// output; a submission citing it is established, and one citing another
 /// context's call is not.
-// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
 // implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9
 #[test]
 fn a_recorded_shell_call_is_evidence_in_its_context() {
@@ -289,7 +289,7 @@ fn a_recorded_shell_call_is_evidence_in_its_context() {
 }
 
 /// A job event's trace kino is evidence too: recording returns its id.
-// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
 #[test]
 fn a_job_event_is_evidence_in_its_context() {
     let (dir, store) = store("trace-jobevidence");
@@ -325,5 +325,24 @@ fn a_job_event_is_evidence_in_its_context() {
             .downgraded
             .is_empty()
     );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A long command keeps at most 512 bytes in the trace line.
+#[test]
+fn a_long_command_is_capped_in_the_line() {
+    let (dir, store) = store("trace-longcmd");
+    let ctx = store.create_context("calls", "# calls\n", T0).unwrap();
+    let cmd = format!("echo {}", "x".repeat(5000));
+    store
+        .record_tool_call(&ctx, "l", &cmd, None, "", T0)
+        .unwrap();
+    match &store.trace(&ctx).unwrap()[0].event {
+        TraceEvent::ToolCall { command, exit } => {
+            assert!(command.len() <= 512, "{}", command.len());
+            assert_eq!(*exit, None);
+        }
+        other => panic!("{other:?}"),
+    }
     let _ = std::fs::remove_dir_all(dir);
 }

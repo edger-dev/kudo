@@ -595,7 +595,7 @@ impl ContextStore {
     /// Record a shell call `lease` made, as it returned: the command, its
     /// exit, and the first and last 2 KB of its output. The kino's id, which
     /// a submission of this context may cite.
-    // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+    // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
     pub fn record_tool_call(
         &self,
         ctx: &ContextId,
@@ -606,13 +606,20 @@ impl ContextStore {
         now: Now,
     ) -> Result<String, Error> {
         let command = one_line(command);
+        // The line (metadata) carries at most 512 bytes of the command; the
+        // body keeps it, excerpted like the output.
+        let mut cut = command.len().min(512);
+        while !command.is_char_boundary(cut) {
+            cut -= 1;
+        }
         let event = TraceEvent::ToolCall {
-            command: command.clone(),
+            command: command[..cut].to_owned(),
             exit,
         };
         let exit = exit.map_or_else(|| "unknown".to_owned(), |c| c.to_string());
         let body = format!(
-            "$ {command}\n(exit {exit})\n\n{}",
+            "$ {}\n(exit {exit})\n\n{}",
+            excerpt(&command, OUTPUT_KEPT),
             excerpt(output, OUTPUT_KEPT)
         );
         self.record_trace_with(ctx, lease, &event, &body, now)
@@ -1531,7 +1538,7 @@ impl View {
                         && field(b, CONTEXT) == ctx.0
                         && (matches!(field(b, KIND), "cite" | "submission")
                             // The loop's own records of what ran.
-                            // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+                            // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
                             || (field(b, KIND) == "trace"
                                 && matches!(field(b, EVENT), "tool-call" | "job-start" | "job")))
                 })

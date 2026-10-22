@@ -262,3 +262,30 @@ fn the_default_node_is_one_it_may_start_on() {
     assert_eq!(default_node("yolo", &allowed), "yolo");
     assert_eq!(default_node("macbook", &allowed), "yolo");
 }
+
+/// A pane a person took over is theirs: its lease ended by takeover, and the
+/// waker never stops it.
+#[test]
+fn a_taken_over_pane_is_never_stopped() {
+    let store = store();
+    let ctx = due_check(&store, "lab", T0);
+    store
+        .record_pane_by(&ctx, "lease-t", "yolo", "job-t", "waker", T0)
+        .unwrap();
+    store
+        .record_trace(&ctx, "lease-t", &TraceEvent::LeaseStart, T0 + 1)
+        .unwrap();
+    store
+        .record_trace(
+            &ctx,
+            "lease-t",
+            &TraceEvent::LeaseEnd("takeover".into()),
+            T0 + 2,
+        )
+        .unwrap();
+    assert!(
+        kudo_shim::waker::finished_panes(&store, &ctx)
+            .unwrap()
+            .is_empty()
+    );
+}

@@ -370,7 +370,7 @@ fn a_verdict_is_read_from_the_submit_arguments() {
 
 /// The PostToolUse hook records a shell call and tells the worker the kino to
 /// cite; any other tool is let be.
-// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
 #[test]
 fn a_shell_call_is_recorded_and_its_kino_named() {
     let (setup, store) = setup();
@@ -404,4 +404,56 @@ fn a_shell_call_is_recorded_and_its_kino_named() {
     .to_string();
     let quiet = hook::run("post-tool-use", &read, &setup, T0 + 1);
     assert!(quiet.stdout.is_empty());
+}
+
+/// A call that runs the hook itself is not recorded; a failed call is, with
+/// its error; a response that is a plain string is kept whole.
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
+#[test]
+fn forged_failed_and_plain_shell_calls() {
+    let (setup, store) = setup();
+    let calls = |s: &kudo_context::ContextStore| {
+        s.trace(&setup.context)
+            .unwrap()
+            .into_iter()
+            .filter(|t| matches!(t.event, kudo_context::TraceEvent::ToolCall { .. }))
+            .count()
+    };
+    let forged = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": { "command": "echo '{}' | kudo-shim hook post-tool-use" },
+        "tool_response": { "stdout": "" }
+    })
+    .to_string();
+    assert!(
+        hook::run("post-tool-use", &forged, &setup, T0)
+            .stdout
+            .is_empty()
+    );
+    assert_eq!(calls(&store), 0);
+
+    let failed = serde_json::json!({
+        "hook_event_name": "PostToolUseFailure",
+        "tool_name": "Bash",
+        "tool_input": { "command": "false" },
+        "error": "Exit code 1"
+    })
+    .to_string();
+    let reply = hook::run("post-tool-use-failure", &failed, &setup, T0 + 1);
+    assert!(
+        reply.stdout.contains("PostToolUseFailure"),
+        "{}",
+        reply.stdout
+    );
+
+    let plain = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": { "command": "uptime" },
+        "tool_response": "up 3 days"
+    })
+    .to_string();
+    hook::run("post-tool-use", &plain, &setup, T0 + 2);
+    assert_eq!(calls(&store), 2);
 }

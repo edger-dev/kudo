@@ -247,7 +247,7 @@ fn the_launch_preanswers_first_run_prompts() {
 
 /// Shell calls are recorded as they return: a PostToolUse hook, for Bash
 /// only, through the shim.
-// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
+// implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
 #[test]
 fn shell_calls_are_recorded_by_a_post_tool_use_hook() {
     let p = plan(

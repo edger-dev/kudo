@@ -1,0 +1,2 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b","hash":"fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd","parents":["6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b"],"ts":"2026-10-22T10:58:25.907153955Z","author":"YJ Park","provenance":"step 6 review","metadata":{"kudo::designs":"252ea9a8f02cf4cf5cba2b48d3008f43c39e4a9195bb84645208f988015cd6a7","name":"kudo::trace::shell-calls-are-evidence","status::active":"true"}}

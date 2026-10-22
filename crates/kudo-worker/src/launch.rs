@@ -72,17 +72,23 @@ pub fn plan(
     // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697
     let mut hooks = hooks;
     // Shell calls are recorded as they return, as citable evidence.
-    // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
-    hooks.insert(
-        "PostToolUse".to_owned(),
-        json!([{
-            "matcher": "Bash",
-            "hooks": [{
-                "type": "command",
-                "command": format!("{} hook post-tool-use", shell_quote(&shim_str)),
-            }],
-        }]),
-    );
+    // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
+    for (event, arg) in [
+        ("PostToolUse", "post-tool-use"),
+        ("PostToolUseFailure", "post-tool-use-failure"),
+    ] {
+        hooks.insert(
+            event.to_owned(),
+            json!([{
+                "matcher": "Bash",
+                "hooks": [{
+                    "type": "command",
+                    "command": format!("{} hook {arg}", shell_quote(&shim_str)),
+                    "timeout": 30,
+                }],
+            }]),
+        );
+    }
     let settings = json!({ "hooks": hooks, "spinnerTipsEnabled": false });
 
     let mut server_env: Map<String, Value> = setup

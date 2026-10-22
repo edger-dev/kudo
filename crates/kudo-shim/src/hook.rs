@@ -70,6 +70,11 @@ pub fn run_with(
     observer: Option<kudo_worker::Observer>,
 ) -> HookReply {
     let input: Value = serde_json::from_str(stdin).unwrap_or(Value::Null);
+    // A shell call's record needs no mirror, and must not wait on one.
+    // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
+    if matches!(event, "post-tool-use" | "post-tool-use-failure") {
+        return post_tool_use(&input, setup, now);
+    }
     let store = match crate::cli::open_store(
         &setup.store_dir,
         crate::cli::mirror_from_env().as_deref(),
@@ -123,22 +128,15 @@ pub fn run_with(
                 .unwrap_or_default();
             worker.user_prompt(prompt, now).map(|()| HookReply::quiet())
         }
-        // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b
-        "post-tool-use" => return post_tool_use(&input, &store, setup, now),
         other => return HookReply::failed(format!("no hook named `{other}`")),
     };
     result.unwrap_or_else(HookReply::failed)
 }
 
-/// A shell call just returned: record it in the lease's trace and tell the
-/// worker the kino to cite. Any other tool is let be. Best effort: a failed
-/// record never fails the call.
-fn post_tool_use(
-    input: &Value,
-    store: &kudo_context::ContextStore,
-    setup: &WorkerSetup,
-    now: Now,
-) -> HookReply {
+/// A shell call just returned (or failed): record it in the lease's trace
+/// and tell the worker the kino to cite. Any other tool is let be. Best
+/// effort: a failed record never fails the call.
+fn post_tool_use(input: &Value, setup: &WorkerSetup, now: Now) -> HookReply {
     if input.get("tool_name").and_then(Value::as_str) != Some("Bash") {
         return HookReply::quiet();
     }
@@ -146,6 +144,11 @@ fn post_tool_use(
         .pointer("/tool_input/command")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    // A call that runs this hook itself would write a record no tool call
+    // made: it is not recorded (the call that ran it is, and shows it).
+    if command.contains("hook post-tool-use") {
+        return HookReply::quiet();
+    }
     let response = input.get("tool_response").cloned().unwrap_or(Value::Null);
     let text = |key: &str| {
         response
@@ -153,19 +156,39 @@ fn post_tool_use(
             .and_then(Value::as_str)
             .unwrap_or_default()
     };
-    let mut output = text("stdout").to_owned();
+    let mut output = match response.as_str() {
+        Some(whole) => whole.to_owned(),
+        None => text("stdout").to_owned(),
+    };
     if !text("stderr").is_empty() {
         output.push_str("\n[stderr]\n");
         output.push_str(text("stderr"));
+    }
+    // A failed call (PostToolUseFailure) carries its error instead.
+    if let Some(error) = input.get("error").and_then(Value::as_str) {
+        output.push_str("\n[error]\n");
+        output.push_str(error);
     }
     let exit = ["exit_code", "exitCode", "returnCode", "code"]
         .iter()
         .find_map(|k| response.get(*k).and_then(Value::as_i64))
         .and_then(|c| i32::try_from(c).ok());
+    // Written locally only: a shell call must not wait on the network; the
+    // next sync (the Stop hook, a submit) carries it to the mirror.
+    let store = match crate::cli::open_store(&setup.store_dir, None, false) {
+        Ok(store) => store,
+        Err(e) => {
+            eprintln!("kudo: could not record the shell call: {e}");
+            return HookReply::quiet();
+        }
+    };
     match store.record_tool_call(&setup.context, &setup.lease, command, exit, &output, now) {
         Ok(id) => HookReply::json(&json!({
             "hookSpecificOutput": {
-                "hookEventName": "PostToolUse",
+                "hookEventName": input
+                    .get("hook_event_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("PostToolUse"),
                 "additionalContext": format!(
                     "kudo recorded this shell call as kino://{id}: cite it as evidence for \
                      what it showed."

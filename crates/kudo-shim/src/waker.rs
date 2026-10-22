@@ -29,8 +29,9 @@ pub const BACKOFF_MAX: i64 = 4 * 3600;
 #[derive(Debug, Default)]
 pub struct Backoff {
     next: std::collections::HashMap<ContextId, (Now, i64)>,
-    /// Finished panes already stopped (or found gone): looked at once.
-    stopped: std::collections::HashSet<String>,
+    /// Finished panes already stopped (or found gone), and when: looked at
+    /// once, forgotten after a day.
+    stopped: std::collections::HashMap<String, Now>,
 }
 
 impl Backoff {
@@ -178,9 +179,10 @@ pub async fn wake_once(
                 // A day back is enough: older panes were looked at, or are
                 // long gone.
                 finished.extend(
-                    finished_panes(&store, &card.id)?
+                    finished_panes_ended(&store, &card.id)?
                         .into_iter()
-                        .filter(|p| now - p.at <= 86_400),
+                        .filter(|(_, ended)| now - ended <= 86_400)
+                        .map(|(pane, _)| pane),
                 );
                 recent.extend(
                     store
@@ -198,24 +200,33 @@ pub async fn wake_once(
         Ok(Err(e)) => return vec![format!("could not read the store: {e}")],
         Err(e) => return vec![format!("could not read the store: {e}")],
     };
-    // A finished worker's pane is stopped once; one already gone is let be.
+    // A finished worker's pane is stopped once; one already gone is let be;
+    // one whose node cannot say is looked at again next time.
+    backoff.stopped.retain(|_, at| now - *at <= 86_400);
     for pane in finished {
-        if backoff.stopped.contains(&pane.job) {
+        if backoff.stopped.contains_key(&pane.job) {
             continue;
         }
-        if job_running(hub, &pane).await {
-            stop(hub, &pane).await;
-            said.push(format!(
-                "stopped pane {} on {} (its lease ended)",
-                pane.job, pane.node
-            ));
+        match job_state(hub, &pane).await {
+            Some(true) => {
+                stop(hub, &pane).await;
+                said.push(format!(
+                    "stopped pane {} on {} (its lease ended)",
+                    pane.job, pane.node
+                ));
+                backoff.stopped.insert(pane.job, now);
+            }
+            Some(false) => {
+                backoff.stopped.insert(pane.job, now);
+            }
+            None => {}
         }
-        backoff.stopped.insert(pane.job);
     }
-    // A recent pane whose job is gone (killed by hand) holds nothing back.
+    // A recent pane whose job is gone (killed by hand) holds nothing back; one
+    // whose node cannot say still does.
     let mut gone = Vec::new();
     for pane in recent {
-        if !job_running(hub, &pane).await {
+        if job_state(hub, &pane).await == Some(false) {
             gone.push(pane.job);
         }
     }
@@ -294,16 +305,37 @@ pub fn finished_panes(
     store: &ContextStore,
     ctx: &ContextId,
 ) -> Result<Vec<kudo_context::PaneRecord>, Error> {
-    let ended: Vec<String> = store
-        .trace(ctx)?
+    Ok(finished_panes_ended(store, ctx)?
         .into_iter()
-        .filter(|e| matches!(e.event, TraceEvent::LeaseEnd(_)))
-        .map(|e| e.lease)
-        .collect();
+        .map(|(pane, _)| pane)
+        .collect())
+}
+
+/// [`finished_panes`], each with when its lease ended. A lease a person took
+/// over has ended too, but its pane is theirs now: never among these.
+fn finished_panes_ended(
+    store: &ContextStore,
+    ctx: &ContextId,
+) -> Result<Vec<(kudo_context::PaneRecord, Now)>, Error> {
+    let mut ended: Vec<(String, Now)> = Vec::new();
+    let mut taken: Vec<String> = Vec::new();
+    for e in store.trace(ctx)? {
+        if let TraceEvent::LeaseEnd(why) = &e.event {
+            if why == "takeover" {
+                taken.push(e.lease.clone());
+            }
+            let at = e.at.parse::<jiff::Timestamp>().map_or(0, |t| t.as_second());
+            ended.push((e.lease, at));
+        }
+    }
     Ok(store
         .panes(ctx)?
         .into_iter()
-        .filter(|p| p.by == "waker" && ended.contains(&p.lease))
+        .filter(|p| p.by == "waker" && !taken.contains(&p.lease))
+        .filter_map(|p| {
+            let at = ended.iter().find(|(l, _)| *l == p.lease)?.1;
+            Some((p, at))
+        })
         .collect())
 }
 
@@ -316,10 +348,10 @@ pub fn default_node(own: &str, allowed: &[String]) -> String {
     allowed.first().cloned().unwrap_or_else(|| own.to_owned())
 }
 
-/// Whether a pane's job still runs on its node; a job the node no longer
-/// knows, or cannot say, counts as not running.
-async fn job_running(hub: &HubClient, pane: &kudo_context::PaneRecord) -> bool {
-    crate::jobs::tail(
+/// Whether a pane's job still runs on its node: `Some(false)` when it ended
+/// or the node no longer knows it, `None` when the node could not be asked.
+async fn job_state(hub: &HubClient, pane: &kudo_context::PaneRecord) -> Option<bool> {
+    let reply = crate::jobs::tail(
         hub,
         crate::route::Target::node(pane.node.clone()),
         crate::jobs::DEFAULT_JOB_CONNECTOR,
@@ -328,8 +360,16 @@ async fn job_running(hub: &HubClient, pane: &kudo_context::PaneRecord) -> bool {
             offset: u64::MAX,
         },
     )
-    .await
-    .is_ok_and(|t| !t.status.is_terminal())
+    .await;
+    match reply {
+        Ok(t) => Some(!t.status.is_terminal()),
+        // The node answered and refused: it does not know this job.
+        Err(crate::ShimError::Route {
+            side: crate::route::RouteFailure::Node,
+            ..
+        }) => Some(false),
+        Err(_) => None,
+    }
 }
 
 /// Stop a pane's job, as the console.
