@@ -5,7 +5,7 @@
 //! the jobs it starts in its context.
 //!
 //! implements: kudo:daf63591a53811da5e761c847a528776758b90ee07fc55f8c16ce14789be1f44
-//! implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@ff25c7f76a20fd286e5949164fa3e1573577d38145c38f29c0e8b0664d3179f1
+//! implements: kudo:e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@d9656cc142296b3c9017b9d73ca59d326c9a29abd2945a5afd4a73eb6514f593
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -270,17 +270,33 @@ fn a_worker_traces_its_jobs_start_and_end_once() {
     let (setup, store) = worker();
     worker_tools::trace_job_start(&setup, "pc", "j-1", true, &["df".into(), "-h".into()], T0)
         .unwrap();
+    let end = worker_tools::trace_job_end(
+        &setup,
+        "pc",
+        "j-1",
+        "done:0",
+        "approved-once",
+        "/dev/nvme1n1p1 1.8T 215G 1.5T 13% /home\n",
+        T0 + 1,
+    )
+    .unwrap()
+    .expect("the end is recorded, and named");
+    // The end record holds what the job printed: a claim made from it is
+    // citable.
     assert!(
-        worker_tools::trace_job_end(&setup, "pc", "j-1", "done:0", "approved-once", T0 + 1)
-            .unwrap()
+        store.kino_text(&end).unwrap().contains("13% /home"),
+        "{}",
+        store.kino_text(&end).unwrap()
     );
     assert!(
-        !worker_tools::trace_job_end(&setup, "pc", "j-1", "done:0", "approved-once", T0 + 2)
+        worker_tools::trace_job_end(&setup, "pc", "j-1", "done:0", "approved-once", "", T0 + 2)
             .unwrap()
+            .is_none()
     );
     assert!(
-        !worker_tools::trace_job_end(&setup, "pc", "other", "done:0", "seed-allow", T0 + 3)
+        worker_tools::trace_job_end(&setup, "pc", "other", "done:0", "seed-allow", "", T0 + 3)
             .unwrap()
+            .is_none()
     );
 
     let events: Vec<TraceEvent> = store
@@ -334,8 +350,17 @@ fn an_end_matches_its_start_by_the_job_id() {
     worker_tools::trace_job_start(&setup, "yolo", "j-9", false, &["uptime".into()], T0).unwrap();
     assert!(worker_tools::awaits_end(&setup, "j-9").unwrap());
     assert!(
-        worker_tools::trace_job_end(&setup, "edger::yolo", "j-9", "done:0", "seed-allow", T0 + 1)
-            .unwrap()
+        worker_tools::trace_job_end(
+            &setup,
+            "edger::yolo",
+            "j-9",
+            "done:0",
+            "seed-allow",
+            "",
+            T0 + 1
+        )
+        .unwrap()
+        .is_some()
     );
     assert!(!worker_tools::awaits_end(&setup, "j-9").unwrap());
 }

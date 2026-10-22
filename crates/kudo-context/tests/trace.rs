@@ -346,3 +346,50 @@ fn a_long_command_is_capped_in_the_line() {
     }
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A job's end is recorded with a capped excerpt of what it printed, and a
+/// claim citing it is established.
+// implements: e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1@d9656cc142296b3c9017b9d73ca59d326c9a29abd2945a5afd4a73eb6514f593
+#[test]
+fn a_job_end_holds_its_output_and_is_evidence() {
+    let (dir, store) = store("trace-jobend");
+    let ctx = store.create_context("jobs", "# jobs\n", T0).unwrap();
+    let long = format!("{}MIDDLE{}", "a".repeat(5000), "13% /home");
+    let end = TraceEvent::JobEnd {
+        node: "pc".into(),
+        job: "1792-1-1".into(),
+        status: "done:0".into(),
+        verdict: "approved-once".into(),
+    };
+    let id = store
+        .record_job_end(&ctx, "lease-j", &end, &long, T0)
+        .unwrap();
+    let events: Vec<TraceEvent> = store
+        .trace(&ctx)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.event)
+        .collect();
+    assert_eq!(events, vec![end]);
+    let body = store.kino_text(&id).unwrap();
+    assert!(
+        body.contains("13% /home") && body.contains("aaaa"),
+        "{body}"
+    );
+    assert!(!body.contains("MIDDLE"), "the middle is cut");
+
+    store.enqueue(&ctx, "measure", T0).unwrap();
+    let claim = store.pull(&ctx, "lease-j", T0, 600).unwrap().unwrap();
+    let sub = Submission {
+        head: "# jobs\n/home at 13%\n".into(),
+        log: "measured".into(),
+        established: vec![kudo_context::Established {
+            claim: "/home on pc is 13% used".into(),
+            evidence: vec![id],
+        }],
+        ..Default::default()
+    };
+    let done = store.submit(&claim.id, &sub, T0 + 1).unwrap();
+    assert!(done.downgraded.is_empty(), "{:?}", done.downgraded);
+    let _ = std::fs::remove_dir_all(dir);
+}
