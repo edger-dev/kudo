@@ -349,4 +349,6 @@ pub struct PaneRecord {
     pub job: String,
     /// When it was recorded, in Unix seconds.
     pub at: Now,
+    /// Who started it: `console` or `waker`.
+    pub by: String,
 }

@@ -195,3 +195,61 @@ fn the_first_repos_node_is_the_default() {
         .unwrap();
     assert_eq!(wakes(&store, T0)[0].node, "pc");
 }
+
+/// A pane whose job is already gone (killed by hand) no longer holds back a
+/// wake.
+// implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+#[test]
+fn a_gone_pane_does_not_hold_back_a_wake() {
+    let store = store();
+    let ctx = due_check(&store, "lab", T0);
+    store
+        .record_pane(&ctx, "lease-k", "yolo", "job-k", T0)
+        .unwrap();
+    assert!(wakes(&store, T0 + 60).is_empty());
+    let woke =
+        kudo_shim::waker::due_contexts_with(&store, T0 + 60, "home", QUIET, &["job-k".to_owned()])
+            .unwrap();
+    assert_eq!(woke.len(), 1);
+}
+
+/// The panes the waker started whose lease has ended: the waker stops them,
+/// and never a pane a person started.
+#[test]
+fn finished_panes_are_the_wakers_whose_lease_ended() {
+    let store = store();
+    let ctx = due_check(&store, "lab", T0);
+    store
+        .record_pane_by(&ctx, "lease-w", "yolo", "job-w", "waker", T0)
+        .unwrap();
+    store
+        .record_pane(&ctx, "lease-c", "yolo", "job-c", T0)
+        .unwrap();
+    for lease in ["lease-w", "lease-c"] {
+        store
+            .record_trace(&ctx, lease, &TraceEvent::LeaseStart, T0 + 1)
+            .unwrap();
+        store
+            .record_trace(
+                &ctx,
+                lease,
+                &TraceEvent::LeaseEnd("queue-empty".into()),
+                T0 + 2,
+            )
+            .unwrap();
+    }
+    let done = kudo_shim::waker::finished_panes(&store, &ctx).unwrap();
+    let jobs: Vec<&str> = done.iter().map(|p| p.job.as_str()).collect();
+    assert_eq!(jobs, vec!["job-w"]);
+    assert_eq!(store.panes(&ctx).unwrap()[0].by, "waker");
+}
+
+/// The default node is one the waker may start on: its own when allowed,
+/// else the first allowed.
+#[test]
+fn the_default_node_is_one_it_may_start_on() {
+    use kudo_shim::waker::default_node;
+    let allowed = vec!["yolo".to_owned(), "edger::yolo".to_owned()];
+    assert_eq!(default_node("yolo", &allowed), "yolo");
+    assert_eq!(default_node("macbook", &allowed), "yolo");
+}

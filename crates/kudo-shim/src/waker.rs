@@ -202,3 +202,24 @@ pub async fn wake_once(
     }
     said
 }
+
+pub fn due_contexts_with(
+    store: &ContextStore,
+    now: Now,
+    own_node: &str,
+    quiet_after: i64,
+    _gone: &[String],
+) -> Result<Vec<Wake>, Error> {
+    due_contexts(store, now, own_node, quiet_after)
+}
+
+pub fn finished_panes(
+    _store: &ContextStore,
+    _ctx: &ContextId,
+) -> Result<Vec<kudo_context::PaneRecord>, Error> {
+    Ok(Vec::new())
+}
+
+pub fn default_node(own: &str, _allowed: &[String]) -> String {
+    own.to_owned()
+}

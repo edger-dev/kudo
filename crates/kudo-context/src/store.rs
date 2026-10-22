@@ -606,6 +606,18 @@ impl ContextStore {
         Ok(())
     }
 
+    pub fn record_pane_by(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+        node: &str,
+        job: &str,
+        _by: &str,
+        now: Now,
+    ) -> Result<(), Error> {
+        self.record_pane(ctx, lease, node, job, now)
+    }
+
     /// The panes recorded under the context.
     pub fn panes(&self, ctx: &ContextId) -> Result<Vec<PaneRecord>, Error> {
         let view = self.view()?;
@@ -619,6 +631,7 @@ impl ContextStore {
                 node: field(e, NODE).to_owned(),
                 job: field(e, JOB).to_owned(),
                 at: e.ts.parse::<jiff::Timestamp>().map_or(0, |t| t.as_second()),
+                by: String::new(),
             })
             .collect())
     }
