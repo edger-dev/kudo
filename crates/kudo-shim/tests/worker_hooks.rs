@@ -365,4 +365,5 @@ fn a_verdict_is_read_from_the_submit_arguments() {
         "a verdict needs a note"
     );
     assert!(close(None, Some("+2h"), None).is_err());
+    assert!(close(None, None, Some("a stray note")).is_err());
 }

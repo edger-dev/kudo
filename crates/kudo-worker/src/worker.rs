@@ -119,13 +119,19 @@ impl<'a> Worker<'a> {
         };
         // A check says what passes it and how it closes.
         // implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
+        // The author's words go on labelled lines of their own, never spliced
+        // into a sentence of ours.
         let check = claim.item.check.as_ref().map_or(String::new(), |c| {
+            let window = match c.window.trim() {
+                "" => String::new(),
+                w => format!("\nEvidence window: {w}"),
+            };
             format!(
-                "\n\nThis is a check. It passes when: {}. Judge it on this evidence \
-                 window: {}. Close it in `submit` with a verdict — `pass`, `fail`, or \
-                 `snooze` with `snooze_until` (+30m, +2h, +1d, or an RFC 3339 time) to \
-                 look again then — and a `note` saying what you saw.",
-                c.pass, c.window
+                "\n\nThis is a check.\nPasses when: {}{window}\n\nClose it in `submit` \
+                 with a `verdict` — `pass`, `fail`, or `snooze` with `snooze_until` \
+                 (+30m, +2h, +1d, or an RFC 3339 time) to look again then — and a \
+                 `note` saying what you saw.",
+                c.pass.trim()
             )
         });
         Ok(format!(

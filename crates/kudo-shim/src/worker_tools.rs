@@ -252,9 +252,10 @@ pub fn check_close(
 ) -> Result<Option<kudo_context::CheckClose>, String> {
     use kudo_context::{CheckClose, CheckVerdict};
     let Some(verdict) = verdict else {
-        return match until {
-            Some(_) => Err("snooze_until goes with verdict `snooze`".into()),
-            None => Ok(None),
+        return match (until, note) {
+            (Some(_), _) => Err("snooze_until goes with verdict `snooze`".into()),
+            (None, Some(_)) => Err("note goes with a check's verdict".into()),
+            (None, None) => Ok(None),
         };
     };
     let note = note

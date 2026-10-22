@@ -659,10 +659,11 @@ fn a_checks_claim_names_its_condition_window_and_verdicts() {
         "the backup ran",
         "a snapshot newer than 26 hours",
         "the last 26 hours",
-        "verdict",
-        "pass",
-        "fail",
-        "snooze",
+        "`verdict`",
+        "`pass`",
+        "`fail`",
+        "`snooze`",
+        "snooze_until",
     ] {
         assert!(text.contains(part), "{part:?} missing from {text}");
     }
