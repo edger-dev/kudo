@@ -155,3 +155,25 @@ pub fn inbox(
         setup.context.0
     ))
 }
+
+pub fn trace_job_start(
+    _setup: &WorkerSetup,
+    _node: &str,
+    _job: &str,
+    _waiting: bool,
+    _argv: &[String],
+    _now: Now,
+) -> Result<(), String> {
+    Err("not yet".into())
+}
+
+pub fn trace_job_end(
+    _setup: &WorkerSetup,
+    _node: &str,
+    _job: &str,
+    _status: &str,
+    _verdict: &str,
+    _now: Now,
+) -> Result<bool, String> {
+    Err("not yet".into())
+}

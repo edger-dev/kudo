@@ -173,6 +173,23 @@ pub enum TraceEvent {
     LeaseEnd(String),
     /// Nothing was ready; the lease waits for the next item.
     Wait,
+    /// The worker started a job on a node: its id there (the pointer into
+    /// the node's audit), whether it waits for the author's verdict, and the
+    /// argv it asked for.
+    JobStart {
+        node: String,
+        job: String,
+        waiting: bool,
+        argv: String,
+    },
+    /// The worker saw that job end: how (`done:0`, `denied:rule`, …), and
+    /// under which verdict.
+    JobEnd {
+        node: String,
+        job: String,
+        status: String,
+        verdict: String,
+    },
 }
 
 // implements: 03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d@03045b42c8f5eb9f6b68ffe4b372e8560b43d4da21c4a77c6ddab998713b7c6d
@@ -188,6 +205,8 @@ impl TraceEvent {
             Self::Submit { .. } => "submit",
             Self::LeaseEnd(_) => "lease-end",
             Self::Wait => "wait",
+            Self::JobStart { .. } => "job-start",
+            Self::JobEnd { .. } => "job",
         }
     }
 
@@ -203,6 +222,7 @@ impl TraceEvent {
                 format!("{} {} {}", self.name(), claim.0, submission.0)
             }
             Self::LeaseEnd(why) => format!("{} {why}", self.name()),
+            Self::JobStart { .. } | Self::JobEnd { .. } => self.name().to_owned(),
         }
     }
 

@@ -422,3 +422,55 @@ pub fn render_tail(reply: &TailReply) -> String {
         String::from_utf8_lossy(&reply.bytes)
     )
 }
+
+/// A start, and whether it waits for the author's verdict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Started {
+    pub id: String,
+    pub waiting: bool,
+}
+
+pub async fn start_gated(
+    _hub: &HubClient,
+    _target: Target,
+    _connector: &str,
+    _request: StartRequest,
+) -> Result<Started, ShimError> {
+    Err(ShimError::Hub("not yet".into()))
+}
+
+pub async fn pending(
+    _hub: &HubClient,
+    _target: Target,
+    _connector: &str,
+) -> Result<moco_job::wire::PendingReply, ShimError> {
+    Err(ShimError::Hub("not yet".into()))
+}
+
+pub async fn decide(
+    _hub: &HubClient,
+    _target: Target,
+    _connector: &str,
+    _request: moco_job::wire::DecideRequest,
+) -> Result<moco_job::wire::DecideReply, ShimError> {
+    Err(ShimError::Hub("not yet".into()))
+}
+
+pub async fn wait_for(
+    _hub: &HubClient,
+    _target: Target,
+    _connector: &str,
+    _id: &str,
+    _budget: std::time::Duration,
+    _poll: std::time::Duration,
+) -> Result<Option<moco_job::wire::WaitReply>, ShimError> {
+    Err(ShimError::Hub("not yet".into()))
+}
+
+pub fn status_word(_status: &moco_job::JobStatus) -> String {
+    String::new()
+}
+
+pub fn verdict_word(_verdict: moco_job::Verdict) -> String {
+    String::new()
+}

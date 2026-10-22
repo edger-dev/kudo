@@ -190,3 +190,43 @@ fn panes_read_oldest_first() {
     assert_eq!(jobs, ["j1", "j2", "j3"]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A governed job a worker starts is traced in its context: where it ran,
+/// its id (the pointer into the node's audit), whether it waited for a
+/// verdict, what it ran — and, when the worker sees it end, how and under
+/// which verdict.
+// implements: e23a8b06aa9331b3f1ffd8df36be1392daf44e93ca20037b50cec6c3132f53e1
+#[test]
+fn a_governed_job_is_traced_from_start_to_end() {
+    let (dir, store) = store("trace-job");
+    let ctx = store.create_context("jobs", "# jobs\n", T0).unwrap();
+    let start = TraceEvent::JobStart {
+        node: "pc".into(),
+        job: "1792-1-1".into(),
+        waiting: true,
+        argv: "df -h /".into(),
+    };
+    let end = TraceEvent::JobEnd {
+        node: "pc".into(),
+        job: "1792-1-1".into(),
+        status: "done:0".into(),
+        verdict: "approved-once".into(),
+    };
+    store.record_trace(&ctx, "lease-j", &start, T0).unwrap();
+    store.record_trace(&ctx, "lease-j", &end, T0 + 1).unwrap();
+    let got: Vec<TraceEvent> = store
+        .trace(&ctx)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.event)
+        .collect();
+    assert_eq!(got, vec![start.clone(), end.clone()]);
+    assert_eq!(start.name(), "job-start");
+    assert_eq!(end.name(), "job");
+    for e in [&start, &end] {
+        assert_eq!(TraceEvent::from_line(&e.to_line()).as_ref(), Some(e));
+    }
+    assert_eq!(start.to_line(), "job-start pc 1792-1-1 waiting df -h /");
+    assert_eq!(end.to_line(), "job pc 1792-1-1 done:0 approved-once");
+    let _ = std::fs::remove_dir_all(dir);
+}

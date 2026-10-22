@@ -538,6 +538,7 @@ impl ContextStore {
             }
             TraceEvent::LeaseEnd(why) => ("lease-end", "", "", why.as_str()),
             TraceEvent::Wait => ("wait", "", "", ""),
+            TraceEvent::JobStart { .. } | TraceEvent::JobEnd { .. } => ("todo", "", "", ""),
         };
         let line = event.to_line();
         // The nonce keeps two equal events of one lease two kinos.
