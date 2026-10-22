@@ -374,3 +374,16 @@ fn an_empty_argv_still_traces() {
     assert_eq!(events.len(), 1, "the start must not be dropped");
     assert!(worker_tools::awaits_end(&setup, "j-e").unwrap());
 }
+
+/// A job's output is kept as text a record can hold: control bytes (a
+/// terminal's escapes) dropped, and output the node already dropped said.
+#[test]
+fn job_output_is_kept_as_plain_text() {
+    let text = worker_tools::output_text(b"\x1b[31mred\x1b[0m\tok\r\n", 0);
+    assert_eq!(text, "[31mred[0m\tok\n");
+    let text = worker_tools::output_text(b"tail\n", 4096);
+    assert!(
+        text.starts_with("[4096 earlier bytes were dropped by the node]"),
+        "{text}"
+    );
+}

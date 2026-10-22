@@ -424,9 +424,10 @@ impl ShimServer {
         if !worker_tools::awaits_end(setup, id).unwrap_or(false) {
             return String::new();
         }
-        // What the job printed, as the node keeps it; a job that cannot be
-        // read is recorded without it.
-        let output = jobs::tail(
+        // What the job printed, as the node keeps it. Output that cannot be
+        // read is said so in the record (the end is still traced), and the
+        // worker is not told it holds output.
+        let read = jobs::tail(
             hub,
             target,
             connector,
@@ -435,9 +436,11 @@ impl ShimServer {
                 offset: 0,
             },
         )
-        .await
-        .map(|t| String::from_utf8_lossy(&t.bytes).into_owned())
-        .unwrap_or_default();
+        .await;
+        let (output, readable) = match &read {
+            Ok(t) => (worker_tools::output_text(&t.bytes, t.skipped), true),
+            Err(e) => (format!("(output unreadable: {e})"), false),
+        };
         match worker_tools::trace_job_end(
             setup,
             node,
@@ -447,7 +450,13 @@ impl ShimServer {
             &output,
             now(),
         ) {
-            Ok(Some(kino)) => format!(" (recorded with its output as kino://{kino}; cite it)"),
+            Ok(Some(kino)) if readable => {
+                format!(" (recorded with its output as kino://{kino}; cite it)")
+            }
+            Ok(Some(kino)) => format!(
+                " (its end is recorded as kino://{kino}, but its output could not be read: \
+                 read it with job_tail; a claim from it stays claimed)"
+            ),
             Ok(None) => String::new(),
             Err(e) => {
                 eprintln!("kudo: could not trace the end of job {id}: {e}");

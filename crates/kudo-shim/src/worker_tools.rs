@@ -210,6 +210,21 @@ pub fn awaits_end(setup: &WorkerSetup, job: &str) -> Result<bool, String> {
     Ok(started)
 }
 
+/// A job's output as a record keeps it: text (lossily where it is not UTF-8)
+/// without control bytes other than newlines and tabs, and a first line
+/// saying how much the node had already dropped, when it had.
+pub fn output_text(bytes: &[u8], skipped: u64) -> String {
+    let text: String = String::from_utf8_lossy(bytes)
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+        .collect();
+    if skipped > 0 {
+        format!("[{skipped} earlier bytes were dropped by the node]\n{text}")
+    } else {
+        text
+    }
+}
+
 /// Trace the end of a job this worker started, once, with what it printed:
 /// the record's kino id, or `None` when the job is not one this lease
 /// started, or its end is already traced (matched by the job id; see
