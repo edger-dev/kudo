@@ -205,7 +205,7 @@ mod server_side {
         assert_eq!(waiting.tone, "warn");
         assert_eq!(waiting.phase, "waiting 3 min");
         assert_eq!(waiting.argv, "sh -c 'echo hi there'");
-        assert_eq!(waiting.verdict, "seed-allow");
+        assert_eq!(waiting.verdict, "awaiting your verdict", "not the placeholder");
         assert!(waiting.live);
         let failed = by("-2");
         assert_eq!(failed.tone, "bad");

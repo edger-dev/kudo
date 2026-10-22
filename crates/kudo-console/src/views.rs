@@ -236,7 +236,13 @@ pub fn job_views(jobs: Vec<moco_job::wire::JobSummary>, now_ms: u64) -> Vec<crat
             crate::model::JobView {
                 live: matches!(job.status, JobStatus::PendingApproval | JobStatus::Running),
                 argv: crate::model::argv_text(&job.argv),
-                verdict: kudo_shim::jobs::verdict_word(job.verdict),
+                // A waiting job has no verdict yet: the node's placeholder
+                // (`no-approver`) would read as a refusal.
+                verdict: if job.status == JobStatus::PendingApproval {
+                    "awaiting your verdict".to_owned()
+                } else {
+                    kudo_shim::jobs::verdict_word(job.verdict)
+                },
                 cwd: job.cwd,
                 tone: tone.to_owned(),
                 state,
