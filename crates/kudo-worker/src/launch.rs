@@ -67,7 +67,10 @@ pub fn plan(
             ((*event).to_owned(), json!([{ "hooks": [hook] }]))
         })
         .collect();
-    let settings = json!({ "hooks": hooks });
+    // An unattended pane has no person to answer a prompt: no tips, and no
+    // project MCP servers offered (the worker's MCP config is strict).
+    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697
+    let settings = json!({ "hooks": hooks, "spinnerTipsEnabled": false });
 
     let mut server_env: Map<String, Value> = setup
         .to_env()
@@ -90,6 +93,11 @@ pub fn plan(
 
     let mut env = setup.to_env();
     env.extend(passed);
+    // No promotions or feature-flag prompts in an unattended pane.
+    env.push((
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_owned(),
+        "1".to_owned(),
+    ));
 
     LaunchPlan {
         argv: vec![
@@ -98,6 +106,7 @@ pub fn plan(
             settings.to_string(),
             "--mcp-config".to_owned(),
             mcp.to_string(),
+            "--strict-mcp-config".to_owned(),
             "--session-id".to_owned(),
             setup.lease.clone(),
             KICKOFF.to_owned(),
