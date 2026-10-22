@@ -670,7 +670,7 @@ fn a_checks_claim_names_its_condition_window_and_verdicts() {
 
 /// A due item is not handed over before its time: the Stop hook lets the
 /// session wait (or end) instead.
-// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b@80a3c962223cc4b37ffceccfdfb83cb9d143fd3e956d4cbe19c7ec3e93774ffd
 #[test]
 fn a_due_item_is_not_handed_over_early() {
     let g = Fixture::new();

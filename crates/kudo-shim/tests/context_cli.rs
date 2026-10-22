@@ -280,7 +280,7 @@ fn a_worker_takes_the_lease_it_is_given() {
 
 /// A due item and a check are enqueued by hand, wait for their time, and
 /// show as not yet due; a context's wake node is declared and shown.
-// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b@80a3c962223cc4b37ffceccfdfb83cb9d143fd3e956d4cbe19c7ec3e93774ffd
 // implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
 // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
 #[test]
@@ -337,10 +337,19 @@ fn a_due_time_is_relative_or_absolute_and_a_check_needs_its_condition() {
     );
     assert!(cli::parse_when("soon", T0).is_err());
     assert!(cli::parse_when("+5y", T0).is_err());
+    assert!(cli::parse_when("+0m", T0).is_err());
+    assert!(cli::parse_when("+-5m", T0).is_err());
+    assert!(
+        cli::parse_when("+5é", T0).is_err(),
+        "no panic on a multibyte unit"
+    );
+    assert!(cli::parse_when("+", T0).is_err());
 
     let dir = std::env::temp_dir().join(format!("kudo-shim-cli-chk-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let id = cli::context(&dir, &args(&["new", "lab"]), T0).unwrap();
     assert!(cli::context(&dir, &args(&["check", id.trim(), "the backup ran"]), T0).is_err());
+    assert!(cli::context(&dir, &args(&["enqueue", id.trim(), "--due", "+1h"]), T0).is_err());
+    assert!(cli::context(&dir, &args(&["enqueue", id.trim(), "--due"]), T0).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }

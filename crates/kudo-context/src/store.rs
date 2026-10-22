@@ -762,7 +762,7 @@ impl ContextStore {
     }
 
     /// Enqueue `ask`, ready at `due` (epoch seconds) or at once.
-    // implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+    // implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b@80a3c962223cc4b37ffceccfdfb83cb9d143fd3e956d4cbe19c7ec3e93774ffd
     pub fn enqueue_due(
         &self,
         ctx: &ContextId,
@@ -803,7 +803,12 @@ impl ContextStore {
         let view = self.view()?;
         view.require_context(ctx)?;
         let seq = (view.of_kind_in("item", ctx).len() + 1).to_string();
-        let content = format!("<!-- kudo item {} #{seq} -->\n{ask}", ctx.0);
+        // A snooze's successor names its origin in its bytes, so two machines
+        // that snooze the same check write the same id.
+        let content = match snoozed_from {
+            Some(origin) => format!("<!-- kudo item {} snoozed {} -->\n{ask}", ctx.0, origin.0),
+            None => format!("<!-- kudo item {} #{seq} -->\n{ask}", ctx.0),
+        };
         let mut metadata = meta([(KIND, "item"), (CONTEXT, &ctx.0), (SEQ, &seq)]);
         if let Some(due) = due {
             metadata.insert(DUE.to_owned(), due.to_string());
@@ -841,6 +846,7 @@ impl ContextStore {
             .of_kind_in("item", ctx)
             .into_iter()
             .filter(|item| due_of(item).is_some_and(|due| due > now))
+            .filter(|item| view.first_successor(item))
             .filter(|item| {
                 !view
                     .claims_on(&item.id)
@@ -858,7 +864,7 @@ impl ContextStore {
     pub fn declare_wake_node(&self, ctx: &ContextId, node: &str, now: Now) -> Result<(), Error> {
         let node = node.trim();
         if node.is_empty() || node.contains(char::is_whitespace) {
-            return Err(Error::InvalidCheck(format!("{node:?} is not a node name")));
+            return Err(Error::InvalidNode(node.to_owned()));
         }
         let view = self.view()?;
         view.require_context(ctx)?;
@@ -883,7 +889,7 @@ impl ContextStore {
         let declared = view
             .of_kind_in("wake", ctx)
             .into_iter()
-            .max_by_key(|e| (e.ts.clone(), seq_of(e)))
+            .max_by_key(|e| (e.ts.clone(), seq_of(e), e.hash.clone()))
             .map(|e| field(e, NODE).to_owned());
         if declared.is_some() {
             return Ok(declared);
@@ -1008,6 +1014,11 @@ impl ContextStore {
             (None, true) => return Err(Error::CheckNeedsVerdict(claim.0.clone())),
             (Some(_), false) => return Err(Error::NotACheck(claim.0.clone())),
             (Some(close), true) => {
+                if close.note.trim().is_empty() {
+                    return Err(Error::InvalidCheck(
+                        "a verdict needs a note: say what was seen".into(),
+                    ));
+                }
                 if let crate::CheckVerdict::Snooze { until } = close.verdict
                     && until <= now
                 {
@@ -1096,19 +1107,34 @@ impl ContextStore {
             metadata.insert(VERDICT.to_owned(), verdict.clone());
         }
         let born = self.put("markdown", content.into_bytes(), metadata, None, now)?;
-        self.settle(&ctx, claim, SUBMITTED, now)?;
-        // A snooze looks again later: the same check, due then.
+        // A snooze looks again later: the same check, due then — queued
+        // before the claim settles, so a failed write leaves the claim live
+        // to submit again, never a closed check with nothing after it. A retry
+        // finds the successor already there and queues no second one.
         let requeued = match submission.check.as_ref().map(|c| c.verdict) {
-            Some(crate::CheckVerdict::Snooze { until }) => Some(self.enqueue_item(
-                &ctx,
-                &snoozed.ask,
-                Some(until),
-                snoozed.check.as_ref(),
-                Some(&snoozed.id),
-                now,
-            )?),
+            Some(crate::CheckVerdict::Snooze { until }) => {
+                let view = self.view()?;
+                let existing = view
+                    .of_kind_in("item", &ctx)
+                    .into_iter()
+                    .filter(|e| field(e, SNOOZED_FROM) == snoozed.id.0)
+                    .min_by(|a, b| a.hash.cmp(&b.hash))
+                    .map(|e| ItemId(e.id.clone()));
+                match existing {
+                    Some(id) => Some(id),
+                    None => Some(self.enqueue_item(
+                        &ctx,
+                        &snoozed.ask,
+                        Some(until),
+                        snoozed.check.as_ref(),
+                        Some(&snoozed.id),
+                        now,
+                    )?),
+                }
+            }
             _ => None,
         };
+        self.settle(&ctx, claim, SUBMITTED, now)?;
         Ok(Submitted {
             id: SubmissionId(born.id),
             downgraded: checked.downgraded,
@@ -1538,10 +1564,11 @@ impl View {
             .into_iter()
             // Not before its time (kudo::queue::due-items).
             .filter(|item| due_of(item).is_none_or(|due| due <= now))
+            .filter(|item| self.first_successor(item))
             .collect();
-        // Items with no due time first, in order; then the due, oldest due
-        // first.
-        items.sort_by_key(|e| (due_of(e).unwrap_or(0), seq_of(e)));
+        // What came due first goes first (it was scheduled); then items with
+        // no due time, in order.
+        items.sort_by_key(|e| (due_of(e).is_none(), due_of(e).unwrap_or(0), seq_of(e)));
         items
             .into_iter()
             .filter_map(|item| {
@@ -1558,6 +1585,20 @@ impl View {
                 (!submitted && !held).then_some((item, attempt))
             })
             .collect()
+    }
+
+    /// Whether `item` is the one successor of the check it was snoozed from:
+    /// two machines snoozing the same check during a partition may each
+    /// queue one, and the lowest hash stands for both.
+    fn first_successor(&self, item: &Event) -> bool {
+        let origin = field(item, SNOOZED_FROM);
+        origin.is_empty()
+            || self
+                .by_id
+                .values()
+                .filter_map(|events| events.first())
+                .filter(|e| field(e, KIND) == "item" && field(e, SNOOZED_FROM) == origin)
+                .all(|e| e.hash >= item.hash)
     }
 
     /// The claim's birth event, if it is still live at `now`.

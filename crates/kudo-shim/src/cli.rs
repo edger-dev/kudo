@@ -36,12 +36,18 @@ pub fn default_store_dir() -> Option<PathBuf> {
 
 /// A due time as typed: `+<n>m`, `+<n>h`, `+<n>d` from now, or an RFC 3339
 /// time.
-// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b@80a3c962223cc4b37ffceccfdfb83cb9d143fd3e956d4cbe19c7ec3e93774ffd
 pub fn parse_when(when: &str, now: i64) -> Result<i64, String> {
     let bad = || format!("{when:?} is not a time: write +30m, +2h, +1d, or an RFC 3339 time");
     if let Some(rel) = when.strip_prefix('+') {
-        let (n, unit) = rel.split_at(rel.len().saturating_sub(1));
+        let Some((cut, _)) = rel.char_indices().last() else {
+            return Err(bad());
+        };
+        let (n, unit) = rel.split_at(cut);
         let n: i64 = n.parse().map_err(|_| bad())?;
+        if n <= 0 {
+            return Err(bad());
+        }
         let secs = match unit {
             "m" => 60,
             "h" => 3600,
@@ -93,7 +99,12 @@ pub fn context_with(
                 .map_err(|e| e.to_string())?;
             Ok(format!("{}\n", id.0))
         }
-        ["enqueue", ctx, "--due", when, ask @ ..] if !ask.join(" ").trim().is_empty() => {
+        ["enqueue", _, "--due", ..]
+            if words.len() < 5 || words[4..].join(" ").trim().is_empty() =>
+        {
+            Err("enqueue --due <when> <ask>: say when, then what to do".to_owned())
+        }
+        ["enqueue", ctx, "--due", when, ask @ ..] => {
             let due = parse_when(when, now)?;
             let store = open_store(store_dir, mirror, true)?;
             let ctx = named(&store, ctx)?;

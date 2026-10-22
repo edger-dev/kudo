@@ -37,6 +37,8 @@ pub enum Error {
     NotACheck(String),
     /// A check, or a check's verdict, that cannot stand: why.
     InvalidCheck(String),
+    /// Not a node name (empty, or with spaces).
+    InvalidNode(String),
 }
 
 impl fmt::Display for Error {
@@ -71,6 +73,7 @@ impl fmt::Display for Error {
                 "claim {claim} is not on a check: submit it without a verdict"
             ),
             Self::InvalidCheck(why) => write!(f, "check: {why}"),
+            Self::InvalidNode(node) => write!(f, "{node:?} is not a node name"),
             Self::ClaimNotHeld { claim, lease } => {
                 write!(f, "claim {claim} is not held by lease {lease}")
             }

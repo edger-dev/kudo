@@ -1,6 +1,6 @@
 //! Due items, checks and their verdicts, and where a context wakes.
 //!
-//! implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+//! implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b@80a3c962223cc4b37ffceccfdfb83cb9d143fd3e956d4cbe19c7ec3e93774ffd
 //! implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
 //! implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
 
@@ -214,4 +214,61 @@ fn the_wake_node_is_declared_or_follows_the_repos() {
         store.wake_node(&ctx).unwrap().as_deref(),
         Some("edger::yolo")
     );
+}
+
+/// Fail closes the check too; a verdict without a note is refused.
+#[test]
+fn a_fail_closes_and_a_verdict_needs_a_note() {
+    let store = store();
+    let ctx = store.create_context("lab", "# lab\n", T0).unwrap();
+    store.enqueue_check(&ctx, &key_check(), None, T0).unwrap();
+    let claim = store.pull(&ctx, "l", T0, TTL).unwrap().unwrap();
+    let bare = CheckClose {
+        verdict: CheckVerdict::Fail,
+        note: "  ".into(),
+    };
+    assert!(matches!(
+        store.submit(&claim.id, &done("# lab\n", Some(bare)), T0 + 1),
+        Err(Error::InvalidCheck(_))
+    ));
+    let fail = CheckClose {
+        verdict: CheckVerdict::Fail,
+        note: "403 from the bucket".into(),
+    };
+    let submitted = store
+        .submit(&claim.id, &done("# lab\nkey broken\n", Some(fail)), T0 + 1)
+        .unwrap();
+    assert_eq!(submitted.requeued, None);
+    assert!(!store.has_ready(&ctx, T0 + 2).unwrap());
+    assert!(
+        store
+            .log(&ctx)
+            .unwrap()
+            .join("\n")
+            .contains("verdict: fail")
+    );
+}
+
+/// Once due, a scheduled item goes before an ordinary one.
+#[test]
+fn a_due_item_goes_first_once_due() {
+    let store = store();
+    let ctx = store.create_context("lab", "# lab\n", T0).unwrap();
+    store.enqueue(&ctx, "ordinary", T0).unwrap();
+    store
+        .enqueue_due(&ctx, "scheduled", Some(T0 + 10), T0)
+        .unwrap();
+    let claim = store.pull(&ctx, "l", T0 + 10, TTL).unwrap().unwrap();
+    assert_eq!(claim.item.ask, "scheduled");
+}
+
+/// A node name with a space is refused as such.
+#[test]
+fn a_bad_wake_node_is_named() {
+    let store = store();
+    let ctx = store.create_context("lab", "# lab\n", T0).unwrap();
+    assert!(matches!(
+        store.declare_wake_node(&ctx, "two words", T0),
+        Err(Error::InvalidNode(_))
+    ));
 }
