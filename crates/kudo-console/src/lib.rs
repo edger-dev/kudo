@@ -9,6 +9,7 @@ pub mod badge;
 pub mod confirm;
 #[cfg(feature = "server")]
 pub mod guard;
+pub mod history;
 pub mod layout;
 pub mod model;
 pub mod selection;

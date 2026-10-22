@@ -221,7 +221,11 @@ fn unescape(value: &str) -> Option<String> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Notice(pub Option<String>);
 
-/// What the last action led to, when it went: shown in the tray, so a
-/// verdict's result is read where it was given.
+/// What the last verdict led to — or that it failed: shown in the tray, so a
+/// verdict's result is read where it was given, and a failure never looks
+/// like the success before it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Outcome(pub Option<String>);
+pub struct Outcome {
+    pub text: Option<String>,
+    pub failed: bool,
+}

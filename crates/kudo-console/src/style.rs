@@ -119,6 +119,9 @@ html, body { margin: 0; padding: 0; }
 }
 .tray .unknown { color: var(--bad); }
 .tray .outcome { color: var(--ok); margin: 6px 0; }
+.tray .outcome.failed { color: var(--bad); }
+.result { margin: 4px 0; }
+.result.failed { color: var(--bad); }
 
 .tabs { display: flex; gap: 6px; margin-bottom: 6px; }
 .tabs button[data-on="true"] { border-color: var(--accent); color: var(--accent); }

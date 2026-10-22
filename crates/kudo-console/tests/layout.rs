@@ -274,3 +274,22 @@ fn the_theme_follows_the_system_unless_picked() {
     assert!(css.contains("[data-theme=\"light\"]"), "{css}");
     assert!(css.contains("--bg"), "colours are tokens: {css}");
 }
+
+/// While a switch is re-read, the context before must not show as the one
+/// selected (nor take its asks); a context that is not here says so.
+#[test]
+fn a_context_pane_shows_only_the_selected_context() {
+    let mut other = Selection::default();
+    other.select_context("d".repeat(64));
+    let html = render_with(THREE_PANES, sample(), other.clone());
+    let markup = common::markup(&html);
+    assert!(!markup.contains("state: active"), "{markup}");
+    assert!(markup.contains("this context is not here"), "{markup}");
+
+    let mut data = sample();
+    data.contexts[0].id = "d".repeat(64);
+    let html = render_with(THREE_PANES, data, other);
+    let markup = common::markup(&html);
+    assert!(!markup.contains("state: active"), "{markup}");
+    assert!(markup.contains("loading the context"), "{markup}");
+}

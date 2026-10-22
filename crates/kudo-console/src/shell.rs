@@ -34,11 +34,18 @@ pub fn Shell(layout: Layout, data: ConsoleData) -> Element {
     };
     let focus = sel.focus();
     let notice = try_consume_context::<Signal<Notice>>().and_then(|n| n.read().0.clone());
+    // One armed button at a time: a tap anywhere else disarms it.
+    let mut armed = use_context_provider(|| Signal::new(Armed::default()));
     rsx! {
         div {
             class: "kudo-shell",
             "data-theme": theme.attr(),
             "data-narrow": narrow,
+            onclick: move |_| {
+                if armed.peek().id.is_some() {
+                    armed.write().id = None;
+                }
+            },
             style { dangerous_inner_html: crate::style::STYLE }
             TopBar { data: data.clone(), selection: sel.clone() }
             if let Some(error) = data.error.clone() {
@@ -90,8 +97,8 @@ fn pane_name(kind: PaneKind) -> &'static str {
 fn render(kind: PaneKind, data: &ConsoleData, sel: &Selection) -> Element {
     match kind {
         PaneKind::Where => rsx! { WherePane { data: data.clone(), selection: sel.clone() } },
-        PaneKind::Head => rsx! { HeadPane { data: data.clone(), tab: sel.tab } },
-        PaneKind::Trace => rsx! { TracePane { data: data.clone(), tab: sel.tab } },
+        PaneKind::Head => rsx! { HeadPane { data: data.clone(), selection: sel.clone() } },
+        PaneKind::Trace => rsx! { TracePane { data: data.clone(), selection: sel.clone() } },
         PaneKind::Jobs => rsx! { JobsPane { data: data.clone(), selection: sel.clone() } },
         PaneKind::Job => rsx! { JobPane { data: data.clone(), selection: sel.clone() } },
         PaneKind::Terminal => rsx! { TerminalPane { data: data.clone() } },
@@ -102,10 +109,54 @@ fn short(id: &str) -> &str {
     id.get(..12).unwrap_or(id)
 }
 
-/// Change the page's selection (nothing, when rendered without a page).
+/// Change the page's selection (nothing, when rendered without a page). An
+/// armed button is disarmed: the second tap belongs to what was shown.
 fn select(change: impl FnOnce(&mut Selection)) {
+    disarm();
     if let Some(mut selection) = try_consume_context::<Signal<Selection>>() {
         change(&mut selection.write());
+    }
+}
+
+/// The button waiting for its second tap, by id, and how many armings there
+/// have been — so a timer from an earlier arming never cuts a later one short.
+// implements: 3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5@3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Armed {
+    pub id: Option<String>,
+    pub armings: u64,
+}
+
+/// Arm the button `id`; it disarms itself after [`CONFIRM_MS`] unless armed
+/// again since.
+fn arm(id: String) {
+    let Some(mut armed) = try_consume_context::<Signal<Armed>>() else {
+        return;
+    };
+    let this = {
+        let mut a = armed.write();
+        a.armings += 1;
+        a.id = Some(id);
+        a.armings
+    };
+    spawn(async move {
+        crate::app::pause(CONFIRM_MS).await;
+        if armed.peek().armings == this && armed.peek().id.is_some() {
+            armed.write().id = None;
+        }
+    });
+}
+
+/// Whether the button `id` is armed.
+fn is_armed(id: &str) -> bool {
+    try_consume_context::<Signal<Armed>>().is_some_and(|a| a.read().id.as_deref() == Some(id))
+}
+
+fn disarm() {
+    if let Some(mut armed) = try_consume_context::<Signal<Armed>>()
+        && armed.peek().id.is_some()
+    {
+        armed.write().id = None;
     }
 }
 
@@ -300,14 +351,39 @@ fn Tabs(tab: Tab) -> Element {
     }
 }
 
+/// The selected context's detail, when the data is for it: a re-read after a
+/// switch still holds the one before, which must not show (or take an ask)
+/// as this one.
+fn detail_for<'d>(
+    data: &'d ConsoleData,
+    sel: &Selection,
+) -> Option<&'d crate::model::ContextDetail> {
+    let context = sel.context.as_deref()?;
+    data.selected.as_ref().filter(|d| d.id.starts_with(context))
+}
+
+/// What a context pane says while its detail is not here: loading, or gone.
 #[component]
-fn HeadPane(data: ConsoleData, tab: Tab) -> Element {
-    let mut ask = use_signal(String::new);
-    match &data.selected {
-        None => rsx! {
-            Tabs { tab }
+fn NoDetail(data: ConsoleData, selection: Selection) -> Element {
+    let context = selection.context.clone().unwrap_or_default();
+    let listed = data.contexts.iter().any(|c| c.id.starts_with(&context));
+    rsx! {
+        Tabs { tab: selection.tab }
+        if listed {
             p { class: "muted", "loading the context…" }
-        },
+        } else {
+            p { "this context is not here (gone, or a stale link)" }
+            button { onclick: move |_| select(|s| *s = Selection::default()), "back to the list" }
+        }
+    }
+}
+
+#[component]
+fn HeadPane(data: ConsoleData, selection: Selection) -> Element {
+    let mut ask = use_signal(String::new);
+    let tab = selection.tab;
+    match detail_for(&data, &selection) {
+        None => rsx! { NoDetail { data: data.clone(), selection: selection.clone() } },
         Some(detail) => {
             let context = detail.id.clone();
             rsx! {
@@ -346,12 +422,10 @@ fn HeadPane(data: ConsoleData, tab: Tab) -> Element {
 }
 
 #[component]
-fn TracePane(data: ConsoleData, tab: Tab) -> Element {
-    match &data.selected {
-        None => rsx! {
-            Tabs { tab }
-            p { class: "muted", "no trace" }
-        },
+fn TracePane(data: ConsoleData, selection: Selection) -> Element {
+    let tab = selection.tab;
+    match detail_for(&data, &selection) {
+        None => rsx! { NoDetail { data: data.clone(), selection: selection.clone() } },
         Some(detail) => rsx! {
             Tabs { tab }
             h3 { "trace" }
@@ -432,7 +506,7 @@ fn JobPane(data: ConsoleData, selection: Selection) -> Element {
             div { class: "muted", "{listed.cwd} · {listed.verdict} · {listed.phase}" }
         }
         if live {
-            KillButton { node: node.clone(), job: job.clone() }
+            KillButton { key: "{node}/{job}", node: node.clone(), job: job.clone() }
         }
         match output {
             None => rsx! { p { class: "muted", "reading its output…" } },
@@ -451,40 +525,43 @@ fn JobPane(data: ConsoleData, selection: Selection) -> Element {
     }
 }
 
-/// Kill a job: the first tap says what the second will do.
+/// Kill a job: the first tap says what the second will do; what the kill
+/// led to is said beside it.
 // implements: 3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5@3cebbf2e8034b89c65bb3dda9ae2be880cf6c5ba2cd928b559e7fb6dd03579f5
 #[component]
 fn KillButton(node: String, job: String) -> Element {
-    let mut armed = use_signal(|| false);
     let mut busy = use_signal(|| false);
+    let mut result = use_signal(|| None::<(bool, String)>);
+    let id = format!("kill:{node}/{job}");
+    let armed = is_armed(&id);
     let text = kill_text(&job, &node);
     rsx! {
         div { class: "row",
             button {
-                class: if armed() { "armed" } else { "bad" },
+                class: if armed { "armed" } else { "bad" },
                 disabled: busy(),
-                onclick: move |_| {
-                    if !armed() {
-                        armed.set(true);
-                        spawn(async move {
-                            crate::app::pause(CONFIRM_MS).await;
-                            armed.set(false);
-                        });
+                onclick: move |e: MouseEvent| {
+                    e.stop_propagation();
+                    if !is_armed(&id) {
+                        arm(id.clone());
                         return;
                     }
-                    armed.set(false);
+                    disarm();
                     busy.set(true);
                     let (node, job) = (node.clone(), job.clone());
                     spawn(async move {
-                        match crate::api::kill_job(node, job).await {
-                            Ok(done) => said(done),
-                            Err(e) => say(e.to_string()),
-                        }
+                        result.set(Some(match crate::api::kill_job(node, job).await {
+                            Ok(done) => (false, done),
+                            Err(e) => (true, e.to_string()),
+                        }));
                         busy.set(false);
                     });
                 },
-                if armed() { "{text}" } else { "kill" }
+                if armed { "{text}" } else { "kill" }
             }
+        }
+        if let Some((failed, said)) = result() {
+            p { class: if failed { "result failed" } else { "result" }, "{said}" }
         }
     }
 }
@@ -493,27 +570,20 @@ fn KillButton(node: String, job: String) -> Element {
 /// the last outcome. It stays open after a verdict; Esc, × or back close it.
 #[component]
 fn Tray(data: ConsoleData) -> Element {
-    let outcome = try_consume_context::<Signal<Outcome>>().and_then(|o| o.read().0.clone());
+    let outcome = try_consume_context::<Signal<Outcome>>()
+        .map(|o| o.read().clone())
+        .unwrap_or_default();
     rsx! {
         div { class: "tray-dim", onclick: move |_| step_back() }
         div {
             class: "tray",
             "data-tray": "true",
-            tabindex: "0",
-            onmounted: move |e: MountedEvent| async move {
-                let _ = e.set_focus(true).await;
-            },
-            onkeydown: move |e: KeyboardEvent| {
-                if e.key() == Key::Escape {
-                    step_back();
-                }
-            },
             div { class: "row",
                 h3 { style: "flex:1;", "approvals ({data.approvals.len()})" }
                 button { onclick: move |_| step_back(), "×" }
             }
-            if let Some(outcome) = outcome {
-                p { class: "outcome", "{outcome}" }
+            if let Some(text) = outcome.text {
+                p { class: if outcome.failed { "outcome failed" } else { "outcome" }, "{text}" }
             }
             if !data.approvals_unknown.is_empty() {
                 p { class: "unknown",
@@ -549,9 +619,8 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
     let mut editing = use_signal(|| None::<String>);
     // One verdict at a time: the buttons wait while one is on its way.
     let mut busy = use_signal(|| false);
-    // The always verdict waiting for its second tap.
-    let mut armed = use_signal(|| None::<&'static str>);
     let argv = crate::model::argv_text(&approval.argv);
+    let key = format!("{}/{}", approval.node, approval.job);
     let left = approval.left_s.div_ceil(60);
     let (node, job) = (approval.node.clone(), approval.job.clone());
     let send = move |verdict: &'static str, edited: Option<Vec<String>>| {
@@ -561,9 +630,10 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                 return;
             }
             busy.set(true);
+            said(None);
             match crate::api::decide(node, job, verdict.to_owned(), edited).await {
-                Ok(done) => said(done),
-                Err(e) => say(e.to_string()),
+                Ok(done) => said(Some((false, done))),
+                Err(e) => said(Some((true, format!("not decided: {e}")))),
             }
             busy.set(false);
         }
@@ -583,27 +653,23 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                     button {
                         key: "{verdict}",
                         disabled: busy(),
-                        class: if armed() == Some(verdict) { "armed" } else if verdict.starts_with("deny") { "bad" } else { "" },
+                        class: if is_armed(&format!("{verdict}:{key}")) { "armed" } else if verdict.starts_with("deny") { "bad" } else { "" },
                         title: verdict_hint(verdict, &argv, &approval.node),
                         onclick: {
                             let send = send.clone();
                             let confirm = second_tap(verdict, &argv, &approval.node);
-                            move |_| {
-                                if confirm.is_some() && armed() != Some(verdict) {
-                                    armed.set(Some(verdict));
-                                    spawn(async move {
-                                        crate::app::pause(CONFIRM_MS).await;
-                                        if armed() == Some(verdict) {
-                                            armed.set(None);
-                                        }
-                                    });
+                            let id = format!("{verdict}:{key}");
+                            move |e: MouseEvent| {
+                                e.stop_propagation();
+                                if confirm.is_some() && !is_armed(&id) {
+                                    arm(id.clone());
                                     return;
                                 }
-                                armed.set(None);
+                                disarm();
                                 spawn(send(verdict, None));
                             }
                         },
-                        if armed() == Some(verdict) {
+                        if is_armed(&format!("{verdict}:{key}")) {
                             {second_tap(verdict, &argv, &approval.node).unwrap_or_default()}
                         } else {
                             "{label}"
@@ -613,10 +679,7 @@ fn ApprovalCard(approval: crate::model::ApprovalView) -> Element {
                 button {
                     onclick: {
                         let argv = argv.clone();
-                        move |_| {
-                            armed.set(None);
-                            editing.set(Some(argv.clone()));
-                        }
+                        move |_| editing.set(Some(argv.clone()))
                     },
                     "edit, then allow"
                 }
@@ -664,10 +727,17 @@ fn say(text: String) {
     }
 }
 
-/// Say what an action led to, in the tray (when the page provides it).
-fn said(text: String) {
+/// Say what a verdict led to (`(failed, text)`), in the tray, or clear it
+/// (when the page provides it).
+fn said(what: Option<(bool, String)>) {
     if let Some(mut outcome) = try_consume_context::<Signal<Outcome>>() {
-        outcome.set(Outcome(Some(text)));
+        outcome.set(match what {
+            Some((failed, text)) => Outcome {
+                text: Some(text),
+                failed,
+            },
+            None => Outcome::default(),
+        });
     }
 }
 

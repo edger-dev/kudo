@@ -226,8 +226,16 @@ pub(crate) async fn job_output(
     Ok(crate::views::job_output(&node, &job, &reply))
 }
 
-/// Kill a job, as the console; what it led to.
+/// Kill a job, as the console; what it led to. Only a job the node lists as
+/// still waiting or running: an id from a stale page kills nothing.
 pub(crate) async fn kill_job(node: String, job: String) -> Result<String, String> {
+    let listed = node_jobs(node.clone()).await;
+    if let Some(e) = listed.error {
+        return Err(e);
+    }
+    if !listed.jobs.iter().any(|j| j.id == job && j.live) {
+        return Err(format!("job {job} on {node} is not running"));
+    }
     let hub = hub().await?;
     let reply = kudo_shim::jobs::kill(
         &hub,

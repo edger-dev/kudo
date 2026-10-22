@@ -148,3 +148,70 @@ fn depth_tells_a_push_from_a_replace() {
     });
     assert!(c.depth() > b.depth());
 }
+
+/// The in-app back walks the browser's history only when the entry behind is
+/// the level stepped out to; otherwise it rewrites the current entry — it
+/// never walks off the console, and never undoes a sibling change.
+#[test]
+fn back_goes_through_the_browser_only_to_the_level_behind() {
+    use kudo_console::history::{History, Write};
+    // A deep link to a node: nothing of the page's behind it.
+    let mut node = Selection::default();
+    node.select_node("pc".into());
+    let mut h = History::new(node.clone());
+    assert!(!h.back_is_browser_back(&node));
+
+    // Drill into a job: pushed; back is the browser's.
+    let mut job = node.clone();
+    job.select_job("j".into());
+    assert_eq!(h.record(&job), Some(Write::Push(1)));
+    assert!(h.back_is_browser_back(&job));
+
+    // Switch to a context (not deeper): the entry is rewritten, and back from
+    // it is not the node behind — no browser back, which would land on the
+    // node, then walk off the page.
+    let mut c = Selection::default();
+    c.select_context(ctx());
+    assert_eq!(h.record(&c), Some(Write::Replace(1)));
+    assert!(!h.back_is_browser_back(&c));
+
+    // Context A, a pane taken over (pushed), then context B with the pane:
+    // closing the pane must not land on A.
+    let mut a = Selection::default();
+    a.select_context("a".repeat(64));
+    let mut h = History::new(a.clone());
+    let mut a_pane = a.clone();
+    a_pane.pane = Some(PaneRef {
+        node: "yolo".into(),
+        job: "j".into(),
+    });
+    assert_eq!(h.record(&a_pane), Some(Write::Push(1)));
+    let mut b_pane = a_pane.clone();
+    b_pane.select_context("b".repeat(64));
+    assert_eq!(h.record(&b_pane), Some(Write::Replace(1)));
+    assert!(!h.back_is_browser_back(&b_pane));
+
+    // The same selection again writes nothing.
+    assert_eq!(h.record(&b_pane), None);
+}
+
+/// The browser's own back and forward move within the entries the page
+/// knows; an entry it does not know starts the mirror over.
+#[test]
+fn the_browser_moves_within_known_entries() {
+    use kudo_console::history::History;
+    let mut c = Selection::default();
+    c.select_context(ctx());
+    let mut h = History::new(Selection::default());
+    h.record(&c);
+    assert!(!h.arrived(Some(0), Selection::default()));
+    assert_eq!(h.at(), Some(&Selection::default()));
+    assert!(!h.arrived(Some(1), c.clone()), "forward again");
+    assert_eq!(h.at(), Some(&c));
+    assert!(
+        h.arrived(Some(7), c.clone()),
+        "an entry from before a reload"
+    );
+    assert!(h.arrived(None, Selection::default()));
+    assert!(!h.back_is_browser_back(&c));
+}

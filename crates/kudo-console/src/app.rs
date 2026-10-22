@@ -7,6 +7,7 @@
 
 use dioxus::prelude::*;
 
+use crate::history::{History, Write};
 use crate::layout::{Layout, THREE_PANES};
 use crate::model::JobOutput;
 use crate::selection::{Notice, Outcome, Selection};
@@ -31,27 +32,22 @@ pub(crate) async fn pause(millis: u32) {
     let _ = millis;
 }
 
-/// The history entries this page pushed and has not walked back over: back
-/// goes through the browser while there are any.
-#[derive(Clone, Debug, Default)]
-struct Pushed {
-    count: usize,
-    /// The fragment last written or read, so a change that came from the URL
-    /// is not written back.
-    fragment: String,
-    depth: usize,
-}
-
-/// Step back through the browser's history, when the page pushed the entry
-/// being left; whether it did.
+/// Step back through the browser's history, when the entry behind is the
+/// level being stepped out to; whether it did.
 pub(crate) fn history_back() -> bool {
-    let Some(pushed) = try_consume_context::<Signal<Pushed>>() else {
+    let (Some(history), Some(selection)) = (
+        try_consume_context::<Signal<History>>(),
+        try_consume_context::<Signal<Selection>>(),
+    ) else {
         return false;
     };
-    if pushed.peek().count == 0 {
+    browser_back(history, selection)
+}
+
+fn browser_back(history: Signal<History>, selection: Signal<Selection>) -> bool {
+    if !history.peek().back_is_browser_back(&selection.peek()) {
         return false;
     }
-    // The popstate that follows walks the count back.
     document::eval("history.back();");
     true
 }
@@ -78,32 +74,28 @@ pub fn App() -> Element {
     use_context_provider(|| Signal::new(Notice::default()));
     use_context_provider(|| Signal::new(Outcome::default()));
     let theme = use_context_provider(|| Signal::new(Theme::default()));
-    let mut pushed = use_context_provider(|| Signal::new(Pushed::default()));
+    let mut history = use_context_provider(|| Signal::new(History::default()));
 
     // The URL: read on load and on the browser's back and forward; written as
-    // the selection changes — deeper pushes an entry, the same depth replaces
-    // it (the page only).
+    // the selection changes — deeper pushes an entry, anything else rewrites
+    // the current one. Each entry carries its index, so the page knows where
+    // in its entries the browser is (the page only).
     use_future(move || async move {
         if cfg!(not(target_arch = "wasm32")) {
             return;
         }
         let mut follow = document::eval(
             r#"
-            dioxus.send(location.hash);
-            window.addEventListener("popstate", () => dioxus.send(location.hash));
+            const here = () => [location.hash, history.state && Number.isInteger(history.state.kudo) ? history.state.kudo : null];
+            dioxus.send(here());
+            window.addEventListener("popstate", () => dioxus.send(here()));
             await new Promise(() => {});
             "#,
         );
-        while let Ok(hash) = follow.recv::<String>().await {
+        while let Ok((hash, index)) = follow.recv::<(String, Option<usize>)>().await {
             let next = Selection::from_fragment(&hash);
-            {
-                let mut p = pushed.write();
-                // Walking back out of an entry this page pushed.
-                if next.depth() < p.depth {
-                    p.count = p.count.saturating_sub(1);
-                }
-                p.fragment = next.fragment();
-                p.depth = next.depth();
+            if history.write().arrived(index, next.clone()) {
+                document::eval("history.replaceState({kudo: 0}, '');");
             }
             if *selection.peek() != next {
                 selection.set(next);
@@ -112,30 +104,38 @@ pub fn App() -> Element {
     });
     use_effect(move || {
         let now = selection.read().clone();
-        let fragment = now.fragment();
-        let (push, same) = {
-            let p = pushed.peek();
-            (now.depth() > p.depth, p.fragment == fragment)
-        };
-        if same {
+        let Some(write) = history.write().record(&now) else {
             return;
-        }
-        {
-            let mut p = pushed.write();
-            if push {
-                p.count += 1;
-            }
-            p.fragment = fragment.clone();
-            p.depth = now.depth();
-        }
+        };
+        let fragment = now.fragment();
         // An empty fragment still has to clear the old one from the address.
         let url = if fragment.is_empty() {
             "location.pathname + location.search".to_owned()
         } else {
             format!("{fragment:?}")
         };
-        let call = if push { "pushState" } else { "replaceState" };
-        document::eval(&format!("history.{call}(null, '', {url});"));
+        let (call, index) = match write {
+            Write::Push(i) => ("pushState", i),
+            Write::Replace(i) => ("replaceState", i),
+        };
+        document::eval(&format!("history.{call}({{kudo: {index}}}, '', {url});"));
+    });
+    // Esc closes the tray wherever focus is (the page only).
+    use_future(move || async move {
+        if cfg!(not(target_arch = "wasm32")) {
+            return;
+        }
+        let mut keys = document::eval(
+            r#"
+            document.addEventListener("keydown", (e) => { if (e.key === "Escape") dioxus.send(true); });
+            await new Promise(() => {});
+            "#,
+        );
+        while keys.recv::<bool>().await.is_ok() {
+            if selection.peek().tray && !browser_back(history, selection) {
+                selection.write().back();
+            }
+        }
     });
 
     // The theme: read from this browser once, kept there as it changes. A
@@ -244,9 +244,30 @@ pub fn App() -> Element {
                 continue;
             }
             let from = held.as_ref().map_or(0, |o| o.next_offset);
-            if let Ok(next) = crate::api::job_output(node, job, from).await {
+            let read = crate::api::job_output(node.clone(), job.clone(), from).await;
+            // A job that cannot be read at all (gone, a stale link) says so,
+            // rather than "reading" forever; a live one that fails a read
+            // keeps what it had and tries again.
+            if let (Err(e), None) = (&read, &held) {
+                output.set(Some(JobOutput {
+                    node,
+                    job,
+                    state: format!("could not be read: {e}"),
+                    tone: "bad".to_owned(),
+                    ..JobOutput::default()
+                }));
+                pause(1000).await;
+                continue;
+            }
+            if let Ok(next) = read {
                 let merged = match held {
                     Some(mut o) => {
+                        if next.skipped > 0 {
+                            o.text.push_str(&format!(
+                                "\n[… {} bytes the node dropped …]\n",
+                                next.skipped
+                            ));
+                        }
                         o.text.push_str(&next.text);
                         keep_tail(&mut o.text);
                         o.next_offset = next.next_offset;

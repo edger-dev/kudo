@@ -2,9 +2,30 @@
 
 `crates/kudo-console` is kudo's human surface: a Dioxus fullstack app. Its
 server links the context engine (with this machine's mirror) and the hub
-client; the page calls it through server functions. Three panes — *where*
-(nodes, contexts, the workers under them), the selected context's **head**,
-its **trace** — and a box to enqueue an ask under the selected context.
+client; the page calls it through server functions.
+
+On a wide screen the panes sit side by side: *where* (contexts with their
+workers, and nodes), then either the selected context's **head** (with a box
+to enqueue an ask) and **trace**, or the selected node's **jobs** and one
+**job**'s output — and a taken-over worker's **terminal** beside either. A
+top bar says where you are, steps back, and carries the approvals badge and
+the theme toggle.
+
+## On a phone
+
+Below 720 px wide the console shows **one pane at a time**, the deepest thing
+selected: the list; a context (with *head* / *trace* tabs); a node's jobs; a
+job's output; a taken-over pane. **‹ back** in the top bar — or the phone's
+own back — steps out one level. The approvals badge stays in the top bar on
+every level.
+
+The selection lives in the URL fragment (`#c=<context>&t=trace`,
+`#n=<node>&j=<job>`, `#p=<node>/<job>`, `&tray=1`), so a reload or a link
+sent to your other device lands on the same place; a link that no longer
+parses lands on the list. Nothing typed ever goes into the URL.
+
+The theme follows the system unless you pick one: **◐** cycles system → dark →
+light → system, remembered in that browser only.
 
 ## Running it
 
@@ -112,15 +133,41 @@ login, so anyone the ingress lets in can use it.
 ## Answering the gate
 
 Every node is governed, so a command no rule allows waits for **your**
-verdict. Such jobs show at the top of the *where* pane, under **waiting for
-you**, oldest first: the argv, the node and directory, the context whose
-worker asked, the owner, and the minutes left before it is denied. The buttons
-are the four verdicts — **allow once**, **allow always** (writes an exact-argv
-rule on that node), **deny once**, **deny always** — and **edit, then allow**,
-which runs your corrected argv instead (shell-quoted: quote an argument with spaces; an empty or unparsable edit is refused). The reply says what
-the job then did; a verdict that arrives too late runs nothing, and says so.
+verdict. The **approvals badge** in the top bar says how many jobs wait
+(amber); **unknown on N nodes** (red) when nothing is queued but a node's
+queue could not be read; **none** only when every node answered. Tap it for
+the **tray**: every waiting job, oldest first in an order that does not
+shift under your finger — the argv, the node and directory, the context whose
+worker asked, the owner, and the minutes left before it is denied — and the
+nodes not answering, named in red.
 
-Only the console's verdict counts: a node refuses one from anyone else. A node whose queue could not be read is named above the queue (*queue unknown on …*), so silence there is not "nothing waiting".
+The buttons are the four verdicts — **allow once**, **allow always** (writes
+an exact-argv rule on that node), **deny once**, **deny always** — and **edit,
+then allow**, which runs your corrected argv instead (shell-quoted: quote an
+argument with spaces; an empty or unparsable edit is refused). The **always**
+verdicts take a **second tap**: the first turns the button into the exact
+rule it will write and the one node it binds; a tap elsewhere, or ten
+seconds, cancels. The tray shows what the verdict led to — in red if it
+failed — and stays open, even once the queue is empty; ×, Esc or back closes
+it. A verdict that arrives too late runs nothing, and says so.
+
+Only the console's verdict counts: a node refuses one from anyone else.
+
+## Nodes and their jobs
+
+Under **nodes** in the *where* pane, each node the hub reaches (▣; a peer
+hub's node, `hub::node`, is ⇄). Selecting one lists its governed jobs —
+waiting, then running, then ended, newest first — each with its state, argv,
+directory, the verdict it ran under, and how long it has waited or run (an
+ended one, when it started). Selecting a job shows its output, newest at the
+bottom and followed while it runs (the last 64 KB; output the node dropped is
+marked). A waiting or running job can be **killed**, after a second tap; the
+console refuses a job the node no longer lists as live. The list is re-read
+every three seconds while shown, the output every second.
+
+Reading a node's jobs needs a node with the moco revision whose listing
+carries each job's argv (`1842948` or later); an older node's jobs show as
+unreadable — redeploy it.
 
 ## Live updates
 
