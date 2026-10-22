@@ -18,6 +18,8 @@ kudo-worker = { path = "../kudo-worker" }
 hub-protocol = { workspace = true }
 node = { workspace = true }
 moco-job = { workspace = true }
+facet = { workspace = true }
+facet-json = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]

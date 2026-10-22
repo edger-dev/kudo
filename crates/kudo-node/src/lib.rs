@@ -19,6 +19,8 @@
 //! implements: kudo:7ea24d8f08c2e3e9c4502030a86fd9d5f9e36c1067d7e2d034d2796177e719ec
 //! implements: moco:3aa206d0a5ecd433ea159c78d3176934e98adef12bcca380b42ccf2b1ced591b
 
+pub mod governance;
 pub mod job;
+pub mod worker;
 
 pub use job::JobConnector;
