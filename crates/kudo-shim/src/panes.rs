@@ -35,12 +35,29 @@ pub fn may_start(node: &str, named: Option<&[String]>) -> bool {
 /// node (if it declares one), and the lease the launcher picked. The node
 /// composes the command, its environment and its terminal from these
 /// (kudo_node::worker); no command line, environment or secret travels.
-// implements: 5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41
+// implements: 5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41@f34266201d70f3802a59ab928778c8fbc78c14e8aa300c9c3c53301828ba8c1c
 pub fn worker_ask(context: &str, repo: Option<&str>, lease: &str) -> WorkerStart {
     WorkerStart {
         context: context.to_owned(),
         repo: repo.unwrap_or_default().to_owned(),
         lease: lease.to_owned(),
+    }
+}
+
+/// What a failed worker start says: a node that does not offer the worker
+/// connector at all is too old and needs redeploying; any other refusal — a
+/// value the node refused, a spawn that failed — is reported as it came.
+pub fn start_failure(node: &str, error: &crate::ShimError) -> String {
+    match error {
+        crate::ShimError::Route {
+            side: crate::route::RouteFailure::Node,
+            detail,
+            ..
+        } if detail == "UnknownConnector" => format!(
+            "node {node} does not offer worker starts; it is too old for a governed \
+             worker pane — redeploy it"
+        ),
+        other => other.to_string(),
     }
 }
 
@@ -90,17 +107,7 @@ pub async fn start(
         worker_ask(&ctx.0, repo.as_deref(), &lease),
     )
     .await
-    .map_err(|e| {
-        let e = e.to_string();
-        if e.contains("kudo-worker") || e.to_lowercase().contains("connector") {
-            format!(
-                "node {node} does not offer worker starts ({e}); it is too old for a \
-                     governed worker pane — redeploy it"
-            )
-        } else {
-            e
-        }
-    })?;
+    .map_err(|e| start_failure(node, &e))?;
     let stop = |why: String| {
         let (hub, target, id) = (hub, target.clone(), reply.id.clone());
         async move {

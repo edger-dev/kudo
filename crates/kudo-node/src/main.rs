@@ -32,12 +32,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let link = std::env::var("NODE_LINK").unwrap_or_else(|_| LinkLabel::STABLE.to_string());
     let connector_id = std::env::var("KUDO_JOB_CONNECTOR").unwrap_or_else(|_| "jobs-0".to_string());
 
-    let hub_addr = std::env::args()
+    let hub = std::env::args()
         .nth(1)
-        .or_else(|| std::env::var("HUB_ADDR").ok());
-    let hub = hub_addr.clone().map(HubEndpoint);
+        .or_else(|| std::env::var("HUB_ADDR").ok())
+        .map(HubEndpoint);
     // Every node runs governed; a broken policy stops the start, naming why.
     let policy = kudo_node::governance::policy_from(|k| std::env::var(k).ok())?;
+    let pane_cwd = kudo_node::worker::pane_cwd(policy.allowed_root());
 
     let config = NodeConfig::new(
         NodeId(node.clone()),
@@ -57,7 +58,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     // Fail fast on an address that could never be dialed, rather than retrying
     // forever against a typo.
-    config.hub.dial_target()?;
+    // Workers dial the same hub, as a bare address (no scheme).
+    let hub_addr = config.hub.dial_target()?.to_string();
 
     // The registry is created here and lives as long as the daemon. Jobs
     // outlive any one client, which is the property the whole substrate exists
@@ -129,9 +131,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A failure here is reported and not fatal: a manifest problem must not
     // cost the node its supervisor, since the supervisor is what a person needs
     // in order to fix the manifest.
+    // Boot argvs pass the gate like any other: one no seed rule allows waits
+    // for a verdict, and says so here rather than reading as started.
     match registry.boot() {
         Ok(started) if !started.is_empty() => {
-            println!("boot: started {} node job(s)", started.len());
+            let waiting = started
+                .iter()
+                .filter(|id| {
+                    registry
+                        .tail(id, u64::MAX)
+                        .is_ok_and(|t| t.status == moco_job::JobStatus::PendingApproval)
+                })
+                .count();
+            println!(
+                "boot: started {} node job(s), {waiting} waiting for a verdict \
+                 (add their argvs to KUDO_NODE_RULES)",
+                started.len() - waiting
+            );
         }
         Ok(_) => {}
         Err(e) => eprintln!("boot: {e}"),
@@ -152,8 +168,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         registry.clone(),
         PaneSetup {
             program: shim,
+            cwd: pane_cwd,
             node,
-            hub: hub_addr,
+            hub: Some(hub_addr),
         },
     )));
     let connectors = Arc::new(connectors);

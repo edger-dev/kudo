@@ -9,7 +9,7 @@ use kudo_shim::panes;
 
 /// What crosses to the node is the typed ask alone: no command line, no
 /// environment, no secret — the node composes those.
-// implements: 5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41
+// implements: 5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41@f34266201d70f3802a59ab928778c8fbc78c14e8aa300c9c3c53301828ba8c1c
 #[test]
 fn a_worker_pane_is_asked_for_by_its_values_alone() {
     let ask = panes::worker_ask("ctx-full-id", Some("kudo"), "lease-1");
@@ -17,6 +17,24 @@ fn a_worker_pane_is_asked_for_by_its_values_alone() {
     assert_eq!(ask.repo, "kudo");
     assert_eq!(ask.lease, "lease-1");
     assert_eq!(panes::worker_ask("c", None, "l").repo, "");
+}
+
+/// Only a node without the worker connector is called too old; a refusal of
+/// the values (or a failed spawn) is reported as the node said it.
+#[test]
+fn only_a_missing_connector_reads_as_an_old_node() {
+    let route = |detail: &str| kudo_shim::ShimError::Route {
+        side: kudo_shim::route::RouteFailure::Node,
+        node: "yolo".into(),
+        connector: "kudo-worker".into(),
+        method: "start_worker".into(),
+        detail: detail.into(),
+    };
+    let old = panes::start_failure("yolo", &route("UnknownConnector"));
+    assert!(old.contains("too old"), "{old}");
+    let refused = panes::start_failure("yolo", &route("Rejected(\"repo is not a repo name\")"));
+    assert!(!refused.contains("too old"), "{refused}");
+    assert!(refused.contains("repo"), "{refused}");
 }
 
 /// A launcher's lease comes in its own variable: a shell inside a worker

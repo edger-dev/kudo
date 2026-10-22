@@ -10,7 +10,7 @@
 //! This is the one decision this composition root makes, and it makes it on
 //! purpose: the values a worker start needs are kudo's, not the engine's.
 //!
-//! implements: kudo:5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41
+//! implements: kudo:5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41@f34266201d70f3802a59ab928778c8fbc78c14e8aa300c9c3c53301828ba8c1c
 
 use std::sync::Arc;
 
@@ -23,11 +23,14 @@ pub use kudo_worker::pane::{
     START_WORKER, WORKER_CONNECTOR, WorkerStart, WorkerStarted, decode, encode,
 };
 
-/// What the node fills in itself: the program, its own name as the hub knows
-/// it, and its hub.
+/// What the node fills in itself: the program, the start directory, its own
+/// name as the hub knows it, and its hub (an address, no scheme).
 #[derive(Debug, Clone)]
 pub struct PaneSetup {
     pub program: String,
+    /// Where the pane starts when its context declares no repo here: inside
+    /// the node's allowed root, since a vouched start is still confined.
+    pub cwd: std::path::PathBuf,
     pub node: String,
     pub hub: Option<String>,
 }
@@ -93,7 +96,7 @@ pub fn compose(ask: &WorkerStart, setup: &PaneSetup) -> Result<JobRequest, Strin
     }
     // The node's own: no session's workspace owns a pane the console started,
     // so none can stop it.
-    Ok(JobRequest::new(argv, "/tmp")
+    Ok(JobRequest::new(argv, setup.cwd.clone())
         .with_env(env)
         .with_human_view(HumanView::Terminal)
         .in_scope(Scope::System))
@@ -133,5 +136,16 @@ impl Connector for WorkerConnector {
             .start_vouched(job)
             .map_err(|e| NodeError::Rejected(e.to_string()))?;
         encode(&WorkerStarted { id: id.0 }).map_err(NodeError::Rejected)
+    }
+}
+
+/// The directory a pane starts in: `/tmp` when the allowed root holds it,
+/// else the root itself.
+pub fn pane_cwd(allowed_root: &std::path::Path) -> std::path::PathBuf {
+    let tmp = std::path::Path::new("/tmp");
+    if tmp.starts_with(allowed_root) {
+        tmp.to_path_buf()
+    } else {
+        allowed_root.to_path_buf()
     }
 }

@@ -2,7 +2,7 @@
 //! A worker pane starts through a typed node operation: the node checks the
 //! values and composes the command itself; no caller writes a command line.
 //!
-//! implements: kudo:5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41
+//! implements: kudo:5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41@f34266201d70f3802a59ab928778c8fbc78c14e8aa300c9c3c53301828ba8c1c
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,6 +21,7 @@ const LEASE: &str = "2b92aaa1-70c9-4b24-b472-030f2ff09d68";
 fn setup(program: &str) -> PaneSetup {
     PaneSetup {
         program: program.into(),
+        cwd: "/tmp".into(),
         node: "yolo".into(),
         hub: Some("10.100.0.1:15400".into()),
     }
@@ -131,4 +132,13 @@ fn a_refused_start_starts_nothing() {
 fn an_unknown_method_is_refused() {
     let connector = WorkerConnector::new(governed(), setup("echo"));
     assert!(connector.call("start", b"{}").is_err());
+}
+
+/// A pane starts inside the allowed root: `/tmp` when the root holds it.
+#[test]
+fn a_pane_starts_inside_the_allowed_root() {
+    use kudo_node::worker::pane_cwd;
+    use std::path::Path;
+    assert_eq!(pane_cwd(Path::new("/")), Path::new("/tmp"));
+    assert_eq!(pane_cwd(Path::new("/home/yj")), Path::new("/home/yj"));
 }

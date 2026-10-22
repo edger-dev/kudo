@@ -2,7 +2,7 @@
 //! node for, and what comes back. The node composes everything else
 //! (kudo-node's `worker`); these are the only values that travel.
 //!
-//! implements: kudo:5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41
+//! implements: kudo:5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41@f34266201d70f3802a59ab928778c8fbc78c14e8aa300c9c3c53301828ba8c1c
 
 use facet::Facet;
 

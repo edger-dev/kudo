@@ -99,10 +99,15 @@ of the seed. A governed start that carries an environment is refused.
 Every attempt, denials included, is appended to `audit.styxl` in the state
 directory.
 
+Declared jobs pass the gate too — boot entries, `ensure`, named starts and
+restart-policy respawns. Put their argvs in `KUDO_NODE_RULES`, or each one
+waits for a verdict (the node's boot line counts those as *waiting*).
+
 Worker panes are the one start that does not pass the gate: the node offers a
 `kudo-worker` connector whose `start_worker` takes only a context id, a repo
 name and a lease, checks their shapes, and composes `kudo-shim worker …`, its
-environment and its terminal itself (audited as *vouched*).
+environment and its terminal itself (audited as *vouched*). The pane starts in
+`/tmp`, or in the allowed root when that does not hold `/tmp`.
 
 The standing rules and the audit live where the node's own jobs, running as
 the same user, can write: until governed jobs run as another user, the seed
@@ -123,6 +128,7 @@ kudo-node NodeId("alpha") link LinkLabel("stable") dialing hub at 127.0.0.1:7777
 ```
 
 Then, from a workspace, `nodes` should list the machine and `job_list` should
-show the boot job owned by `[system]`. Restart the daemon and run `job_list`
+show the boot job owned by `[system]` — running if its argv is in the seed
+rules, pending a verdict if not. Restart the daemon and run `job_list`
 again: the same jobs, the same ids, the same ports. If they vanished,
 `MOCO_DIR` is not set.
