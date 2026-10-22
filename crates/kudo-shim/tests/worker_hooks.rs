@@ -332,3 +332,37 @@ checked
     assert!(reply.contains("claimed"), "{reply}");
     assert!(!reply.contains("backed by a page"), "{reply}");
 }
+
+/// A check's verdict as the `submit` tool takes it: pass / fail / snooze
+/// (with when to look again) and a note; anything else is refused.
+// implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
+#[test]
+fn a_verdict_is_read_from_the_submit_arguments() {
+    use kudo_context::{CheckClose, CheckVerdict};
+    let close = |v: Option<&str>, until: Option<&str>, note: Option<&str>| {
+        worker_tools::check_close(v, until, note, T0)
+    };
+    assert_eq!(close(None, None, None), Ok(None));
+    assert_eq!(
+        close(Some("pass"), None, Some("ok")),
+        Ok(Some(CheckClose {
+            verdict: CheckVerdict::Pass,
+            note: "ok".into()
+        }))
+    );
+    assert_eq!(
+        close(Some("snooze"), Some("+2h"), Some("again tonight")),
+        Ok(Some(CheckClose {
+            verdict: CheckVerdict::Snooze { until: T0 + 7200 },
+            note: "again tonight".into()
+        }))
+    );
+    assert!(close(Some("snooze"), None, Some("when?")).is_err());
+    assert!(close(Some("pass"), Some("+2h"), Some("ok")).is_err());
+    assert!(close(Some("maybe"), None, Some("hm")).is_err());
+    assert!(
+        close(Some("fail"), None, None).is_err(),
+        "a verdict needs a note"
+    );
+    assert!(close(None, Some("+2h"), None).is_err());
+}

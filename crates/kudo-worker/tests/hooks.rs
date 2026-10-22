@@ -629,3 +629,55 @@ fn an_item_pulled_by_the_tool_resets_the_idle_count() {
         "not ended: it just worked"
     );
 }
+
+/// A check's claim says it is a check: what passes it, the window it is
+/// judged on, and that it closes with a verdict and a note.
+// implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
+#[test]
+fn a_checks_claim_names_its_condition_window_and_verdicts() {
+    let g = Fixture::new();
+    g.store
+        .enqueue_check(
+            &g.ctx,
+            &kudo_context::Check {
+                what: "the backup ran".into(),
+                pass: "a snapshot newer than 26 hours".into(),
+                window: "the last 26 hours".into(),
+            },
+            None,
+            T0,
+        )
+        .unwrap();
+    let w = g.worker(10);
+    let claim = match w.pull(T0).unwrap() {
+        kudo_worker::Pull::Claimed(c) => c,
+        other => panic!("{other:?}"),
+    };
+    let text = w.claim_text(&claim).unwrap();
+    for part in [
+        "This is a check",
+        "the backup ran",
+        "a snapshot newer than 26 hours",
+        "the last 26 hours",
+        "verdict",
+        "pass",
+        "fail",
+        "snooze",
+    ] {
+        assert!(text.contains(part), "{part:?} missing from {text}");
+    }
+}
+
+/// A due item is not handed over before its time: the Stop hook lets the
+/// session wait (or end) instead.
+// implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b
+#[test]
+fn a_due_item_is_not_handed_over_early() {
+    let g = Fixture::new();
+    g.store
+        .enqueue_due(&g.ctx, "later", Some(T0 + 3600), T0)
+        .unwrap();
+    let w = g.worker(10);
+    w.session_start(T0).unwrap();
+    assert!(!matches!(w.stop(T0 + 1).unwrap(), Stop::Block { .. }));
+}

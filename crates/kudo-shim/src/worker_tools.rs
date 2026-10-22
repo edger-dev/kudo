@@ -239,3 +239,12 @@ pub fn trace_job_end(
     publish(setup, &event);
     Ok(true)
 }
+
+pub fn check_close(
+    _verdict: Option<&str>,
+    _until: Option<&str>,
+    _note: Option<&str>,
+    _now: Now,
+) -> Result<Option<kudo_context::CheckClose>, String> {
+    Err("not yet".into())
+}
