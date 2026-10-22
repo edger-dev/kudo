@@ -282,7 +282,7 @@ fn a_worker_takes_the_lease_it_is_given() {
 /// show as not yet due; a context's wake node is declared and shown.
 // implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b@80a3c962223cc4b37ffceccfdfb83cb9d143fd3e956d4cbe19c7ec3e93774ffd
 // implements: c11043084f97c61ff3f41e4d07fb2361aa871213021e9c15d0e4cee37c99bde1
-// implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
+// implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0@550531c07103cb27e03f2d4362bcb4ed367debf0a67293484865999f716c77a4
 #[test]
 fn due_items_checks_and_the_wake_node_by_hand() {
     let dir = std::env::temp_dir().join(format!("kudo-shim-cli-due-{}", std::process::id()));

@@ -1,7 +1,7 @@
 //! The waker: a context with an item that came due and no worker running gets
 //! one, on its wake node; nothing else wakes.
 //!
-//! implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+//! implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a@f76f4215e264261e284792a84ffb31b5fbc7f3498b04b00dccf45aa79cac60a2
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 

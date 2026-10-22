@@ -3,7 +3,7 @@
 //! the console uses (`panes::start`). It wakes for due items only: an
 //! ordinary item waits for a person.
 //!
-//! implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+//! implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a@f76f4215e264261e284792a84ffb31b5fbc7f3498b04b00dccf45aa79cac60a2
 
 use std::sync::Arc;
 use std::time::Duration;

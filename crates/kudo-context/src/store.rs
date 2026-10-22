@@ -827,7 +827,7 @@ impl ContextStore {
 
     /// How many items with a due time are ready now: what the waker wakes
     /// for (an item with no due time waits for a person).
-    // implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+    // implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a@f76f4215e264261e284792a84ffb31b5fbc7f3498b04b00dccf45aa79cac60a2
     pub fn due_ready_count(&self, ctx: &ContextId, now: Now) -> Result<usize, Error> {
         let view = self.view()?;
         view.require_context(ctx)?;
@@ -860,7 +860,7 @@ impl ContextStore {
 
     /// Declare the node this context's woken workers start on; the latest
     /// declaration wins.
-    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
+    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0@550531c07103cb27e03f2d4362bcb4ed367debf0a67293484865999f716c77a4
     pub fn declare_wake_node(&self, ctx: &ContextId, node: &str, now: Now) -> Result<(), Error> {
         let node = node.trim();
         if node.is_empty() || node.contains(char::is_whitespace) {
@@ -882,7 +882,7 @@ impl ContextStore {
 
     /// Where this context's woken workers start: the declared wake node,
     /// else its first repo's node (by name), else `None` (the waker's own).
-    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0
+    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0@550531c07103cb27e03f2d4362bcb4ed367debf0a67293484865999f716c77a4
     pub fn wake_node(&self, ctx: &ContextId) -> Result<Option<String>, Error> {
         let view = self.view()?;
         view.require_context(ctx)?;

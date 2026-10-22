@@ -171,7 +171,7 @@ fn unix_now() -> i64 {
 
 /// `kudo-shim waker`: once a minute, wake a worker for each context whose
 /// check came due and that runs none. Runs until stopped.
-// implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a
+// implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a@f76f4215e264261e284792a84ffb31b5fbc7f3498b04b00dccf45aa79cac60a2
 async fn run_waker() -> i32 {
     let Some(dir) = kudo_shim::cli::default_store_dir() else {
         eprintln!("cannot find the context store: set KUDO_CONTEXT_STORE");
