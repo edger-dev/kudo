@@ -514,8 +514,12 @@ fn JobPane(data: ConsoleData, selection: Selection) -> Element {
                 if out.skipped > 0 {
                     p { class: "muted", "{out.skipped} bytes of earlier output were dropped by the node" }
                 }
-                div { class: "row", "data-tone": "{out.tone}",
-                    span { class: "state", "{out.state}" }
+                // The listing already says the state; the output's own says
+                // it when the job is not listed (gone, unreadable).
+                if listed.is_none() || out.tone == "bad" && !out.live && out.text.is_empty() {
+                    div { class: "row", "data-tone": "{out.tone}",
+                        span { class: "state", "{out.state}" }
+                    }
                 }
                 div { class: "follow", "data-follow": "true",
                     pre { "{out.text}" }
