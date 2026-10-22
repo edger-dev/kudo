@@ -13,3 +13,5 @@ workspace = true
 [dependencies]
 kudo-context = { path = "../kudo-context" }
 serde_json = { workspace = true }
+facet = { workspace = true }
+facet-json = { workspace = true }

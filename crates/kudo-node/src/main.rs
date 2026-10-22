@@ -5,19 +5,22 @@
 //! other. It reverse-dials the hub and reconnects forever, exactly as any node
 //! does; the only thing that makes it *this* node is the connector it registers.
 //!
-//! Reads `NODE_ID`, `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]), and
-//! `KUDO_JOB_CONNECTOR` (default `jobs-0`).
+//! Reads `NODE_ID`, `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]),
+//! `KUDO_JOB_CONNECTOR` (default `jobs-0`), and the governance settings
+//! (`KUDO_NODE_RULES`, `KUDO_NODE_ALLOWED_ROOT`, `KUDO_APPROVAL_TIMEOUT`; see
+//! `kudo_node::governance`).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use hub_protocol::{Connector as ConnectorDescriptor, ConnectorKind, LinkLabel, NodeId};
-use moco_job::JobRegistry;
+use moco_job::{FileAuditLog, JobRegistry};
 use node::reconnect::{Backoff, DialOutcome};
 use node::{Connectors, HubEndpoint, NodeConfig};
 
 use kudo_node::JobConnector;
+use kudo_node::worker::{PaneSetup, WORKER_CONNECTOR, WorkerConnector};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,19 +32,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let link = std::env::var("NODE_LINK").unwrap_or_else(|_| LinkLabel::STABLE.to_string());
     let connector_id = std::env::var("KUDO_JOB_CONNECTOR").unwrap_or_else(|_| "jobs-0".to_string());
 
-    let hub = std::env::args()
+    let hub_addr = std::env::args()
         .nth(1)
-        .or_else(|| std::env::var("HUB_ADDR").ok())
-        .map(HubEndpoint);
+        .or_else(|| std::env::var("HUB_ADDR").ok());
+    let hub = hub_addr.clone().map(HubEndpoint);
+    // Every node runs governed; a broken policy stops the start, naming why.
+    let policy = kudo_node::governance::policy_from(|k| std::env::var(k).ok())?;
 
     let config = NodeConfig::new(
-        NodeId(node),
+        NodeId(node.clone()),
         LinkLabel(link),
         hub,
-        vec![ConnectorDescriptor {
-            id: connector_id.clone(),
-            kind: ConnectorKind::ProcessManager,
-        }],
+        vec![
+            ConnectorDescriptor {
+                id: connector_id.clone(),
+                kind: ConnectorKind::ProcessManager,
+            },
+            ConnectorDescriptor {
+                id: WORKER_CONNECTOR.to_string(),
+                kind: ConnectorKind::ProcessManager,
+            },
+        ],
         env!("CARGO_PKG_VERSION").to_string(),
     )?;
     // Fail fast on an address that could never be dialed, rather than retrying
@@ -94,7 +105,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| PathBuf::from("/var/lib/kudo-node"));
     std::fs::create_dir_all(&state)?;
 
-    let registry = JobRegistry::ungoverned()?.with_dir(&state)?;
+    // Governed, with every attempt written to the audit file — set before the
+    // directory is opened, so the requests a restart denies are written too.
+    let registry = JobRegistry::with_policy(policy)?
+        .with_audit(Arc::new(FileAuditLog::new(state.join("audit.styxl"))))
+        .with_dir(&state)?;
     let registry = match &holder {
         Some(path) => registry.with_pty_holder(path),
         None => {
@@ -126,6 +141,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     connectors.register(Box::new(JobConnector::new(
         connector_id.clone(),
         registry.clone(),
+    )));
+    // Worker panes: composed by this node, beside which kudo-shim is installed.
+    let shim = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("kudo-shim")))
+        .filter(|path| path.exists())
+        .map_or_else(|| "kudo-shim".to_string(), |p| p.display().to_string());
+    connectors.register(Box::new(WorkerConnector::new(
+        registry.clone(),
+        PaneSetup {
+            program: shim,
+            node,
+            hub: hub_addr,
+        },
     )));
     let connectors = Arc::new(connectors);
 

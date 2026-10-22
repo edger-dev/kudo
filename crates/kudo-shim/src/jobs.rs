@@ -103,6 +103,25 @@ pub async fn start(
     moco_job::wire::decode::<StartReply>(&bytes).map_err(decode_failed)
 }
 
+/// Ask a node to start a worker pane: the node composes the command itself
+/// (kudo_node::worker), so only the typed values cross.
+pub async fn start_worker(
+    hub: &HubClient,
+    target: Target,
+    ask: kudo_worker::pane::WorkerStart,
+) -> Result<kudo_worker::pane::WorkerStarted, ShimError> {
+    let payload = kudo_worker::pane::encode(&ask).map_err(encode_failed)?;
+    let bytes = route(
+        hub,
+        target,
+        kudo_worker::pane::WORKER_CONNECTOR,
+        kudo_worker::pane::START_WORKER,
+        payload,
+    )
+    .await?;
+    kudo_worker::pane::decode(&bytes).map_err(decode_failed)
+}
+
 /// Read a job's output from an offset, with its live status.
 pub async fn tail(
     hub: &HubClient,

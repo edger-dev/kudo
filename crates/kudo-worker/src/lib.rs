@@ -17,6 +17,7 @@
 pub mod env;
 pub mod launch;
 pub mod lease;
+pub mod pane;
 pub mod worker;
 
 pub use env::{DEFAULT_CLAIM_TTL, DEFAULT_MAX_TURNS, KICKOFF, WorkerSetup};

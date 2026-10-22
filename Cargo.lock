@@ -4176,8 +4176,6 @@ dependencies = [
 name = "kudo-node"
 version = "0.1.0"
 dependencies = [
- "facet 0.50.0-rc.5",
- "facet-json 0.50.0-rc.5",
  "hub",
  "hub-protocol",
  "kudo-context",
@@ -4212,6 +4210,8 @@ dependencies = [
 name = "kudo-worker"
 version = "0.1.0"
 dependencies = [
+ "facet 0.50.0-rc.5",
+ "facet-json 0.50.0-rc.5",
  "kudo-context",
  "serde_json",
 ]

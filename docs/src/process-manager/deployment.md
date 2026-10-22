@@ -72,6 +72,42 @@ hostname), `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]),
 `KUDO_JOB_CONNECTOR` (default `jobs-0`), `KUDO_PTY_HOLDER`, `MOCO_PORT_RANGE`
 (default `10000-19999`).
 
+### Every node is governed
+
+`kudo-node` always runs its registry **governed**: an ad-hoc start is matched
+on its exact argv against the node's rules before anything spawns. A matching
+allow runs, a matching deny never spawns, and anything else **waits for a
+verdict** from the console — allow once, allow always, deny once, deny always
+— and is denied if none arrives in time. The "always" verdicts write the
+node's standing rules (`standing-rules.styx` in the state directory), on top
+of the seed. A governed start that carries an environment is refused.
+
+- `KUDO_NODE_RULES` — the seed: a Styx file of exact argvs, e.g.
+
+  ```
+  allow ((df -h /) (uptime))
+  deny ((rm -rf /))
+  ```
+
+  Unset, there are no rules, so every command waits for a verdict. A file
+  that is named but missing or broken stops the node from starting.
+- `KUDO_NODE_ALLOWED_ROOT` — every job's cwd must resolve inside it (default
+  `/`).
+- `KUDO_APPROVAL_TIMEOUT` — seconds a request waits for a verdict (default
+  1800).
+
+Every attempt, denials included, is appended to `audit.styxl` in the state
+directory.
+
+Worker panes are the one start that does not pass the gate: the node offers a
+`kudo-worker` connector whose `start_worker` takes only a context id, a repo
+name and a lease, checks their shapes, and composes `kudo-shim worker …`, its
+environment and its terminal itself (audited as *vouched*).
+
+The standing rules and the audit live where the node's own jobs, running as
+the same user, can write: until governed jobs run as another user, the seed
+(read-only, from the Nix store) is the only rule source a job cannot touch.
+
 **`kudo-shim`** — `KUDO_HUB_ADDR`: required for a session that only offers
 the job tools; optional for a worker session (`KUDO_CONTEXT` set), which dials
 the hub when a job tool first needs it and serves its worker tools without

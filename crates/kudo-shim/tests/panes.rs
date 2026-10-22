@@ -7,55 +7,16 @@
 
 use kudo_shim::panes;
 
+/// What crosses to the node is the typed ask alone: no command line, no
+/// environment, no secret — the node composes those.
+// implements: 5720302421d8748ea19b23da1f119f7c0e7514753b340ae5e425fa7e48588b41
 #[test]
-fn a_worker_pane_request_binds_the_worker_and_asks_for_a_terminal() {
-    let req = panes::worker_request(
-        "ctx-full-id",
-        Some("kudo"),
-        "lease-1",
-        "yolo",
-        Some("10.0.0.1:15400"),
-    );
-    assert_eq!(
-        req.argv,
-        ["kudo-shim", "worker", "ctx-full-id", "--repo", "kudo"]
-    );
-    assert_eq!(req.human_view, moco_job::lens::HumanView::Terminal);
-    let env: Vec<(&str, &str)> = req
-        .env
-        .iter()
-        .map(|v| (v.name.as_str(), v.value.as_str()))
-        .collect();
-    assert!(env.contains(&("KUDO_GIVEN_LEASE", "lease-1")), "{env:?}");
-    assert!(
-        env.contains(&("KUDO_NODE", "yolo")),
-        "the worker names its node as the hub does: {env:?}"
-    );
-    assert!(
-        env.contains(&("KUDO_HUB_ADDR", "10.0.0.1:15400")),
-        "{env:?}"
-    );
-    assert!(
-        env.iter().all(|(k, _)| !k.starts_with("AWS_")),
-        "no secrets travel"
-    );
-}
-
-#[test]
-fn a_reply_that_ignored_the_fields_is_an_old_node() {
-    let req = panes::worker_request("c", None, "l", "n", None);
-    let honoured = moco_job::wire::StartReply {
-        id: "j".into(),
-        env_set: u32::try_from(req.env.len()).unwrap(),
-        human_view: moco_job::lens::HumanView::Terminal,
-    };
-    assert!(panes::applied(&req, &honoured));
-    let ignored = moco_job::wire::StartReply {
-        id: "j".into(),
-        env_set: 0,
-        human_view: moco_job::lens::HumanView::Logs,
-    };
-    assert!(!panes::applied(&req, &ignored));
+fn a_worker_pane_is_asked_for_by_its_values_alone() {
+    let ask = panes::worker_ask("ctx-full-id", Some("kudo"), "lease-1");
+    assert_eq!(ask.context, "ctx-full-id");
+    assert_eq!(ask.repo, "kudo");
+    assert_eq!(ask.lease, "lease-1");
+    assert_eq!(panes::worker_ask("c", None, "l").repo, "");
 }
 
 /// A launcher's lease comes in its own variable: a shell inside a worker

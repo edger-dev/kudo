@@ -58,8 +58,7 @@ silent after ten minutes shows as *quiet* (stuck at a prompt, or dead), and
 after a day it is no longer listed.
 
 Only panes the console started can be typed into, and only by the console
-(the node refuses input from anyone else). A node too old to start a worker
-pane is refused, and the job it started is stopped.
+(the node refuses input from anyone else).
 
 A worker with nothing ready **waits** for the next item instead of ending: it
 shows as `wait` in the *where* pane, and an item queued later is handed to it.
@@ -76,12 +75,16 @@ type.
 console starts workers: only those nodes are offered, and a start on any other
 is refused. Unset, every node is offered.
 
+Every node is governed, so the console does not start a worker with a
+command line: it asks the node's `kudo-worker` connector for a worker on the
+context, its repo there and a lease, and the node composes the rest (see
+[Deployment](../process-manager/deployment.md)). A node too old to offer it is
+refused — redeploy it.
+
 Whether a worker's CLI asks before running tools is the **node's** decision,
 never the console's: a node whose own environment has `KUDO_WORKER_BYPASS=1`
-runs its workers with `--permission-mode bypassPermissions`. It is an opt-in,
-not a lock: on an ungoverned node a start request's env reaches the job, so a
-hub caller could set it too — but could already run any command there. A
-governed node refuses such env. Set it only on a
+runs its workers with `--permission-mode bypassPermissions`. No caller can set
+it: the worker's environment is composed by the node. Set it only on a
 sandboxed node — yolo, whose outbound traffic goes through OneCLI:
 
 ```nix

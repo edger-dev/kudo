@@ -12,8 +12,7 @@ use moco_job::{JobId, JobRegistry, NodePolicy, RuleSet, Scope, SeedConfig, Verdi
 use node::connector::Connector;
 
 use kudo_node::worker::{
-    PaneSetup, START_WORKER, WORKER_CONNECTOR, WorkerConnector, WorkerStart, WorkerStarted,
-    compose,
+    PaneSetup, START_WORKER, WORKER_CONNECTOR, WorkerConnector, WorkerStart, WorkerStarted, compose,
 };
 
 const CTX: &str = "2d46ab242a8fe23db32f26bbf51025de73f571949966f7b06725c5157596c0a0";
@@ -85,7 +84,12 @@ fn values_of_the_wrong_shape_are_refused() {
         let err = compose(&ask(CTX, repo, LEASE), &setup("kudo-shim")).unwrap_err();
         assert!(err.contains("repo"), "{repo:?}: {err}");
     }
-    for lease in ["", "not-a-lease", "2B92AAA1-70C9-4B24-B472-030F2FF09D68", &LEASE[..35]] {
+    for lease in [
+        "",
+        "not-a-lease",
+        "2B92AAA1-70C9-4B24-B472-030F2FF09D68",
+        &LEASE[..35],
+    ] {
         let err = compose(&ask(CTX, "", lease), &setup("kudo-shim")).unwrap_err();
         assert!(err.contains("lease"), "{lease:?}: {err}");
     }
@@ -107,7 +111,10 @@ fn a_worker_starts_on_a_governed_node_vouched() {
     let outcome = registry.wait(&id).unwrap();
     assert_eq!(outcome.verdict, Verdict::Vouched);
     let screen = registry.screen(&id).unwrap().text;
-    assert!(screen.contains("worker") && screen.contains(CTX), "{screen:?}");
+    assert!(
+        screen.contains("worker") && screen.contains(CTX),
+        "{screen:?}"
+    );
 }
 
 /// A refused value comes back as the connector's refusal, and nothing starts.
