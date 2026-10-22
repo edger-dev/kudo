@@ -214,3 +214,33 @@ fn a_worker_bypasses_permissions_only_where_its_node_says_so() {
     assert!(!given(Some("0")));
     assert!(!given(Some("yes")));
 }
+
+/// The launch pre-answers the CLI's first-run prompts: project MCP servers in
+/// the repository are not offered (the worker's config is strict), and tips
+/// and non-essential traffic (promotions) are off.
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697
+#[test]
+fn the_launch_preanswers_first_run_prompts() {
+    let p = plan(
+        &setup("lease-q"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &[],
+    );
+    assert!(
+        p.argv.iter().any(|a| a == "--strict-mcp-config"),
+        "{:?}",
+        p.argv
+    );
+    let settings: Value = serde_json::from_str(flag(&p.argv, "--settings")).unwrap();
+    assert_eq!(settings["spinnerTipsEnabled"], Value::Bool(false));
+    assert!(
+        p.env
+            .iter()
+            .any(|(k, v)| k == "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" && v == "1"),
+        "{:?}",
+        p.env
+    );
+    assert_eq!(p.argv.last().unwrap(), KICKOFF, "the kickoff stays last");
+}
