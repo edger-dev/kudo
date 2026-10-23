@@ -835,3 +835,36 @@ fn a_recipe_reads_as_the_manifest_says() {
     }
     assert!(!text.contains("OneShot"), "{text}");
 }
+
+/// A job whose end no one saw says why: the node restarted under it and
+/// nothing kept its exit — in the listing (unless the node took it over from
+/// outside) and wherever its end is reported.
+// implements: 0119d16e256891de4a71a14418f59c33419207f49792e58001639f8cbef567a6@d7ba7c887089648434bc819ad57473bb930242c27396d150b11617388bb85da0
+#[test]
+fn an_unknown_end_says_the_node_restarted_under_it() {
+    use moco_job::JobStatus;
+    use moco_job::wire::{JobSummary, ListReply};
+    assert!(jobs::end_note(&JobStatus::OutcomeUnknown).contains("restarted"));
+    assert_eq!(jobs::end_note(&JobStatus::Done { code: 0 }), "");
+    let job = |external| JobSummary {
+        id: "1792500000000-7-1".into(),
+        status: JobStatus::OutcomeUnknown,
+        scope: moco_job::Scope::System,
+        name: String::new(),
+        port: 0,
+        external,
+        restarts: 0,
+        argv: vec!["nixos-rebuild".into(), "switch".into()],
+        cwd: "/".into(),
+        verdict: moco_job::Verdict::SeedAllow,
+        phase_s: 0,
+    };
+    let ours = jobs::render_jobs(&ListReply {
+        jobs: vec![job(false)],
+    });
+    assert!(ours.contains("restarted"), "{ours}");
+    let adopted = jobs::render_jobs(&ListReply {
+        jobs: vec![job(true)],
+    });
+    assert!(!adopted.contains("restarted"), "{adopted}");
+}

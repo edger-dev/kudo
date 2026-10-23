@@ -219,6 +219,17 @@ mod server_side {
         assert_eq!(running.phase, "running 2 min");
     }
 
+    /// A job whose end no one saw says the node restarted under it.
+    // implements: 0119d16e256891de4a71a14418f59c33419207f49792e58001639f8cbef567a6@d7ba7c887089648434bc819ad57473bb930242c27396d150b11617388bb85da0
+    #[test]
+    fn an_unknown_end_says_the_node_restarted_under_it() {
+        let views = views::job_views(
+            vec![summary(NOW_MS - 600_000, 1, JobStatus::OutcomeUnknown, 0)],
+            NOW_MS,
+        );
+        assert!(views[0].phase.contains("restarted"), "{:?}", views[0].phase);
+    }
+
     /// Output reads as text, lossily where it is not UTF-8, with what was
     /// lost and whether it still runs.
     #[test]

@@ -612,6 +612,12 @@ pub fn status_word(status: &moco_job::JobStatus) -> String {
     }
 }
 
+/// What a job's end needs said beside its word: why an end is unknown.
+pub fn end_note(status: &moco_job::JobStatus) -> &'static str {
+    let _ = status;
+    ""
+}
+
 /// The authority a job ran (or was refused) under, as one word.
 pub fn verdict_word(verdict: moco_job::Verdict) -> String {
     use moco_job::Verdict;
