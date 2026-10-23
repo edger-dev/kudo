@@ -511,16 +511,17 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
         plan = plan.bypassing();
     }
     // Only kudo's MCP server, or the user's own as well: the node's decision.
-    // Either way the repository's project servers are not offered.
-    if kudo_worker::env::strict_mcp_from(|k| std::env::var(k).ok()) {
+    // Either way the repository's project servers are not offered. The
+    // repository is where the CLI will run.
+    let strict = kudo_worker::env::strict_mcp_from(|k| std::env::var(k).ok());
+    if strict {
         eprintln!("kudo: this node gives workers kudo's MCP server only");
-        plan = plan.strict_mcp();
-    } else {
-        let repo = dir.clone().or_else(|| std::env::current_dir().ok());
-        if let Some(repo) = repo {
-            plan = plan.declining(&kudo_worker::launch::project_servers(&repo));
-        }
     }
+    let repo = dir
+        .clone()
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| ".".into());
+    plan = plan.for_node_mcp(strict, &repo);
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
     };

@@ -217,7 +217,7 @@ fn a_worker_bypasses_permissions_only_where_its_node_says_so() {
 
 /// The launch pre-answers the CLI's first-run prompts: tips and non-essential
 /// traffic (promotions) are off. (Project MCP servers: see below.)
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@e74b1ca92af3bfdb2c11c59e38d8f9109ad170cfbbf2846d6cfb8ec0e8ffaad3
 #[test]
 fn the_launch_preanswers_first_run_prompts() {
     let p = plan(
@@ -285,7 +285,11 @@ fn a_worker_sees_only_kudos_mcp_server_where_its_node_says_so() {
         strict.argv
     );
     assert_eq!(strict.argv[0], "claude");
-    assert_eq!(strict.argv.last().unwrap(), KICKOFF, "the kickoff stays last");
+    assert_eq!(
+        strict.argv.last().unwrap(),
+        KICKOFF,
+        "the kickoff stays last"
+    );
     assert_eq!(
         flag(&strict.argv, "--mcp-config"),
         flag(&p.argv, "--mcp-config"),
@@ -294,7 +298,11 @@ fn a_worker_sees_only_kudos_mcp_server_where_its_node_says_so() {
 
     assert_eq!(STRICT_MCP_ENV, "KUDO_WORKER_STRICT_MCP");
     let given = |v: Option<&str>| {
-        strict_mcp_from(|k| (k == STRICT_MCP_ENV).then(|| v.map(str::to_owned)).flatten())
+        strict_mcp_from(|k| {
+            (k == STRICT_MCP_ENV)
+                .then(|| v.map(str::to_owned))
+                .flatten()
+        })
     };
     assert!(given(Some("1")));
     assert!(!given(None));
@@ -317,7 +325,7 @@ fn repo_with(mcp_json: Option<&str>) -> PathBuf {
 
 /// The servers a repository declares in its `.mcp.json`, by name; none when
 /// it has no such file, or one that does not parse.
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@e74b1ca92af3bfdb2c11c59e38d8f9109ad170cfbbf2846d6cfb8ec0e8ffaad3
 #[test]
 fn a_repositorys_project_servers_are_read_by_name() {
     use kudo_worker::launch::project_servers;
@@ -335,7 +343,7 @@ fn a_repositorys_project_servers_are_read_by_name() {
 /// Without strict mode, the repository's project servers are declined in the
 /// settings the launch passes, so the CLI asks about none of them; the rest
 /// of the settings stay as they were.
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@e74b1ca92af3bfdb2c11c59e38d8f9109ad170cfbbf2846d6cfb8ec0e8ffaad3
 #[test]
 fn project_servers_are_declined_without_a_prompt() {
     let p = plan(
@@ -361,4 +369,48 @@ fn project_servers_are_declined_without_a_prompt() {
 
     // Nothing to decline: the settings are untouched.
     assert_eq!(p.clone().declining(&[]), p);
+}
+
+/// Project servers in any directory above the repository are declined too:
+/// the CLI reads `.mcp.json` from the working directory and every parent.
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@e74b1ca92af3bfdb2c11c59e38d8f9109ad170cfbbf2846d6cfb8ec0e8ffaad3
+#[test]
+fn project_servers_above_the_repository_are_read_too() {
+    use kudo_worker::launch::project_servers;
+    let mono = repo_with(Some(r#"{"mcpServers": {"wiki": {"command": "w"}}}"#));
+    let svc = mono.join("svc");
+    std::fs::create_dir_all(&svc).unwrap();
+    std::fs::write(
+        svc.join(".mcp.json"),
+        r#"{"mcpServers": {"tracker": {"command": "t"}, "wiki": {"command": "w2"}}}"#,
+    )
+    .unwrap();
+    let mut names = project_servers(&svc);
+    names.sort();
+    assert_eq!(names, ["tracker", "wiki"], "each name once");
+    let deeper = svc.join("a/b");
+    std::fs::create_dir_all(&deeper).unwrap();
+    let mut names = project_servers(&deeper);
+    names.sort();
+    assert_eq!(names, ["tracker", "wiki"]);
+}
+
+/// The node's choice, applied: strict where it says so (nothing declined, no
+/// file read), otherwise the repository's project servers declined.
+// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9
+#[test]
+fn the_launcher_applies_the_nodes_mcp_choice_in_the_repository() {
+    let p = plan(
+        &setup("l"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &[],
+    );
+    let repo = repo_with(Some(r#"{"mcpServers": {"tracker": {}}}"#));
+    let strict = p.clone().for_node_mcp(true, &repo);
+    assert_eq!(strict, p.clone().strict_mcp());
+    let open = p.clone().for_node_mcp(false, &repo);
+    assert_eq!(open, p.clone().declining(&["tracker".to_owned()]));
+    assert!(!open.argv.iter().any(|a| a == "--strict-mcp-config"));
 }

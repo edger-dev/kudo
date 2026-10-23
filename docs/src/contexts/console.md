@@ -124,7 +124,8 @@ has `KUDO_WORKER_STRICT_MCP=1` gives its workers kudo's server only
 services.kudo-node.environment.KUDO_WORKER_STRICT_MCP = "1";
 ```
 
-Either way, project servers in the repository's `.mcp.json` are not offered:
+Either way, project servers (a `.mcp.json` in the repository or any directory
+above it) are not offered:
 the launch declines them in the settings it passes, so an unattended worker
 never stops at the CLI's "use this project's servers?" prompt.
 
