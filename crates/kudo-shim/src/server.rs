@@ -623,6 +623,7 @@ impl ShimServer {
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 StartNamedRequest {
+                    node_recipe: false,
                     name: args.name,
                     caller: jobs::session_caller(),
                 },
@@ -1122,6 +1123,17 @@ mod tests {
             "{reply}"
         );
         assert!(reply["tools"].as_array().is_some_and(|t| !t.is_empty()));
+    }
+
+    /// A node's recipes are a tool, and `job_start` takes `node_recipe`.
+    // implements: 7735b6fcb04483f5bb958b825bd6e7057146db208d5f5e5b9da25d4ad9dcff01
+    #[test]
+    fn recipes_are_a_tool_and_job_start_can_mean_one() {
+        let tools = ShimServer::tool_router().list_all();
+        assert!(tools.iter().any(|t| t.name == "recipes"));
+        let start = tools.iter().find(|t| t.name == "job_start").unwrap();
+        let schema = serde_json::to_value(&*start.input_schema).unwrap();
+        assert!(schema["properties"]["node_recipe"].is_object(), "{schema}");
     }
 
     /// A worker session sees the worker tools beside the job tools.

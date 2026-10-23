@@ -25,6 +25,11 @@ use kudo_shim::route::Target;
 
 /// A hub with one node offering the job substrate.
 async fn mesh() -> (String, Arc<JobRegistry>) {
+    mesh_with(JobRegistry::ungoverned().expect("registry")).await
+}
+
+/// A hub with one node (`alpha`) offering `registry`'s job substrate.
+async fn mesh_with(registry: JobRegistry) -> (String, Arc<JobRegistry>) {
     let hub_state: ServedHub = ServedHub::new();
     let listener = HubListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().to_string();
@@ -33,7 +38,7 @@ async fn mesh() -> (String, Arc<JobRegistry>) {
         async move { listener.serve(hub_state).await }
     });
 
-    let registry = Arc::new(JobRegistry::ungoverned().expect("registry"));
+    let registry = Arc::new(registry);
     let mut connectors = Connectors::new();
     connectors.register(Box::new(JobConnector::new(
         DEFAULT_JOB_CONNECTOR,
@@ -659,4 +664,89 @@ async fn input_typed_through_the_hub_reaches_a_terminal_job() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(text.contains("got:through the hub"), "{text}");
+}
+
+/// A node whose own manifest declares `refresh` (a recipe, with what it is
+/// for) and a boot job (not one).
+async fn node_with_recipes() -> (HubClient, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!(
+        "kudo-recipes-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let dir = dir.canonicalize().unwrap();
+    std::fs::write(
+        dir.join(moco_job::MANIFEST_FILE),
+        format!(
+            r#"proc (
+  {{name refresh, argv (echo refreshed), cwd "{0}", about "refresh the session cookie"}}
+  {{name housekeeping, argv (sleep 30), cwd "{0}", autostart @Boot}}
+)"#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+    let registry = JobRegistry::ungoverned()
+        .unwrap()
+        .with_dir(&dir)
+        .unwrap()
+        .with_node("alpha");
+    let (addr, _registry) = mesh_with(registry).await;
+    (connected(&addr).await, dir)
+}
+
+/// A node's recipes list over the mesh, each with what it runs and what it
+/// is for.
+// implements: 7735b6fcb04483f5bb958b825bd6e7057146db208d5f5e5b9da25d4ad9dcff01
+#[tokio::test(flavor = "multi_thread")]
+async fn a_nodes_recipes_list_over_the_mesh() {
+    let (client, _dir) = node_with_recipes().await;
+    let reply = jobs::recipes(&client, alpha(), DEFAULT_JOB_CONNECTOR)
+        .await
+        .expect("recipes");
+    let names: Vec<&str> = reply.recipes.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, ["refresh"]);
+    let text = jobs::render_recipes(&reply);
+    for part in ["refresh", "echo refreshed", "refresh the session cookie"] {
+        assert!(text.contains(part), "{part:?} missing from:\n{text}");
+    }
+    assert!(!text.contains("housekeeping"), "{text}");
+    assert_eq!(
+        jobs::render_recipes(&moco_job::wire::RecipesReply { recipes: vec![] }),
+        "no recipes on this node"
+    );
+}
+
+/// A recipe starts by name from another host's session: the job is named
+/// for the recipe and runs what the node declares.
+// implements: 7735b6fcb04483f5bb958b825bd6e7057146db208d5f5e5b9da25d4ad9dcff01
+#[tokio::test(flavor = "multi_thread")]
+async fn a_recipe_starts_by_name_over_the_mesh() {
+    let (client, _dir) = node_with_recipes().await;
+    let started = jobs::start_named(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        moco_job::wire::StartNamedRequest {
+            name: "refresh".into(),
+            caller: jobs::session_caller(),
+            node_recipe: true,
+        },
+    )
+    .await
+    .expect("start the recipe");
+    let listing = jobs::list(&client, alpha(), DEFAULT_JOB_CONNECTOR)
+        .await
+        .expect("list");
+    let job = listing
+        .jobs
+        .iter()
+        .find(|j| j.id == started.id)
+        .expect("listed");
+    assert_eq!(job.name, "node:refresh");
+    assert_eq!(job.argv, ["echo", "refreshed"]);
 }

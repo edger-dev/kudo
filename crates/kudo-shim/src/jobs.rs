@@ -161,6 +161,22 @@ pub async fn start_named(
     moco_job::wire::decode::<StartReply>(&bytes).map_err(decode_failed)
 }
 
+/// The node's own recipes.
+pub async fn recipes(
+    hub: &HubClient,
+    target: Target,
+    connector: &str,
+) -> Result<moco_job::wire::RecipesReply, ShimError> {
+    let _ = (hub, target, connector);
+    Ok(moco_job::wire::RecipesReply { recipes: vec![] })
+}
+
+/// A node's recipes, one per line.
+pub fn render_recipes(reply: &moco_job::wire::RecipesReply) -> String {
+    let _ = reply;
+    String::new()
+}
+
 /// Stop a declared job and start it from its current declaration.
 pub async fn restart(
     hub: &HubClient,
