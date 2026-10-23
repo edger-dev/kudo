@@ -669,6 +669,14 @@ async fn input_typed_through_the_hub_reaches_a_terminal_job() {
 /// A node whose own manifest declares `refresh` (a recipe, with what it is
 /// for) and a boot job (not one).
 async fn node_with_recipes() -> (HubClient, std::path::PathBuf) {
+    let dir = recipes_dir();
+    (
+        client_for(JobRegistry::ungoverned().unwrap(), &dir).await,
+        dir,
+    )
+}
+
+fn recipes_dir() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "kudo-recipes-{}-{}",
         std::process::id(),
@@ -690,13 +698,14 @@ async fn node_with_recipes() -> (HubClient, std::path::PathBuf) {
         ),
     )
     .unwrap();
-    let registry = JobRegistry::ungoverned()
-        .unwrap()
-        .with_dir(&dir)
-        .unwrap()
-        .with_node("alpha");
+    dir
+}
+
+/// A client of a mesh whose node `alpha` keeps `registry` in `dir`.
+async fn client_for(registry: JobRegistry, dir: &std::path::Path) -> HubClient {
+    let registry = registry.with_dir(dir).unwrap().with_node("alpha");
     let (addr, _registry) = mesh_with(registry).await;
-    (connected(&addr).await, dir)
+    connected(&addr).await
 }
 
 /// A node's recipes list over the mesh, each with what it runs and what it
@@ -749,4 +758,80 @@ async fn a_recipe_starts_by_name_over_the_mesh() {
         .expect("listed");
     assert_eq!(job.name, "node:refresh");
     assert_eq!(job.argv, ["echo", "refreshed"]);
+}
+
+/// On a governed node a recipe no rule allows waits for the author's verdict,
+/// as an ad-hoc start of its argv would; a name the node does not offer is
+/// refused, naming what it does offer.
+// implements: 7735b6fcb04483f5bb958b825bd6e7057146db208d5f5e5b9da25d4ad9dcff01
+#[tokio::test(flavor = "multi_thread")]
+async fn a_governed_node_gates_its_recipes() {
+    let dir = recipes_dir();
+    let policy = moco_job::NodePolicy::new(moco_job::RuleSet::default(), &dir);
+    let client = client_for(JobRegistry::with_policy(policy).unwrap(), &dir).await;
+    let start = |name: &str| {
+        jobs::start_named(
+            &client,
+            alpha(),
+            DEFAULT_JOB_CONNECTOR,
+            moco_job::wire::StartNamedRequest {
+                name: name.into(),
+                caller: jobs::session_caller(),
+                node_recipe: true,
+            },
+        )
+    };
+    let started = start("refresh").await.expect("start the recipe");
+    let listing = jobs::list(&client, alpha(), DEFAULT_JOB_CONNECTOR)
+        .await
+        .expect("list");
+    let job = listing.jobs.iter().find(|j| j.id == started.id).unwrap();
+    assert_eq!(job.status, moco_job::JobStatus::PendingApproval);
+
+    let refused = start("housekeeping").await.unwrap_err().to_string();
+    assert!(refused.contains("housekeeping"), "{refused}");
+    let unknown = start("nothing-here").await.unwrap_err().to_string();
+    assert!(
+        unknown.contains("nothing-here") && unknown.contains("refresh"),
+        "{unknown}"
+    );
+}
+
+/// A recipe reads as its manifest says: the lifetime in the manifest's own
+/// words, argv quoted as a shell would read it back, and an entry that
+/// cannot start (no cwd) saying so.
+// implements: 7735b6fcb04483f5bb958b825bd6e7057146db208d5f5e5b9da25d4ad9dcff01
+#[test]
+fn a_recipe_reads_as_the_manifest_says() {
+    use moco_job::lifecycle::Lifetime;
+    use moco_job::wire::{RecipeSummary, RecipesReply};
+    let recipe = |name: &str, argv: &[&str], cwd: &str, lifetime| RecipeSummary {
+        name: name.into(),
+        argv: argv.iter().map(|s| (*s).to_owned()).collect(),
+        cwd: cwd.into(),
+        about: String::new(),
+        lifetime,
+    };
+    let text = jobs::render_recipes(&RecipesReply {
+        recipes: vec![
+            recipe(
+                "say",
+                &["echo", "two words", "it's"],
+                "/srv",
+                Lifetime::OneShot,
+            ),
+            recipe("env", &["FOO=bar", "x"], "/srv", Lifetime::Service),
+            recipe("rootless", &["echo"], "", Lifetime::OneShot),
+        ],
+    });
+    for part in [
+        "echo 'two words' 'it'\\''s'",
+        "'FOO=bar' x",
+        "one-shot",
+        "service",
+        "no cwd",
+    ] {
+        assert!(text.contains(part), "{part:?} missing from:\n{text}");
+    }
+    assert!(!text.contains("OneShot"), "{text}");
 }

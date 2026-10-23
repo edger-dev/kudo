@@ -109,9 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Governed, with every attempt written to the audit file — set before the
     // directory is opened, so the requests a restart denies are written too.
-    let registry = JobRegistry::with_policy(policy)?
-        .with_audit(Arc::new(FileAuditLog::new(state.join("audit.styxl"))))
-        .with_dir(&state)?;
+    let registry = kudo_node::open_registry(policy, &state, &node)?;
     let registry = match &holder {
         Some(path) => registry.with_pty_holder(path),
         None => {

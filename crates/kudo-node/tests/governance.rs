@@ -84,3 +84,34 @@ fn root_and_timeout_are_configurable() {
     assert!(policy_from(env(&[(APPROVAL_TIMEOUT_ENV, "soon")])).is_err());
     assert!(policy_from(env(&[(APPROVAL_TIMEOUT_ENV, "0")])).is_err());
 }
+
+/// The node's registry knows the node's name, so a manifest entry's `hosts`
+/// match it: a recipe (or boot job) declared for this node is this node's.
+// implements: 7735b6fcb04483f5bb958b825bd6e7057146db208d5f5e5b9da25d4ad9dcff01
+#[test]
+fn the_nodes_registry_knows_the_nodes_name() {
+    let state = std::env::temp_dir().join(format!("kudo-node-named-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&state);
+    std::fs::create_dir_all(&state).unwrap();
+    let state = state.canonicalize().unwrap();
+    std::fs::write(
+        state.join(moco_job::MANIFEST_FILE),
+        format!(
+            r#"proc (
+  {{name mine, argv (echo mine), cwd "{0}", hosts (laptop)}}
+  {{name theirs, argv (echo theirs), cwd "{0}", hosts (desk)}}
+)"#,
+            state.display()
+        ),
+    )
+    .unwrap();
+    let policy = policy_from(env(&[])).unwrap();
+    let registry = kudo_node::open_registry(policy, &state, "laptop").unwrap();
+    let names: Vec<String> = registry
+        .recipes()
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+    assert_eq!(names, ["mine"]);
+}

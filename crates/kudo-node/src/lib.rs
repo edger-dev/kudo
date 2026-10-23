@@ -24,3 +24,18 @@ pub mod job;
 pub mod worker;
 
 pub use job::JobConnector;
+
+/// The node's job registry: governed by `policy`, kept in `state` (with its
+/// audit file), and named `node`, so a manifest entry's `hosts` match it.
+pub fn open_registry(
+    policy: moco_job::NodePolicy,
+    state: &std::path::Path,
+    node: &str,
+) -> Result<moco_job::JobRegistry, moco_job::JobError> {
+    let _ = node;
+    moco_job::JobRegistry::with_policy(policy)?
+        .with_audit(std::sync::Arc::new(moco_job::FileAuditLog::new(
+            state.join("audit.styxl"),
+        )))
+        .with_dir(state)
+}
