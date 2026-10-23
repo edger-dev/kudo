@@ -35,23 +35,52 @@ impl LaunchPlan {
     }
 
     /// The same plan, with kudo's MCP server the only one the CLI loads.
-    pub fn strict_mcp(self) -> Self {
+    // implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9
+    pub fn strict_mcp(mut self) -> Self {
+        // Before the kickoff prompt, which stays last.
+        let at = self.argv.len().saturating_sub(1);
+        self.argv.insert(at, "--strict-mcp-config".to_owned());
         self
     }
 
     /// The same plan, with `servers` (a repository's project MCP servers)
     /// declined in its settings, so the CLI asks about none of them.
-    pub fn declining(self, servers: &[String]) -> Self {
-        let _ = servers;
+    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
+    pub fn declining(mut self, servers: &[String]) -> Self {
+        if servers.is_empty() {
+            return self;
+        }
+        let Some(at) = self.argv.iter().position(|a| a == "--settings") else {
+            return self;
+        };
+        let Some(text) = self.argv.get(at + 1) else {
+            return self;
+        };
+        let Ok(mut settings) = serde_json::from_str::<Value>(text) else {
+            return self;
+        };
+        settings["disabledMcpjsonServers"] = json!(servers);
+        self.argv[at + 1] = settings.to_string();
         self
     }
 }
 
 /// The MCP servers the repository at `dir` declares in its `.mcp.json`, by
-/// name.
+/// name: none when it has no such file or one that does not parse (the CLI
+/// then has nothing to ask about either).
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
 pub fn project_servers(dir: &Path) -> Vec<String> {
-    let _ = dir;
-    Vec::new()
+    let Ok(text) = std::fs::read_to_string(dir.join(".mcp.json")) else {
+        return Vec::new();
+    };
+    let Ok(parsed) = serde_json::from_str::<Value>(&text) else {
+        return Vec::new();
+    };
+    parsed
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .map(|servers| servers.keys().cloned().collect())
+        .unwrap_or_default()
 }
 
 /// The hooks a worker installs, as (CLI event name, `kudo-shim hook` argument).
@@ -86,9 +115,9 @@ pub fn plan(
             ((*event).to_owned(), json!([{ "hooks": [hook] }]))
         })
         .collect();
-    // An unattended pane has no person to answer a prompt: no tips, and no
-    // project MCP servers offered (the worker's MCP config is strict).
-    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697
+    // An unattended pane has no person to answer a prompt: no tips (project
+    // MCP servers: declined by the launcher, or strict — see `declining`).
+    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
     let mut hooks = hooks;
     // Shell calls are recorded as they return, as citable evidence.
     // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
@@ -144,7 +173,6 @@ pub fn plan(
             settings.to_string(),
             "--mcp-config".to_owned(),
             mcp.to_string(),
-            "--strict-mcp-config".to_owned(),
             "--session-id".to_owned(),
             setup.lease.clone(),
             KICKOFF.to_owned(),

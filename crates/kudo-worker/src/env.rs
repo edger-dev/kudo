@@ -44,8 +44,7 @@ pub const STRICT_MCP_ENV: &str = "KUDO_WORKER_STRICT_MCP";
 
 /// Whether this node's workers see only kudo's MCP server: only `1` says so.
 pub fn strict_mcp_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
-    let _ = lookup;
-    false
+    lookup(STRICT_MCP_ENV).is_some_and(|v| v.trim() == "1")
 }
 
 /// Seconds a lease may wait in a row with nothing handed over before it

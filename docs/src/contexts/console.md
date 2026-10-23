@@ -114,6 +114,20 @@ services.kudo-node.environment.KUDO_WORKER_BYPASS = "1";
 
 and run the console with `KUDO_CONSOLE_WORKER_NODES=yolo`.
 
+Which MCP servers a worker gets is the node's decision too. By default it gets
+kudo's server and the user's own (chat, trackers, search — whatever the CLI
+loads for that user), so a check can read them. A node whose own environment
+has `KUDO_WORKER_STRICT_MCP=1` gives its workers kudo's server only
+(`--strict-mcp-config`):
+
+```nix
+services.kudo-node.environment.KUDO_WORKER_STRICT_MCP = "1";
+```
+
+Either way, project servers in the repository's `.mcp.json` are not offered:
+the launch declines them in the settings it passes, so an unattended worker
+never stops at the CLI's "use this project's servers?" prompt.
+
 To reach the console by a name other than localhost (through a tunnel that
 keeps a hostname), list it in `KUDO_CONSOLE_HOSTS` (comma-separated); any
 other `Host` is refused, which also defeats DNS rebinding.
