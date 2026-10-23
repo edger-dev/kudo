@@ -1,0 +1,2 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"e319a64057308c75595f105973d4744d6f57008cd36af7541bc5a0d155efc3d8","hash":"3232d989e113ce85a1d37d55e3ce813f79dd9fd8de19e185082be02c232bf499","parents":["966101def952a152ec4d146a741d92f07c5893932eba8b3aeda55dda391ef23f"],"ts":"2026-10-23T13:41:50.921037708Z","author":"YJ Park","provenance":"kudo-design","metadata":{"kudo::designs":"8862afa38fb09898dd3ce9dfc2911da206a22184139ac216c6ad151d97d22e1d","name":"due-checks-plan","status::resolved":"false","task::milestone":"v1"}}
