@@ -72,6 +72,33 @@ hostname), `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]),
 `KUDO_JOB_CONNECTOR` (default `jobs-0`), `KUDO_PTY_HOLDER`, `MOCO_PORT_RANGE`
 (default `10000-19999`).
 
+### The node's environment is every worker's
+
+A worker, and every job, is a child of the node, so it inherits the node's
+environment, not the user's login shell. A service starts with almost none of
+what the shell sets (a systemd user unit, a launchd agent), and anything a
+worker needs at run time has to be in the node's own environment:
+
+- **Proxy.** `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (internal hosts in the
+  no-proxy list), when outbound traffic goes through a proxy. Node.js tools,
+  MCP servers included, also need `NODE_USE_ENV_PROXY=1` to honour them.
+- **Certificates.** `SSL_CERT_FILE` and `NIX_SSL_CERT_FILE` for a private CA
+  bundle, and `NODE_EXTRA_CA_CERTS` for Node.js.
+- **The worker's own switches.** `KUDO_WORKER_BYPASS`, `KUDO_WORKER_STRICT_MCP`
+  (see [Console](../contexts/console.md)).
+
+When the login shell sets these from a file it sources, give the unit the same
+file rather than copying values:
+
+```ini
+[Service]
+EnvironmentFile=%h/.config/proxy.env
+```
+
+A worker that cannot reach a host, or finds its MCP servers missing, is most
+often missing one of these: compare what the running node has (on Linux,
+`tr '\0' '\n' < /proc/$(pgrep -xo kudo-node)/environ`) with the shell's `env`.
+
 ### Every node is governed
 
 `kudo-node` always runs its registry **governed**: an ad-hoc start is matched
