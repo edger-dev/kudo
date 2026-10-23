@@ -868,3 +868,16 @@ fn an_unknown_end_says_the_node_restarted_under_it() {
     });
     assert!(!adopted.contains("restarted"), "{adopted}");
 }
+
+/// A tail of a job whose end no one saw says why, too.
+// implements: 0119d16e256891de4a71a14418f59c33419207f49792e58001639f8cbef567a6@d7ba7c887089648434bc819ad57473bb930242c27396d150b11617388bb85da0
+#[test]
+fn a_tail_of_an_unknown_end_says_the_node_restarted_under_it() {
+    let text = jobs::render_tail(&moco_job::wire::TailReply {
+        bytes: b"switching\n".to_vec(),
+        next_offset: 10,
+        skipped: 0,
+        status: moco_job::JobStatus::OutcomeUnknown,
+    });
+    assert!(text.contains("restarted"), "{text}");
+}
