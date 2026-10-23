@@ -881,3 +881,78 @@ fn a_tail_of_an_unknown_end_says_the_node_restarted_under_it() {
     });
     assert!(text.contains("restarted"), "{text}");
 }
+
+/// With no cwd named, the shim sends its own directory only to its own node:
+/// anywhere else that path does not exist, so it sends none and the node runs
+/// the job in its allowed root.
+///
+/// implements: 213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104@213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104
+#[test]
+fn an_adhoc_start_sends_its_own_directory_only_to_its_own_node() {
+    let here = || Ok(std::path::PathBuf::from("/home/me/project"));
+    assert_eq!(
+        jobs::adhoc_cwd("pc", "pc", here()).unwrap(),
+        "/home/me/project"
+    );
+    assert_eq!(jobs::adhoc_cwd("yolo", "pc", here()).unwrap(), "");
+    // A remote start needs no directory of its own, so an unreadable one is
+    // no reason to refuse it.
+    let gone = || Err(std::io::Error::other("deleted"));
+    assert_eq!(jobs::adhoc_cwd("yolo", "pc", gone()).unwrap(), "");
+    assert!(jobs::adhoc_cwd("pc", "pc", gone()).is_err());
+}
+
+/// An empty cwd over the mesh runs the job in the node's allowed root.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_adhoc_start_without_a_cwd_runs_in_the_nodes_allowed_root() {
+    let root = std::env::temp_dir().join(format!("kudo-adhoc-root-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.canonicalize().unwrap();
+    let rules = moco_job::RuleSet::from_seed(moco_job::SeedConfig {
+        allow: vec![vec!["pwd".to_owned()]],
+        deny: vec![],
+    });
+    let registry =
+        JobRegistry::with_policy(moco_job::NodePolicy::new(rules, &root)).expect("registry");
+    let (addr, _registry) = mesh_with(registry).await;
+    let client = connected(&addr).await;
+
+    let started = jobs::start(
+        &client,
+        alpha(),
+        DEFAULT_JOB_CONNECTOR,
+        StartRequest {
+            argv: vec!["pwd".into()],
+            cwd: String::new(),
+            deadline_ms: 0,
+            caller: moco_job::wire::WireCaller::Session {
+                cwd: "/somewhere/on/another/machine".into(),
+            },
+            env: vec![],
+            human_view: moco_job::lens::HumanView::Logs,
+        },
+    )
+    .await
+    .expect("an empty cwd is not refused");
+    let mut seen = String::new();
+    for _ in 0..100 {
+        let tail = jobs::tail(
+            &client,
+            alpha(),
+            DEFAULT_JOB_CONNECTOR,
+            TailRequest {
+                id: started.id.clone(),
+                offset: 0,
+            },
+        )
+        .await
+        .expect("tail");
+        seen = String::from_utf8_lossy(&tail.bytes).trim().to_owned();
+        if !seen.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(seen, root.display().to_string());
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -34,6 +34,23 @@ use crate::route::Target;
 /// one would be a rule that has to live somewhere and be right everywhere.
 pub const DEFAULT_JOB_CONNECTOR: &str = "jobs-0";
 
+/// The cwd an ad-hoc start sends when the caller named none.
+///
+/// implements: 213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104@213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104
+pub fn adhoc_cwd(
+    _target_node: &str,
+    _own_node: &str,
+    own_dir: std::io::Result<std::path::PathBuf>,
+) -> Result<String, ShimError> {
+    own_dir
+        .map(|d| d.to_string_lossy().into_owned())
+        .map_err(|e| {
+            ShimError::Hub(format!(
+                "no cwd was given and this session's own directory could not be read: {e}"
+            ))
+        })
+}
+
 /// Who this shim is, for the engine's write scoping.
 ///
 /// Always a **session**, identified by the directory the shim was launched in —
