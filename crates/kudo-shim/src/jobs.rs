@@ -167,14 +167,49 @@ pub async fn recipes(
     target: Target,
     connector: &str,
 ) -> Result<moco_job::wire::RecipesReply, ShimError> {
-    let _ = (hub, target, connector);
-    Ok(moco_job::wire::RecipesReply { recipes: vec![] })
+    let payload =
+        moco_job::wire::encode(&moco_job::wire::RecipesRequest {}).map_err(encode_failed)?;
+    let bytes = route(hub, target, connector, "recipes", payload).await?;
+    moco_job::wire::decode::<moco_job::wire::RecipesReply>(&bytes).map_err(decode_failed)
 }
 
-/// A node's recipes, one per line.
+/// A node's recipes: each one's name and what it is for, then what it runs
+/// and where.
+// implements: 7735b6fcb04483f5bb958b825bd6e7057146db208d5f5e5b9da25d4ad9dcff01
 pub fn render_recipes(reply: &moco_job::wire::RecipesReply) -> String {
-    let _ = reply;
-    String::new()
+    if reply.recipes.is_empty() {
+        return "no recipes on this node".to_string();
+    }
+    reply
+        .recipes
+        .iter()
+        .map(|r| {
+            let about = if r.about.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", r.about)
+            };
+            let argv: Vec<String> = r.argv.iter().map(|a| quote_arg(a)).collect();
+            format!(
+                "{}{about}\n  {}  (in {}, {:?})",
+                r.name,
+                argv.join(" "),
+                r.cwd,
+                r.lifetime
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// One argv element as a POSIX shell would read it back: bare when safe.
+fn quote_arg(s: &str) -> String {
+    let safe = |c: char| c.is_ascii_alphanumeric() || "/._-+:=@,%".contains(c);
+    if !s.is_empty() && s.chars().all(safe) {
+        s.to_owned()
+    } else {
+        format!("'{}'", s.replace('\'', r"'\''"))
+    }
 }
 
 /// Stop a declared job and start it from its current declaration.

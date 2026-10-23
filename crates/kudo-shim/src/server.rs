@@ -58,8 +58,13 @@ pub struct StartNamedArgs {
     pub node: String,
     pub link: Option<String>,
     pub connector: Option<String>,
-    /// The name the workspace's manifest declares it under.
+    /// The name the workspace's manifest declares it under — or, with
+    /// `node_recipe`, one of the node's own recipes (see `recipes`).
     pub name: String,
+    /// The name is one of the node's own recipes, startable from any host:
+    /// list them with `recipes`. Omit for this workspace's manifest.
+    #[serde(default)]
+    pub node_recipe: bool,
 }
 
 /// Restart a declared job.
@@ -602,12 +607,39 @@ impl ShimServer {
     }
 
     #[tool(
+        name = "recipes",
+        description = "List a node's own recipes: named commands its manifest declares, each \
+                       with what it is for, what it runs and where. Start one with job_start, \
+                       node_recipe true — from any host, without knowing its exact argv."
+    )]
+    async fn recipes(
+        &self,
+        Parameters(args): Parameters<NodeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        reply(
+            jobs::recipes(
+                &hub,
+                target(&args.node, &args.link),
+                &connector_id(&args.connector),
+            )
+            .await
+            .map(|r| jobs::render_recipes(&r)),
+        )
+    }
+
+    #[tool(
         name = "job_start",
-        description = "Start a job this workspace declares in its manifest, by name. Prefer \
-                       this over job_start_adhoc: a declaration is reproducible, is reviewed in \
-                       version control, and carries its own lifetime, restart policy and port. \
-                       The manifest is re-read on every start, so an edit takes effect \
-                       immediately."
+        description = "Start a job this workspace declares in its manifest, by name — or, \
+                       with node_recipe, one of the node's own recipes (see `recipes`), from \
+                       any host. Prefer this over job_start_adhoc: a declaration is \
+                       reproducible, is reviewed in version control, and carries its own \
+                       lifetime, restart policy and port. The manifest is re-read on every \
+                       start, so an edit takes effect immediately. Either way the node's gate \
+                       decides, as for any start."
     )]
     async fn job_start(
         &self,
@@ -623,7 +655,7 @@ impl ShimServer {
                 target(&args.node, &args.link),
                 &connector_id(&args.connector),
                 StartNamedRequest {
-                    node_recipe: false,
+                    node_recipe: args.node_recipe,
                     name: args.name,
                     caller: jobs::session_caller(),
                 },

@@ -59,6 +59,23 @@ A node entry must declare an **absolute `cwd`** — there is no workspace root t
 fall back on, and an ambient working directory for a system service is a bug
 that gets blamed on something else later.
 
+Every other entry is a **recipe**: a named command the node offers. Any
+session on any host can list them (`recipes`) and start one by name
+(`job_start` with `node_recipe`), so an agent need not know the exact argv —
+which also keeps store paths out of what agents have to remember. An `about`
+says what each is for:
+
+```styx
+proc ({name refresh-cookie, argv (/home/me/.local/bin/refresh-cookie),
+       cwd "/home/me", about "refresh the browser session cookie"})
+```
+
+A recipe names a command; it does not grant one. Its start goes through the
+gate exactly as an ad-hoc start of the same argv would, so allow it in the
+node's rules if it should run unasked. The job belongs to whoever started it
+(`node:refresh-cookie` in the listing), and a restart reads the node's
+manifest again. Entries with `hosts` are recipes only on those nodes.
+
 Boot is `ensure`, not `start`: re-adoption runs first, so a job the previous
 daemon left running is left alone rather than started a second time alongside
 itself. It also runs **before the hub is dialed** — these are the machine's own

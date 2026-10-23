@@ -17,6 +17,7 @@ are then not offered, or, if a hub address is set but the hub is down, answer
 |---|---|
 | `nodes` | What machines and connectors exist. |
 | `job_list` | Every job on a node, with owner, status and port. |
+| `recipes` | A node's own named commands: what each is for, what it runs, where. |
 | `job_read` | A job's findings, through its machine view. **Prefer this.** |
 | `job_screen` | What a redrawing job looks like right now. |
 | `job_tail` | Exact output; pass `next_offset` to resume. |
@@ -26,7 +27,7 @@ are then not offered, or, if a hub address is set but the hub is down, answer
 
 | Tool | Use it for |
 |---|---|
-| `job_start` | Start a declared job by name. |
+| `job_start` | Start a declared job by name — this workspace's, or with `node_recipe` one of the node's recipes. |
 | `job_start_adhoc` | Run something not in the manifest. On a governed node an argv no rule allows waits for the author's verdict, and the reply says so. |
 | `job_wait` | Wait for a job to end (approval included); says how, and under which authority. |
 | `job_ensure` | Bring up `@Session` jobs; safe to re-run. |
