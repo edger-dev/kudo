@@ -215,10 +215,9 @@ fn a_worker_bypasses_permissions_only_where_its_node_says_so() {
     assert!(!given(Some("yes")));
 }
 
-/// The launch pre-answers the CLI's first-run prompts: project MCP servers in
-/// the repository are not offered (the worker's config is strict), and tips
-/// and non-essential traffic (promotions) are off.
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697
+/// The launch pre-answers the CLI's first-run prompts: tips and non-essential
+/// traffic (promotions) are off. (Project MCP servers: see below.)
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
 #[test]
 fn the_launch_preanswers_first_run_prompts() {
     let p = plan(
@@ -227,11 +226,6 @@ fn the_launch_preanswers_first_run_prompts() {
         Path::new("/bin/kudo-shim"),
         None,
         &[],
-    );
-    assert!(
-        p.argv.iter().any(|a| a == "--strict-mcp-config"),
-        "{:?}",
-        p.argv
     );
     let settings: Value = serde_json::from_str(flag(&p.argv, "--settings")).unwrap();
     assert_eq!(settings["spinnerTipsEnabled"], Value::Bool(false));
@@ -264,4 +258,107 @@ fn shell_calls_are_recorded_by_a_post_tool_use_hook() {
         entry["hooks"][0]["command"],
         "/bin/kudo-shim hook post-tool-use"
     );
+}
+
+/// A node that says so gives its workers kudo's MCP server only; any other
+/// node, or any other value, leaves them the user's own servers too.
+// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9
+#[test]
+fn a_worker_sees_only_kudos_mcp_server_where_its_node_says_so() {
+    use kudo_worker::env::{STRICT_MCP_ENV, strict_mcp_from};
+    let p = plan(
+        &setup("l"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &[],
+    );
+    assert!(
+        !p.argv.iter().any(|a| a == "--strict-mcp-config"),
+        "not strict unless the node says so: {:?}",
+        p.argv
+    );
+    let strict = p.clone().strict_mcp();
+    assert!(
+        strict.argv.iter().any(|a| a == "--strict-mcp-config"),
+        "{:?}",
+        strict.argv
+    );
+    assert_eq!(strict.argv[0], "claude");
+    assert_eq!(strict.argv.last().unwrap(), KICKOFF, "the kickoff stays last");
+    assert_eq!(
+        flag(&strict.argv, "--mcp-config"),
+        flag(&p.argv, "--mcp-config"),
+        "kudo's own server either way"
+    );
+
+    assert_eq!(STRICT_MCP_ENV, "KUDO_WORKER_STRICT_MCP");
+    let given = |v: Option<&str>| {
+        strict_mcp_from(|k| (k == STRICT_MCP_ENV).then(|| v.map(str::to_owned)).flatten())
+    };
+    assert!(given(Some("1")));
+    assert!(!given(None));
+    assert!(!given(Some("0")));
+    assert!(!given(Some("true")));
+}
+
+fn repo_with(mcp_json: Option<&str>) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "kudo-launch-{}-{}",
+        std::process::id(),
+        new_lease_id().unwrap()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    if let Some(text) = mcp_json {
+        std::fs::write(dir.join(".mcp.json"), text).unwrap();
+    }
+    dir
+}
+
+/// The servers a repository declares in its `.mcp.json`, by name; none when
+/// it has no such file, or one that does not parse.
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
+#[test]
+fn a_repositorys_project_servers_are_read_by_name() {
+    use kudo_worker::launch::project_servers;
+    let repo = repo_with(Some(
+        r#"{"mcpServers": {"tracker": {"command": "t"}, "search": {"url": "https://x"}}}"#,
+    ));
+    let mut names = project_servers(&repo);
+    names.sort();
+    assert_eq!(names, ["search", "tracker"]);
+    assert!(project_servers(&repo_with(None)).is_empty());
+    assert!(project_servers(&repo_with(Some("{not json"))).is_empty());
+    assert!(project_servers(&repo_with(Some(r#"{"other": 1}"#))).is_empty());
+}
+
+/// Without strict mode, the repository's project servers are declined in the
+/// settings the launch passes, so the CLI asks about none of them; the rest
+/// of the settings stay as they were.
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@26f450796e0f93e42e1903ee2aac8a4ab818181e052746b6e43aff55ee15ff0d
+#[test]
+fn project_servers_are_declined_without_a_prompt() {
+    let p = plan(
+        &setup("l"),
+        "claude",
+        Path::new("/bin/kudo-shim"),
+        None,
+        &[],
+    );
+    let declined = p
+        .clone()
+        .declining(&["tracker".to_owned(), "search".to_owned()]);
+    let settings: Value = serde_json::from_str(flag(&declined.argv, "--settings")).unwrap();
+    assert_eq!(
+        settings["disabledMcpjsonServers"],
+        serde_json::json!(["tracker", "search"])
+    );
+    let before: Value = serde_json::from_str(flag(&p.argv, "--settings")).unwrap();
+    assert_eq!(settings["hooks"], before["hooks"]);
+    assert_eq!(settings["spinnerTipsEnabled"], Value::Bool(false));
+    assert_eq!(declined.argv.last().unwrap(), KICKOFF);
+    assert_eq!(declined.argv.len(), p.argv.len());
+
+    // Nothing to decline: the settings are untouched.
+    assert_eq!(p.clone().declining(&[]), p);
 }

@@ -36,6 +36,18 @@ pub fn bypass_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
     lookup(BYPASS_ENV).is_some_and(|v| v.trim() == "1")
 }
 
+/// Set to `1` in a node's own environment: its workers get kudo's MCP server
+/// only (`--strict-mcp-config`), not the user's own servers. The node's
+/// opt-in; the console never sends it.
+// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9
+pub const STRICT_MCP_ENV: &str = "KUDO_WORKER_STRICT_MCP";
+
+/// Whether this node's workers see only kudo's MCP server: only `1` says so.
+pub fn strict_mcp_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
+    let _ = lookup;
+    false
+}
+
 /// Seconds a lease may wait in a row with nothing handed over before it
 /// ends; `0` ends it as soon as nothing is ready.
 // implements: 9680c1e9f147ea4dba7d85a17e7c2405f6cd5b4bb13e87dd81849d986e06dfed@a7051e3e59de5e20f03e2117248f5af341ed55a104af661aca2026f28c4abc99

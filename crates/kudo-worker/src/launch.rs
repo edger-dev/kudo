@@ -33,6 +33,25 @@ impl LaunchPlan {
         );
         self
     }
+
+    /// The same plan, with kudo's MCP server the only one the CLI loads.
+    pub fn strict_mcp(self) -> Self {
+        self
+    }
+
+    /// The same plan, with `servers` (a repository's project MCP servers)
+    /// declined in its settings, so the CLI asks about none of them.
+    pub fn declining(self, servers: &[String]) -> Self {
+        let _ = servers;
+        self
+    }
+}
+
+/// The MCP servers the repository at `dir` declares in its `.mcp.json`, by
+/// name.
+pub fn project_servers(dir: &Path) -> Vec<String> {
+    let _ = dir;
+    Vec::new()
 }
 
 /// The hooks a worker installs, as (CLI event name, `kudo-shim hook` argument).
