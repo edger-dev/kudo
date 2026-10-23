@@ -29,6 +29,12 @@ the same check again, due at that time; nothing repeats on its own, so a
 recurring check is one the worker snoozes each time. The verdict is written
 into the submission, so the context's log is the check log.
 
+A tool that seems missing may only be still connecting: the worker's MCP
+servers come up after its session starts. Every claim tells the worker to look
+again, twice and a minute apart, before it snoozes, fails, releases or reports
+the tool absent, and to say in its note that it re-probed. A note that names a
+missing tool without that is worth a second look.
+
 ## Evidence
 
 A check's result is usually "I ran X and saw Y". Each shell call a worker

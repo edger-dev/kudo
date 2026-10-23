@@ -66,10 +66,10 @@ pub struct Worker<'a> {
 
 /// A tool that seems missing may still be connecting: the CLI's MCP servers
 /// come up after the session starts.
-// implements: de4651412ec1ddcc22fee7f35f41ca4f2eca1fdb2c2ef6c65f799076226b4a62
+// implements: de4651412ec1ddcc22fee7f35f41ca4f2eca1fdb2c2ef6c65f799076226b4a62@c6534c82f0f4031fc431281a8844bdd2450d93721de03ac896a00b248ac2fab5
 const REPROBE: &str = "A tool that seems missing may still be connecting: MCP servers come \
                        up after the session starts. Look again, twice, a minute apart, \
-                       before you snooze, fail or report it absent, and say in your note \
+                       before you snooze, fail, release or report it absent, and say in your note \
                        that you re-probed.";
 
 impl<'a> Worker<'a> {

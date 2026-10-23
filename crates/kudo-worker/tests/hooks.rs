@@ -697,7 +697,7 @@ fn a_checks_claim_names_its_condition_window_and_verdicts() {
 /// Every claim, a check or not, says a tool that seems missing may still be
 /// connecting: look again, twice, a minute apart, before giving up on it, and
 /// say so in the note.
-// implements: de4651412ec1ddcc22fee7f35f41ca4f2eca1fdb2c2ef6c65f799076226b4a62
+// implements: de4651412ec1ddcc22fee7f35f41ca4f2eca1fdb2c2ef6c65f799076226b4a62@c6534c82f0f4031fc431281a8844bdd2450d93721de03ac896a00b248ac2fab5
 #[test]
 fn every_claim_says_to_reprobe_a_missing_tool() {
     let g = Fixture::new();
@@ -720,8 +720,14 @@ fn every_claim_says_to_reprobe_a_missing_tool() {
             kudo_worker::Pull::Claimed(c) => c,
             other => panic!("{other:?}"),
         };
+        assert_eq!(
+            claim.item.check.is_some(),
+            round == 1,
+            "the plain item first"
+        );
         let text = w.claim_text(&claim).unwrap();
         for part in [
+            "release",
             "still be connecting",
             "twice",
             "a minute apart",
