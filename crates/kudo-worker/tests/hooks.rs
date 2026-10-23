@@ -694,6 +694,45 @@ fn a_checks_claim_names_its_condition_window_and_verdicts() {
     }
 }
 
+/// Every claim, a check or not, says a tool that seems missing may still be
+/// connecting: look again, twice, a minute apart, before giving up on it, and
+/// say so in the note.
+// implements: de4651412ec1ddcc22fee7f35f41ca4f2eca1fdb2c2ef6c65f799076226b4a62
+#[test]
+fn every_claim_says_to_reprobe_a_missing_tool() {
+    let g = Fixture::new();
+    g.store.enqueue(&g.ctx, "read the channel", T0).unwrap();
+    g.store
+        .enqueue_check(
+            &g.ctx,
+            &kudo_context::Check {
+                what: "the backup ran".into(),
+                pass: "a snapshot newer than 26 hours".into(),
+                window: String::new(),
+            },
+            None,
+            T0,
+        )
+        .unwrap();
+    let w = g.worker(10);
+    for _ in 0..2 {
+        let claim = match w.pull(T0).unwrap() {
+            kudo_worker::Pull::Claimed(c) => c,
+            other => panic!("{other:?}"),
+        };
+        let text = w.claim_text(&claim).unwrap();
+        for part in [
+            "still be connecting",
+            "twice",
+            "a minute apart",
+            "re-probed",
+        ] {
+            assert!(text.contains(part), "{part:?} missing from {text}");
+        }
+        g.submit_held(T0 + 1);
+    }
+}
+
 /// A due item is not handed over before its time: the Stop hook lets the
 /// session wait (or end) instead.
 // implements: 716432a845eb22babf957938aaa9a9c0f3cd3bea3ebee24c89a5147a795e7e2b@80a3c962223cc4b37ffceccfdfb83cb9d143fd3e956d4cbe19c7ec3e93774ffd
