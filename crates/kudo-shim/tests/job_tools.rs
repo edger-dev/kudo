@@ -886,7 +886,7 @@ fn a_tail_of_an_unknown_end_says_the_node_restarted_under_it() {
 /// anywhere else that path does not exist, so it sends none and the node runs
 /// the job in its allowed root.
 ///
-/// implements: 213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104@213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104
+/// implements: 213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104@b6cfc7656b31f14e3569d756e5cf9973fae48ad732620e374c6b81d3bb0e35a4
 #[test]
 fn an_adhoc_start_sends_its_own_directory_only_to_its_own_node() {
     let here = || Ok(std::path::PathBuf::from("/home/me/project"));

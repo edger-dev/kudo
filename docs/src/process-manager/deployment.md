@@ -145,7 +145,7 @@ of the seed. A governed start that carries an environment is refused.
   Unset, there are no rules, so every command waits for a verdict. A file
   that is named but missing or broken stops the node from starting.
 - `KUDO_NODE_ALLOWED_ROOT` — every job's cwd must resolve inside it (default
-  `/`).
+  `/`). An ad-hoc start from another machine that names no cwd runs here.
 - `KUDO_APPROVAL_TIMEOUT` — seconds a request waits for a verdict (default
   1800).
 

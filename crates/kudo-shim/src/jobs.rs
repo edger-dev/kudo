@@ -36,12 +36,21 @@ pub const DEFAULT_JOB_CONNECTOR: &str = "jobs-0";
 
 /// The cwd an ad-hoc start sends when the caller named none.
 ///
-/// implements: 213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104@213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104
+/// On its own node the shim sends its own directory — the session's project,
+/// inherited for free because the shim runs as the session's child. Anywhere
+/// else that path does not exist, so it sends none and the node runs the job
+/// in its allowed root. A link is another process of the same node, on the
+/// same machine, so only the node's name decides.
+///
+/// implements: 213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104@b6cfc7656b31f14e3569d756e5cf9973fae48ad732620e374c6b81d3bb0e35a4
 pub fn adhoc_cwd(
-    _target_node: &str,
-    _own_node: &str,
+    target_node: &str,
+    own_node: &str,
     own_dir: std::io::Result<std::path::PathBuf>,
 ) -> Result<String, ShimError> {
+    if target_node != own_node {
+        return Ok(String::new());
+    }
     own_dir
         .map(|d| d.to_string_lossy().into_owned())
         .map_err(|e| {

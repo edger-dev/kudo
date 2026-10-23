@@ -23,7 +23,6 @@ use rmcp::schemars;
 use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
 use serde::Deserialize;
 
-use crate::error::ShimError;
 use crate::hub::HubClient;
 use crate::jobs::{self, DEFAULT_JOB_CONNECTOR};
 use crate::mesh::render_mesh;
@@ -88,8 +87,8 @@ pub struct StartArgs {
     /// nothing; a command needing a pipeline ships a wrapper program as its
     /// first element.
     pub argv: Vec<String>,
-    /// Working directory. Omit to use this session's own directory, which is
-    /// almost always what you want.
+    /// Working directory. Omit to use this session's own directory on this
+    /// machine's node, or the node's allowed root on any other node.
     pub cwd: Option<String>,
     /// Give up after this many milliseconds. Omit for no deadline.
     pub timeout_ms: Option<u64>,
@@ -775,20 +774,19 @@ impl ShimServer {
             Ok(hub) => hub,
             Err(no_hub) => return Ok(no_hub),
         };
-        // The working directory defaults to **this shim's own**, which is the
-        // session's project directory, inherited for free because the shim runs
-        // as a child of the session. That is the whole reason workspace identity
-        // needs no configuration and cannot be set to the wrong thing by
-        // accident.
+        // The working directory defaults to **this shim's own** on its own
+        // node — the session's project directory, inherited for free because
+        // the shim runs as a child of the session — and to the node's allowed
+        // root anywhere else, where this path does not exist.
         let cwd = match args.cwd {
             Some(cwd) => cwd,
-            None => match std::env::current_dir() {
-                Ok(cwd) => cwd.to_string_lossy().into_owned(),
-                Err(e) => {
-                    return reply(Err(ShimError::Hub(format!(
-                        "no cwd was given and this session's own directory could not be read: {e}"
-                    ))));
-                }
+            None => match jobs::adhoc_cwd(
+                &args.node,
+                &crate::cli::node_name(),
+                std::env::current_dir(),
+            ) {
+                Ok(cwd) => cwd,
+                Err(e) => return reply(Err(e)),
             },
         };
 
