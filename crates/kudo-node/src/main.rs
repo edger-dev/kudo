@@ -23,11 +23,7 @@ use kudo_node::worker::{PaneSetup, WORKER_CONNECTOR, WorkerConnector};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let node = std::env::var("NODE_ID").unwrap_or_else(|_| {
-        std::fs::read_to_string("/etc/hostname")
-            .map(|h| h.trim().to_string())
-            .unwrap_or_else(|_| "unnamed".to_string())
-    });
+    let node = kudo_worker::env::node_name();
     let link = std::env::var("NODE_LINK").unwrap_or_else(|_| LinkLabel::STABLE.to_string());
     let connector_id = std::env::var("KUDO_JOB_CONNECTOR").unwrap_or_else(|_| "jobs-0".to_string());
 

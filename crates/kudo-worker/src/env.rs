@@ -136,3 +136,28 @@ impl WorkerSetup {
         }
     }
 }
+
+/// The node's own name, in its environment.
+pub const NODE_ID_ENV: &str = "NODE_ID";
+
+/// This node's name, as the hub knows it: `NODE_ID`, else the machine's
+/// hostname (`/etc/hostname`, then the kernel's), else `unnamed`. The one
+/// rule, so a shim on this machine can tell its own node from another.
+pub fn node_name() -> String {
+    node_name_from(
+        |name| std::env::var(name).ok(),
+        |path| std::fs::read_to_string(path).ok(),
+    )
+}
+
+/// [`node_name`] over a given environment and file system.
+pub fn node_name_from(
+    var: impl Fn(&str) -> Option<String>,
+    read: impl Fn(&str) -> Option<String>,
+) -> String {
+    let named = |v: Option<String>| v.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    named(var(NODE_ID_ENV))
+        .or_else(|| named(read("/etc/hostname")))
+        .or_else(|| named(read("/proc/sys/kernel/hostname")))
+        .unwrap_or_else(|| "unnamed".to_owned())
+}

@@ -416,19 +416,25 @@ fn mirror_settings() -> Vec<(String, String)> {
     mirror_settings_from(std::env::vars())
 }
 
-/// This machine's node name: `KUDO_NODE`, else its hostname.
+/// This machine's node name: `KUDO_NODE` (the node sets it for its workers),
+/// else the name the node itself goes by — `NODE_ID`, else the hostname — so a
+/// shim and its node never disagree on which node is this one.
 pub fn node_name() -> String {
-    if let Ok(node) = std::env::var("KUDO_NODE")
-        && !node.trim().is_empty()
-    {
-        return node.trim().to_owned();
+    node_name_from(
+        |name| std::env::var(name).ok(),
+        |path| std::fs::read_to_string(path).ok(),
+    )
+}
+
+/// [`node_name`] over a given environment and file system.
+pub fn node_name_from(
+    var: impl Fn(&str) -> Option<String>,
+    read: impl Fn(&str) -> Option<String>,
+) -> String {
+    match var("KUDO_NODE").map(|n| n.trim().to_owned()) {
+        Some(node) if !node.is_empty() => node,
+        _ => kudo_worker::env::node_name_from(var, read),
     }
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .ok()
-        .or_else(|| std::env::var("HOSTNAME").ok())
-        .map(|h| h.trim().to_owned())
-        .filter(|h| !h.is_empty())
-        .unwrap_or_else(|| "localhost".to_owned())
 }
 
 /// Where a worker under `ctx` starts: the path of the declared repo `repo` on

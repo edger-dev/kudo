@@ -40,7 +40,8 @@ pub const DEFAULT_JOB_CONNECTOR: &str = "jobs-0";
 /// inherited for free because the shim runs as the session's child. Anywhere
 /// else that path does not exist, so it sends none and the node runs the job
 /// in its allowed root. A link is another process of the same node, on the
-/// same machine, so only the node's name decides.
+/// same machine, so only the node's name decides. The names are those of the
+/// shim's own hub, where a bare name is a node on this hub.
 ///
 /// implements: 213c9b96650e507051c35dd2d9f71d5d8ba6bb3e8c4ec72b2a9e1b6b7f460104@b6cfc7656b31f14e3569d756e5cf9973fae48ad732620e374c6b81d3bb0e35a4
 pub fn adhoc_cwd(

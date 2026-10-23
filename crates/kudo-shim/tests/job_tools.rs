@@ -956,3 +956,34 @@ async fn an_adhoc_start_without_a_cwd_runs_in_the_nodes_allowed_root() {
     assert_eq!(seen, root.display().to_string());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The shim names this machine's node as the node names itself: its workers'
+/// `KUDO_NODE` first, else the node's own `NODE_ID`, else the hostname. A
+/// mismatch would make a start on this node look remote and lose its cwd.
+#[test]
+fn the_shim_names_its_node_as_the_node_does() {
+    let env = |pairs: &'static [(&'static str, &'static str)]| {
+        move |name: &str| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| (*v).to_owned())
+        }
+    };
+    let files = |name: &str| (name == "/etc/hostname").then(|| "yolo\n".to_owned());
+    let none = |_: &str| None;
+
+    let both = env(&[("KUDO_NODE", "worker-node"), ("NODE_ID", "pc-main")]);
+    assert_eq!(kudo_shim::cli::node_name_from(both, files), "worker-node");
+    let id = env(&[("NODE_ID", "pc-main")]);
+    assert_eq!(kudo_shim::cli::node_name_from(id, files), "pc-main");
+    assert_eq!(kudo_worker::env::node_name_from(id, files), "pc-main");
+    assert_eq!(kudo_shim::cli::node_name_from(env(&[]), files), "yolo");
+    assert_eq!(kudo_worker::env::node_name_from(env(&[]), files), "yolo");
+    let blank = env(&[("KUDO_NODE", "  "), ("NODE_ID", "")]);
+    assert_eq!(kudo_shim::cli::node_name_from(blank, files), "yolo");
+    let kernel = |name: &str| (name == "/proc/sys/kernel/hostname").then(|| "box".to_owned());
+    assert_eq!(kudo_shim::cli::node_name_from(env(&[]), kernel), "box");
+    assert_eq!(kudo_worker::env::node_name_from(env(&[]), kernel), "box");
+    assert_eq!(kudo_worker::env::node_name_from(env(&[]), none), "unnamed");
+}

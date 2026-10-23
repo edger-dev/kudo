@@ -94,7 +94,7 @@ remote one.
 ## Environment
 
 **`kudo-node`** — `MOCO_DIR` (state directory), `NODE_ID` (defaults to the
-hostname), `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]),
+hostname; a shim on the machine reads it too, to know its own node), `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]),
 `KUDO_JOB_CONNECTOR` (default `jobs-0`), `KUDO_PTY_HOLDER`, `MOCO_PORT_RANGE`
 (default `10000-19999`).
 

@@ -28,7 +28,7 @@ are then not offered, or, if a hub address is set but the hub is down, answer
 | Tool | Use it for |
 |---|---|
 | `job_start` | Start a declared job by name — this workspace's, or with `node_recipe` one of the node's recipes. |
-| `job_start_adhoc` | Run something not in the manifest. With no `cwd` it runs in this session's directory on this machine's node, and in the node's allowed root on any other. On a governed node an argv no rule allows waits for the author's verdict, and the reply says so. |
+| `job_start_adhoc` | Run something not in the manifest. With no `cwd` it runs in this session's directory on this machine's node, and in the node's allowed root (`/` unless the node sets one) on any other. This machine's node is `KUDO_NODE`, else `NODE_ID`, else the hostname — the name the node goes by. On a governed node an argv no rule allows waits for the author's verdict, and the reply says so. |
 | `job_wait` | Wait for a job to end (approval included); says how, and under which authority. |
 | `job_ensure` | Bring up `@Session` jobs; safe to re-run. |
 | `job_restart` | Re-read the declaration and start again. |
