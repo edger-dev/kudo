@@ -715,7 +715,7 @@ fn every_claim_says_to_reprobe_a_missing_tool() {
         )
         .unwrap();
     let w = g.worker(10);
-    for _ in 0..2 {
+    for round in 0..2 {
         let claim = match w.pull(T0).unwrap() {
             kudo_worker::Pull::Claimed(c) => c,
             other => panic!("{other:?}"),
@@ -729,7 +729,10 @@ fn every_claim_says_to_reprobe_a_missing_tool() {
         ] {
             assert!(text.contains(part), "{part:?} missing from {text}");
         }
-        g.submit_held(T0 + 1);
+        // The plain item first (checks close with a verdict, not this).
+        if round == 0 {
+            g.submit_held(T0 + 1);
+        }
     }
 }
 

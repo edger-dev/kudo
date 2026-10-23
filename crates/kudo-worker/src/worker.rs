@@ -64,6 +64,14 @@ pub struct Worker<'a> {
     observer: Option<Observer>,
 }
 
+/// A tool that seems missing may still be connecting: the CLI's MCP servers
+/// come up after the session starts.
+// implements: de4651412ec1ddcc22fee7f35f41ca4f2eca1fdb2c2ef6c65f799076226b4a62
+const REPROBE: &str = "A tool that seems missing may still be connecting: MCP servers come \
+                       up after the session starts. Look again, twice, a minute apart, \
+                       before you snooze, fail or report it absent, and say in your note \
+                       that you re-probed.";
+
 impl<'a> Worker<'a> {
     pub fn new(store: &'a ContextStore, book: &'a LeaseBook, cfg: WorkerConfig) -> Self {
         Self {
@@ -138,7 +146,7 @@ impl<'a> Worker<'a> {
             "Claim {id} (attempt {attempt}) under context {ctx}:\n\n{ask}{check}\n\n{heads}\n\n\
              Work it, then call `submit` with claim id {id}, the full new head built \
              on the one above, a short log and what you established with its \
-             evidence. Call `release` instead if you cannot finish it.",
+             evidence. Call `release` instead if you cannot finish it.\n\n{REPROBE}",
             id = claim.id.0,
             attempt = claim.attempt,
             ctx = claim.context.0,
