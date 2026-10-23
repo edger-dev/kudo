@@ -451,6 +451,8 @@ pub fn render_jobs(reply: &ListReply) -> String {
             }
             if j.external {
                 line.push_str("  [adopted]");
+            } else if j.status == moco_job::JobStatus::OutcomeUnknown {
+                line.push_str("  (the node restarted under it; no exit kept)");
             }
             line.push_str(&format!("  [{}]", j.scope));
             line
@@ -613,9 +615,15 @@ pub fn status_word(status: &moco_job::JobStatus) -> String {
 }
 
 /// What a job's end needs said beside its word: why an end is unknown.
+// implements: 0119d16e256891de4a71a14418f59c33419207f49792e58001639f8cbef567a6@d7ba7c887089648434bc819ad57473bb930242c27396d150b11617388bb85da0
 pub fn end_note(status: &moco_job::JobStatus) -> &'static str {
-    let _ = status;
-    ""
+    match status {
+        moco_job::JobStatus::OutcomeUnknown => {
+            " (the node restarted while it ran and nothing kept its exit: check its \
+             effect another way)"
+        }
+        _ => "",
+    }
 }
 
 /// The authority a job ran (or was refused) under, as one word.

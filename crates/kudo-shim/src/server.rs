@@ -845,9 +845,10 @@ impl ShimServer {
         reply(started.map(|s| {
             if let Some(end) = &ended {
                 format!(
-                    "job {} ended {} under {}{cite_end}",
+                    "job {} ended {}{} under {}{cite_end}",
                     s.id,
                     jobs::status_word(&end.status),
+                    jobs::end_note(&end.status),
                     jobs::verdict_word(end.verdict)
                 )
             } else if s.waiting {
@@ -904,9 +905,10 @@ impl ShimServer {
         }
         reply(ended.map(|end| match end {
             Some(end) => format!(
-                "job {} ended {} under {}{cite}",
+                "job {} ended {}{} under {}{cite}",
                 args.id,
                 jobs::status_word(&end.status),
+                jobs::end_note(&end.status),
                 jobs::verdict_word(end.verdict)
             ),
             None => format!(

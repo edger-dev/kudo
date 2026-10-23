@@ -42,8 +42,13 @@ daemon: a supervisor handed a fresh directory on every start re-adopts nothing,
 boots nothing, and forgets every port it ever allocated. Nothing fails loudly;
 it simply comes up empty.
 
-**`KUDO_PTY_HOLDER`.** Without it, `@Terminal` jobs still run — they just lose
-their live terminal whenever the daemon restarts.
+**`KUDO_PTY_HOLDER`.** Every job runs under the holder: it outlives the daemon
+and writes the job's exit beside its output, so a job that ends while the daemon
+is down — a deploy that restarts the node, run through the node — still reads
+back how it ended. Without it, jobs still run, but `@Terminal` jobs lose their
+live terminal whenever the daemon restarts, and a job that ends while the daemon
+is down reads `outcome-unknown` ("the node restarted under it"). Deploy the
+holder and the daemon from the same build: an older holder refuses log jobs.
 
 ## The node manifest
 

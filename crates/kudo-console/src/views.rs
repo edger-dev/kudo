@@ -228,6 +228,10 @@ pub fn job_views(jobs: Vec<moco_job::wire::JobSummary>, now_ms: u64) -> Vec<crat
             let phase = match job.status {
                 JobStatus::PendingApproval => format!("waiting {}", span(job.phase_s)),
                 JobStatus::Running => format!("running {}", span(job.phase_s)),
+                // implements: 0119d16e256891de4a71a14418f59c33419207f49792e58001639f8cbef567a6@d7ba7c887089648434bc819ad57473bb930242c27396d150b11617388bb85da0
+                JobStatus::OutcomeUnknown if !job.external => {
+                    "the node restarted under it; no exit kept".to_owned()
+                }
                 _ => match created_ms(&job.id) {
                     Some(at) => format!("started {} ago", span(now_ms.saturating_sub(at) / 1000)),
                     None => "ended".to_owned(),
