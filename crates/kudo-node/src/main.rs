@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use hub_protocol::{Connector as ConnectorDescriptor, ConnectorKind, LinkLabel, NodeId};
-use moco_job::{FileAuditLog, JobRegistry};
 use node::reconnect::{Backoff, DialOutcome};
 use node::{Connectors, HubEndpoint, NodeConfig};
 

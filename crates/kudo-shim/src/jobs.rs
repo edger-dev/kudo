@@ -190,12 +190,19 @@ pub fn render_recipes(reply: &moco_job::wire::RecipesReply) -> String {
                 format!(" — {}", r.about)
             };
             let argv: Vec<String> = r.argv.iter().map(|a| quote_arg(a)).collect();
+            let lifetime = match r.lifetime {
+                moco_job::lifecycle::Lifetime::OneShot => "one-shot",
+                moco_job::lifecycle::Lifetime::Service => "service",
+            };
+            let place = if r.cwd.is_empty() {
+                "no cwd declared, so it cannot start".to_owned()
+            } else {
+                format!("in {}", r.cwd)
+            };
             format!(
-                "{}{about}\n  {}  (in {}, {:?})",
+                "{}{about}\n  {}  ({place}, {lifetime})",
                 r.name,
-                argv.join(" "),
-                r.cwd,
-                r.lifetime
+                argv.join(" ")
             )
         })
         .collect::<Vec<_>>()
@@ -204,7 +211,8 @@ pub fn render_recipes(reply: &moco_job::wire::RecipesReply) -> String {
 
 /// One argv element as a POSIX shell would read it back: bare when safe.
 fn quote_arg(s: &str) -> String {
-    let safe = |c: char| c.is_ascii_alphanumeric() || "/._-+:=@,%".contains(c);
+    // No `=`: a bare `A=b` first word reads back as an assignment.
+    let safe = |c: char| c.is_ascii_alphanumeric() || "/._-+:@,%".contains(c);
     if !s.is_empty() && s.chars().all(safe) {
         s.to_owned()
     } else {

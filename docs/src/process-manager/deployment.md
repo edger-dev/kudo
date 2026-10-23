@@ -59,7 +59,8 @@ A node entry must declare an **absolute `cwd`** — there is no workspace root t
 fall back on, and an ambient working directory for a system service is a bug
 that gets blamed on something else later.
 
-Every other entry is a **recipe**: a named command the node offers. Any
+Every entry left manual (no `autostart`) is a **recipe**: a named command the
+node offers. Any
 session on any host can list them (`recipes`) and start one by name
 (`job_start` with `node_recipe`), so an agent need not know the exact argv —
 which also keeps store paths out of what agents have to remember. An `about`

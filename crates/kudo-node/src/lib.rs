@@ -32,10 +32,10 @@ pub fn open_registry(
     state: &std::path::Path,
     node: &str,
 ) -> Result<moco_job::JobRegistry, moco_job::JobError> {
-    let _ = node;
-    moco_job::JobRegistry::with_policy(policy)?
+    Ok(moco_job::JobRegistry::with_policy(policy)?
         .with_audit(std::sync::Arc::new(moco_job::FileAuditLog::new(
             state.join("audit.styxl"),
         )))
-        .with_dir(state)
+        .with_dir(state)?
+        .with_node(node))
 }
