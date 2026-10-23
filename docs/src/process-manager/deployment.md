@@ -7,7 +7,7 @@ Three binaries, and three quiet lines that are load-bearing.
 | Binary | Role |
 |---|---|
 | `kudo-node` | The supervisor daemon. One per machine. |
-| `moco-pty-holder` | Owns one `@Terminal` job's pty. Spawned by the daemon. |
+| `moco-pty-holder` | Holds one job — a `@Terminal` job's pty, and every job's exit. Spawned by the daemon. |
 | `kudo-shim` | The MCP server. One per workspace, launched by the agent. |
 
 `moco-pty-holder` must be installed **beside** `kudo-node`, or named by
@@ -45,10 +45,13 @@ it simply comes up empty.
 **`KUDO_PTY_HOLDER`.** Every job runs under the holder: it outlives the daemon
 and writes the job's exit beside its output, so a job that ends while the daemon
 is down — a deploy that restarts the node, run through the node — still reads
-back how it ended. Without it, jobs still run, but `@Terminal` jobs lose their
-live terminal whenever the daemon restarts, and a job that ends while the daemon
-is down reads `outcome-unknown` ("the node restarted under it"). Deploy the
-holder and the daemon from the same build: an older holder refuses log jobs.
+back how it ended. The daemon finds it through `KUDO_PTY_HOLDER`, or beside its
+own binary. Without one, jobs still run, but `@Terminal` jobs lose their live
+terminal whenever the daemon restarts, and any job still running across a
+restart reads `outcome-unknown` ("the node restarted under it") once it ends:
+the new daemon is not its parent and cannot collect its exit. Deploy the holder
+and the daemon from the same build: an older holder does not know log jobs, and
+every log job would end at once with the holder's error code.
 
 ## The node manifest
 

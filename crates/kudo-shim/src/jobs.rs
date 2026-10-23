@@ -480,8 +480,9 @@ pub fn render_tail(reply: &TailReply) -> String {
         String::new()
     };
     format!(
-        "status: {:?}\nnext_offset: {}{gap}\n---\n{}",
+        "status: {:?}{}\nnext_offset: {}{gap}\n---\n{}",
         reply.status,
+        end_note(&reply.status),
         reply.next_offset,
         String::from_utf8_lossy(&reply.bytes)
     )

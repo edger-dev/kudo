@@ -450,7 +450,11 @@ impl ShimServer {
             setup,
             node,
             id,
-            &jobs::status_word(&end.status),
+            &format!(
+                "{}{}",
+                jobs::status_word(&end.status),
+                jobs::end_note(&end.status)
+            ),
             &jobs::verdict_word(end.verdict),
             &output,
             now(),

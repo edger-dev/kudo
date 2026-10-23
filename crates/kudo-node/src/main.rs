@@ -113,8 +113,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(path) => registry.with_pty_holder(path),
         None => {
             eprintln!(
-                "no moco-pty-holder found — terminal jobs will run without one, \
-                 so their live terminal will not survive a restart of this daemon"
+                "no moco-pty-holder found — jobs will run without one, so a \
+                 terminal job's live terminal, and the exit of any job still \
+                 running, will not survive a restart of this daemon"
             );
             registry
         }
