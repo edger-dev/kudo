@@ -509,16 +509,16 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
         idle_limit: env_num(kudo_worker::env::IDLE_LIMIT_ENV)
             .unwrap_or(kudo_worker::env::DEFAULT_IDLE_LIMIT),
     };
+    let harness = match kudo_worker::harness_from(|key| std::env::var(key).ok()) {
+        Ok(harness) => harness,
+        Err(error) => return error,
+    };
     let cli = std::env::var("KUDO_AGENT_CLI").unwrap_or_else(|_| "claude".to_owned());
-    let mut plan = kudo_worker::plan(&setup, &cli, &shim, hub.as_deref(), &mirror_settings());
-    // The node's own decision, from its own environment.
-    if kudo_worker::env::bypass_from(|k| std::env::var(k).ok()) {
+    let bypass = kudo_worker::env::bypass_from(|k| std::env::var(k).ok());
+    if bypass {
         eprintln!("kudo: this node runs workers bypassing permissions");
-        plan = plan.bypassing();
     }
     // Only kudo's MCP server, or the user's own as well: the node's decision.
-    // Either way the repository's project servers are not offered. The
-    // repository is where the CLI will run.
     let strict = kudo_worker::env::strict_mcp_from(|k| std::env::var(k).ok());
     if strict {
         eprintln!("kudo: this node gives workers kudo's MCP server only");
@@ -527,7 +527,28 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
         .clone()
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| ".".into());
-    plan = plan.for_node_mcp(strict, &repo);
+    let plan = harness.launch(
+        &setup,
+        &cli,
+        &shim,
+        hub.as_deref(),
+        &mirror_settings(),
+        kudo_worker::LaunchOptions {
+            bypass,
+            strict_mcp: strict,
+            repo: &repo,
+        },
+    );
+    for file in &plan.files {
+        if let Some(parent) = file.path.parent()
+            && let Err(error) = std::fs::create_dir_all(parent)
+        {
+            return format!("cannot create {}: {error}", parent.display());
+        }
+        if let Err(error) = std::fs::write(&file.path, &file.contents) {
+            return format!("cannot write {}: {error}", file.path.display());
+        }
+    }
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
     };

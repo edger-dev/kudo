@@ -15,34 +15,29 @@
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
 
 use kudo_context::Now;
-use kudo_worker::{LeaseBook, Stop, Worker, WorkerSetup};
-use serde_json::{Value, json};
+use kudo_worker::{AgentHarness, ClaudeCode, LeaseBook, Worker, WorkerSetup, harness_from};
+use serde_json::Value;
 
 pub use kudo_worker::harness::HookReply;
 
-impl HookReply {
-    /// A failure the CLI shows the human (exit code 1 is non-blocking: the
-    /// session goes on, but the error is visible).
-    fn failed(message: impl std::fmt::Display) -> Self {
-        Self {
-            stdout: String::new(),
-            code: 1,
-        }
-        .with_stderr(message)
-    }
-
-    fn with_stderr(self, message: impl std::fmt::Display) -> Self {
-        eprintln!("kudo-shim hook: {message}");
-        self
-    }
-}
-
 /// Answer one hook event for the worker `setup` describes.
 pub fn run(event: &str, stdin: &str, setup: &WorkerSetup, now: Now) -> HookReply {
-    run_with(event, stdin, setup, now, crate::events::observer_from_env())
+    let harness = match harness_from(|key| std::env::var(key).ok()) {
+        Ok(harness) => harness,
+        Err(error) => return HookReply::failed(error),
+    };
+    run_with_harness(
+        event,
+        stdin,
+        setup,
+        now,
+        crate::events::observer_from_env(),
+        harness.as_ref(),
+    )
 }
 
-/// [`run`], with the observer of the loop's events given.
+/// [`run`], with the observer of the loop's events given and Claude's
+/// protocol preserved for existing callers.
 pub fn run_with(
     event: &str,
     stdin: &str,
@@ -50,11 +45,23 @@ pub fn run_with(
     now: Now,
     observer: Option<kudo_worker::Observer>,
 ) -> HookReply {
+    run_with_harness(event, stdin, setup, now, observer, &ClaudeCode)
+}
+
+/// [`run`], with the observer and the agent's wire protocol given.
+pub fn run_with_harness(
+    event: &str,
+    stdin: &str,
+    setup: &WorkerSetup,
+    now: Now,
+    observer: Option<kudo_worker::Observer>,
+    harness: &dyn AgentHarness,
+) -> HookReply {
     let input: Value = serde_json::from_str(stdin).unwrap_or(Value::Null);
     // A shell call's record needs no mirror, and must not wait on one.
     // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd
     if matches!(event, "post-tool-use" | "post-tool-use-failure") {
-        return post_tool_use(&input, setup, now);
+        return post_tool_use(&input, setup, now, harness);
     }
     let store = match crate::cli::open_store(
         &setup.store_dir,
@@ -78,14 +85,9 @@ pub fn run_with(
     }
 
     let result = match event {
-        "session-start" => worker.session_start(now).map(|text| {
-            HookReply::json(&json!({
-                "hookSpecificOutput": {
-                    "hookEventName": "SessionStart",
-                    "additionalContext": text,
-                }
-            }))
-        }),
+        "session-start" => worker
+            .session_start(now)
+            .map(|text| harness.session_start_reply(&text)),
         // Waits for work: the clock runs on from `now`.
         "stop" => {
             let started = std::time::Instant::now();
@@ -94,13 +96,7 @@ pub fn run_with(
                 || std::thread::sleep(std::time::Duration::from_secs(kudo_worker::env::WAIT_POLL));
             worker.stop_waiting(clock, pause, kudo_worker::env::WAIT_WINDOW)
         }
-        .map(|stop| match stop {
-            Stop::Block { reason } => HookReply::json(&json!({
-                "decision": "block",
-                "reason": reason,
-            })),
-            Stop::Allow(_) | Stop::Wait => HookReply::quiet(),
-        }),
+        .map(|stop| harness.stop_reply(&stop)),
         "pre-compact" => worker.pre_compact(now).map(|()| HookReply::quiet()),
         "user-prompt-submit" => {
             let prompt = input
@@ -117,7 +113,12 @@ pub fn run_with(
 /// A shell call just returned (or failed): record it in the lease's trace
 /// and tell the worker the kino to cite. Any other tool is let be. Best
 /// effort: a failed record never fails the call.
-fn post_tool_use(input: &Value, setup: &WorkerSetup, now: Now) -> HookReply {
+fn post_tool_use(
+    input: &Value,
+    setup: &WorkerSetup,
+    now: Now,
+    harness: &dyn AgentHarness,
+) -> HookReply {
     if input.get("tool_name").and_then(Value::as_str) != Some("Bash") {
         return HookReply::quiet();
     }
@@ -164,18 +165,16 @@ fn post_tool_use(input: &Value, setup: &WorkerSetup, now: Now) -> HookReply {
         }
     };
     match store.record_tool_call(&setup.context, &setup.lease, command, exit, &output, now) {
-        Ok(id) => HookReply::json(&json!({
-            "hookSpecificOutput": {
-                "hookEventName": input
-                    .get("hook_event_name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("PostToolUse"),
-                "additionalContext": format!(
-                    "kudo recorded this shell call as kino://{id}: cite it as evidence for \
-                     what it showed."
-                ),
-            }
-        })),
+        Ok(id) => harness.post_tool_reply(
+            input
+                .get("hook_event_name")
+                .and_then(Value::as_str)
+                .unwrap_or("PostToolUse"),
+            &format!(
+                "kudo recorded this shell call as kino://{id}: cite it as evidence for \
+                 what it showed."
+            ),
+        ),
         Err(e) => {
             eprintln!("kudo: could not record the shell call: {e}");
             HookReply::quiet()

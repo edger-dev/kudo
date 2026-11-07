@@ -69,6 +69,20 @@ impl HookReply {
             code: 0,
         }
     }
+
+    /// A failure the CLI shows the human (exit code 1 is non-blocking).
+    pub fn failed(message: impl std::fmt::Display) -> Self {
+        Self {
+            stdout: String::new(),
+            code: 1,
+        }
+        .with_stderr(message)
+    }
+
+    pub fn with_stderr(self, message: impl std::fmt::Display) -> Self {
+        eprintln!("kudo-shim hook: {message}");
+        self
+    }
 }
 
 /// CLI-specific launch and hook behavior, kept out of the worker engine.
@@ -97,7 +111,15 @@ pub struct ClaudeCode;
 
 impl AgentHarness for ClaudeCode {
     fn capabilities(&self) -> HarnessCapabilities {
-        HarnessCapabilities::default()
+        HarnessCapabilities {
+            interactive: true,
+            headless: true,
+            caller_session_id: true,
+            config_artifacts: false,
+            strict_mcp: true,
+            session_start_context: true,
+            post_tool_context: true,
+        }
     }
 
     fn launch(
@@ -113,19 +135,36 @@ impl AgentHarness for ClaudeCode {
         if options.bypass {
             plan = plan.bypassing();
         }
+        plan.env.push((HARNESS_ENV.to_owned(), "claude".to_owned()));
         plan.for_node_mcp(options.strict_mcp, options.repo)
     }
 
-    fn session_start_reply(&self, _context: &str) -> HookReply {
-        HookReply::quiet()
+    fn session_start_reply(&self, context: &str) -> HookReply {
+        HookReply::json(&serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": context,
+            }
+        }))
     }
 
-    fn stop_reply(&self, _stop: &Stop) -> HookReply {
-        HookReply::quiet()
+    fn stop_reply(&self, stop: &Stop) -> HookReply {
+        match stop {
+            Stop::Block { reason } => HookReply::json(&serde_json::json!({
+                "decision": "block",
+                "reason": reason,
+            })),
+            Stop::Allow(_) | Stop::Wait => HookReply::quiet(),
+        }
     }
 
-    fn post_tool_reply(&self, _event: &str, _context: &str) -> HookReply {
-        HookReply::quiet()
+    fn post_tool_reply(&self, event: &str, context: &str) -> HookReply {
+        HookReply::json(&serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": event,
+                "additionalContext": context,
+            }
+        }))
     }
 }
 

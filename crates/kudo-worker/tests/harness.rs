@@ -102,7 +102,10 @@ fn claude_hook_replies_preserve_the_existing_wire_protocol() {
 
     let evidence = ClaudeCode.post_tool_reply("PostToolUse", "cite kino://abc");
     let evidence: Value = serde_json::from_str(&evidence.stdout).unwrap();
-    assert_eq!(evidence["hookSpecificOutput"]["hookEventName"], "PostToolUse");
+    assert_eq!(
+        evidence["hookSpecificOutput"]["hookEventName"],
+        "PostToolUse"
+    );
     assert_eq!(
         evidence["hookSpecificOutput"]["additionalContext"],
         "cite kino://abc"
