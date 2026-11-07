@@ -1,0 +1,2 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"9881a66160f569f8377ffe6775af82141e2598bc778f0f27ea11a8260091f930","hash":"5475e568bbaeff06157347991ce7125c106429dab22ebd212f01f6616bbbf8c1","parents":["9881a66160f569f8377ffe6775af82141e2598bc778f0f27ea11a8260091f930"],"ts":"2026-11-07T14:45:40.847433635Z","author":"YJ Park","provenance":"phase 1 complete: Claude adapter and conformance suite","metadata":{"name":"worker-harnesses-plan","status::resolved":"false","task::milestone":"v1"}}
