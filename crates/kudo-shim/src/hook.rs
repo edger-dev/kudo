@@ -97,13 +97,12 @@ pub fn run_with_harness(
             worker.stop_waiting(clock, pause, kudo_worker::env::WAIT_WINDOW)
         }
         .map(|stop| harness.stop_reply(&stop)),
-        "pre-compact" => worker.pre_compact(now).map(|()| HookReply::quiet()),
+        "pre-compact" => worker.pre_compact(now).map(|()| harness.quiet_reply()),
         "user-prompt-submit" => {
-            let prompt = input
-                .get("prompt")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            worker.user_prompt(prompt, now).map(|()| HookReply::quiet())
+            let prompt = harness.user_prompt(&input).unwrap_or_default();
+            worker
+                .user_prompt(prompt, now)
+                .map(|()| harness.quiet_reply())
         }
         other => return HookReply::failed(format!("no hook named `{other}`")),
     };
@@ -119,57 +118,33 @@ fn post_tool_use(
     now: Now,
     harness: &dyn AgentHarness,
 ) -> HookReply {
-    if input.get("tool_name").and_then(Value::as_str) != Some("Bash") {
-        return HookReply::quiet();
-    }
-    let command = input
-        .pointer("/tool_input/command")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    let Some(call) = harness.shell_call(input) else {
+        return harness.quiet_reply();
+    };
     // A call that runs this hook itself would write a record no tool call
     // made: it is not recorded (the call that ran it is, and shows it).
-    if command.contains("hook post-tool-use") {
-        return HookReply::quiet();
+    if call.command.contains("hook post-tool-use") {
+        return harness.quiet_reply();
     }
-    let response = input.get("tool_response").cloned().unwrap_or(Value::Null);
-    let text = |key: &str| {
-        response
-            .get(key)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-    };
-    let mut output = match response.as_str() {
-        Some(whole) => whole.to_owned(),
-        None => text("stdout").to_owned(),
-    };
-    if !text("stderr").is_empty() {
-        output.push_str("\n[stderr]\n");
-        output.push_str(text("stderr"));
-    }
-    // A failed call (PostToolUseFailure) carries its error instead.
-    if let Some(error) = input.get("error").and_then(Value::as_str) {
-        output.push_str("\n[error]\n");
-        output.push_str(error);
-    }
-    let exit = ["exit_code", "exitCode", "returnCode", "code"]
-        .iter()
-        .find_map(|k| response.get(*k).and_then(Value::as_i64))
-        .and_then(|c| i32::try_from(c).ok());
     // Written locally only: a shell call must not wait on the network; the
     // next sync (the Stop hook, a submit) carries it to the mirror.
     let store = match crate::cli::open_store(&setup.store_dir, None, false) {
         Ok(store) => store,
         Err(e) => {
             eprintln!("kudo: could not record the shell call: {e}");
-            return HookReply::quiet();
+            return harness.quiet_reply();
         }
     };
-    match store.record_tool_call(&setup.context, &setup.lease, command, exit, &output, now) {
+    match store.record_tool_call(
+        &setup.context,
+        &setup.lease,
+        &call.command,
+        call.exit,
+        &call.output,
+        now,
+    ) {
         Ok(id) => harness.post_tool_reply(
-            input
-                .get("hook_event_name")
-                .and_then(Value::as_str)
-                .unwrap_or("PostToolUse"),
+            &call.event,
             &format!(
                 "kudo recorded this shell call as kino://{id}: cite it as evidence for \
                  what it showed."
@@ -177,7 +152,7 @@ fn post_tool_use(
         ),
         Err(e) => {
             eprintln!("kudo: could not record the shell call: {e}");
-            HookReply::quiet()
+            harness.quiet_reply()
         }
     }
 }

@@ -457,3 +457,21 @@ fn forged_failed_and_plain_shell_calls() {
     hook::run("post-tool-use", &plain, &setup, T0 + 2);
     assert_eq!(calls(&store), 2);
 }
+
+#[test]
+fn the_explicit_claude_harness_drives_the_same_hook_path() {
+    let (setup, _store) = setup();
+    let reply = hook::run_with_harness(
+        "session-start",
+        &event("SessionStart", r#","source":"startup""#),
+        &setup,
+        T0,
+        None,
+        &kudo_worker::ClaudeCode,
+    );
+    let out = json(&reply);
+    let text = out["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap();
+    assert!(text.contains("state: active"));
+}

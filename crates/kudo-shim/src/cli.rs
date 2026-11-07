@@ -513,7 +513,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
         Ok(harness) => harness,
         Err(error) => return error,
     };
-    let cli = std::env::var("KUDO_AGENT_CLI").unwrap_or_else(|_| "claude".to_owned());
+    let cli = std::env::var("KUDO_AGENT_CLI").ok();
     let bypass = kudo_worker::env::bypass_from(|k| std::env::var(k).ok());
     if bypass {
         eprintln!("kudo: this node runs workers bypassing permissions");
@@ -527,27 +527,24 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
         .clone()
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| ".".into());
-    let plan = harness.launch(
+    let plan = match harness.launch(
         &setup,
-        &cli,
+        cli.as_deref(),
         &shim,
         hub.as_deref(),
         &mirror_settings(),
         kudo_worker::LaunchOptions {
+            mode: kudo_worker::harness::LaunchMode::Interactive,
             bypass,
             strict_mcp: strict,
             repo: &repo,
         },
-    );
-    for file in &plan.files {
-        if let Some(parent) = file.path.parent()
-            && let Err(error) = std::fs::create_dir_all(parent)
-        {
-            return format!("cannot create {}: {error}", parent.display());
-        }
-        if let Err(error) = std::fs::write(&file.path, &file.contents) {
-            return format!("cannot write {}: {error}", file.path.display());
-        }
+    ) {
+        Ok(plan) => plan,
+        Err(error) => return error,
+    };
+    if let Err(error) = install_launch_files(&plan.files, &repo) {
+        return error;
     }
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
@@ -560,6 +557,26 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
     }
     let err = command.args(rest).envs(plan.env).exec();
     format!("cannot start {program}: {err}")
+}
+
+/// Install launch artifacts where the agent CLI will resolve them.
+pub fn install_launch_files(files: &[kudo_worker::LaunchFile], repo: &Path) -> Result<(), String> {
+    for file in files {
+        let path = if file.path.is_absolute() {
+            file.path.clone()
+        } else {
+            repo.join(&file.path)
+        };
+        if let Some(parent) = path.parent()
+            && let Err(error) = std::fs::create_dir_all(parent)
+        {
+            return Err(format!("cannot create {}: {error}", parent.display()));
+        }
+        if let Err(error) = std::fs::write(&path, &file.contents) {
+            return Err(format!("cannot write {}: {error}", path.display()));
+        }
+    }
+    Ok(())
 }
 
 fn env_num(key: &str) -> Option<i64> {

@@ -353,3 +353,32 @@ fn a_due_time_is_relative_or_absolute_and_a_check_needs_its_condition() {
     assert!(cli::context(&dir, &args(&["enqueue", id.trim(), "--due"]), T0).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn launch_artifacts_land_where_the_worker_runs() {
+    let root = std::env::temp_dir().join(format!("kudo-launch-files-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let repo = root.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let absolute = root.join("absolute.json");
+    let files = vec![
+        kudo_worker::LaunchFile::new(".agent/nested/settings.json", "relative"),
+        kudo_worker::LaunchFile::new(&absolute, "absolute"),
+    ];
+    cli::install_launch_files(&files, &repo).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(repo.join(".agent/nested/settings.json")).unwrap(),
+        "relative"
+    );
+    assert_eq!(std::fs::read_to_string(absolute).unwrap(), "absolute");
+
+    let blocked = root.join("blocked");
+    std::fs::create_dir_all(&blocked).unwrap();
+    let error = cli::install_launch_files(
+        &[kudo_worker::LaunchFile::new(&blocked, "not a file")],
+        &repo,
+    )
+    .unwrap_err();
+    assert!(error.contains("blocked"), "{error}");
+    let _ = std::fs::remove_dir_all(&root);
+}

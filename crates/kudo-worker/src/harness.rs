@@ -40,12 +40,29 @@ impl LaunchFile {
     }
 }
 
+/// The worker mode a launch must provide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchMode {
+    Interactive,
+    Headless,
+}
+
 /// The node and repository choices applied to a launch.
 #[derive(Debug, Clone, Copy)]
 pub struct LaunchOptions<'a> {
+    pub mode: LaunchMode,
     pub bypass: bool,
     pub strict_mcp: bool,
     pub repo: &'a Path,
+}
+
+/// A shell call in the harness-neutral evidence format.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellCall {
+    pub event: String,
+    pub command: String,
+    pub output: String,
+    pub exit: Option<i32>,
 }
 
 /// What a hook prints and how it exits.
@@ -92,12 +109,20 @@ pub trait AgentHarness {
     fn launch(
         &self,
         setup: &WorkerSetup,
-        cli: &str,
+        cli: Option<&str>,
         shim: &Path,
         hub_addr: Option<&str>,
         forward: &[(String, String)],
         options: LaunchOptions<'_>,
-    ) -> LaunchPlan;
+    ) -> Result<LaunchPlan, String>;
+
+    fn user_prompt<'a>(&self, input: &'a Value) -> Option<&'a str>;
+
+    fn shell_call(&self, input: &Value) -> Option<ShellCall>;
+
+    fn quiet_reply(&self) -> HookReply {
+        HookReply::quiet()
+    }
 
     fn session_start_reply(&self, context: &str) -> HookReply;
 
@@ -125,18 +150,77 @@ impl AgentHarness for ClaudeCode {
     fn launch(
         &self,
         setup: &WorkerSetup,
-        cli: &str,
+        cli: Option<&str>,
         shim: &Path,
         hub_addr: Option<&str>,
         forward: &[(String, String)],
         options: LaunchOptions<'_>,
-    ) -> LaunchPlan {
-        let mut plan = crate::launch::plan(setup, cli, shim, hub_addr, forward);
+    ) -> Result<LaunchPlan, String> {
+        let capabilities = self.capabilities();
+        let supported = match options.mode {
+            LaunchMode::Interactive => capabilities.interactive,
+            LaunchMode::Headless => capabilities.headless,
+        };
+        if !supported {
+            return Err(format!(
+                "Claude Code does not support {:?} workers",
+                options.mode
+            ));
+        }
+        let mut plan = crate::launch::plan(setup, cli.unwrap_or("claude"), shim, hub_addr, forward);
         if options.bypass {
             plan = plan.bypassing();
         }
         plan.env.push((HARNESS_ENV.to_owned(), "claude".to_owned()));
-        plan.for_node_mcp(options.strict_mcp, options.repo)
+        Ok(plan.for_node_mcp(options.strict_mcp, options.repo))
+    }
+
+    fn user_prompt<'a>(&self, input: &'a Value) -> Option<&'a str> {
+        input.get("prompt").and_then(Value::as_str)
+    }
+
+    fn shell_call(&self, input: &Value) -> Option<ShellCall> {
+        if input.get("tool_name").and_then(Value::as_str) != Some("Bash") {
+            return None;
+        }
+        let command = input
+            .pointer("/tool_input/command")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let response = input.get("tool_response").cloned().unwrap_or(Value::Null);
+        let text = |key: &str| {
+            response
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        };
+        let mut output = match response.as_str() {
+            Some(whole) => whole.to_owned(),
+            None => text("stdout").to_owned(),
+        };
+        if !text("stderr").is_empty() {
+            output.push_str("\n[stderr]\n");
+            output.push_str(text("stderr"));
+        }
+        if let Some(error) = input.get("error").and_then(Value::as_str) {
+            output.push_str("\n[error]\n");
+            output.push_str(error);
+        }
+        let exit = ["exit_code", "exitCode", "returnCode", "code"]
+            .iter()
+            .find_map(|key| response.get(*key).and_then(Value::as_i64))
+            .and_then(|code| i32::try_from(code).ok());
+        Some(ShellCall {
+            event: input
+                .get("hook_event_name")
+                .and_then(Value::as_str)
+                .unwrap_or("PostToolUse")
+                .to_owned(),
+            command,
+            output,
+            exit,
+        })
     }
 
     fn session_start_reply(&self, context: &str) -> HookReply {

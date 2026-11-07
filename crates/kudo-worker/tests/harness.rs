@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use kudo_context::ContextId;
-use kudo_worker::harness::{HARNESS_ENV, HookReply};
+use kudo_worker::harness::{HARNESS_ENV, HookReply, LaunchMode};
 use kudo_worker::{
     AgentHarness, ClaudeCode, KICKOFF, LaunchOptions, Stop, WorkerSetup, harness_from,
 };
@@ -52,25 +52,40 @@ fn an_unknown_harness_is_refused_instead_of_substituting_claude() {
 
 #[test]
 fn claude_launch_through_the_boundary_preserves_the_existing_plan() {
-    let plan = ClaudeCode.launch(
+    let forward = [("KUDO_CONTEXT_MIRROR".to_owned(), "s3://b/p".to_owned())];
+    let options = LaunchOptions {
+        mode: LaunchMode::Interactive,
+        bypass: true,
+        strict_mcp: false,
+        repo: Path::new("/tmp"),
+    };
+    let expected = kudo_worker::plan(
         &setup(),
         "claude",
         Path::new("/bin/kudo-shim"),
         Some("hub:15400"),
-        &[],
-        LaunchOptions {
-            bypass: true,
-            strict_mcp: false,
-            repo: Path::new("/tmp"),
-        },
-    );
-    assert_eq!(plan.argv[0], "claude");
+        &forward,
+    )
+    .bypassing()
+    .for_node_mcp(false, Path::new("/tmp"));
+    let plan = ClaudeCode
+        .launch(
+            &setup(),
+            Some("claude"),
+            Path::new("/bin/kudo-shim"),
+            Some("hub:15400"),
+            &forward,
+            options,
+        )
+        .unwrap();
+    assert_eq!(plan.argv, expected.argv);
+    assert_eq!(plan.files, expected.files);
+    let expected_env_len = expected.env.len() + 1;
+    for entry in expected.env {
+        assert!(plan.env.contains(&entry), "{entry:?} missing");
+    }
+    assert_eq!(plan.env.len(), expected_env_len, "{:?}", plan.env);
     assert_eq!(plan.argv.last().unwrap(), KICKOFF);
-    assert!(plan.argv.iter().any(|arg| arg == "--settings"));
-    assert!(plan.argv.iter().any(|arg| arg == "--mcp-config"));
-    assert!(plan.argv.iter().any(|arg| arg == "--session-id"));
-    assert!(plan.argv.iter().any(|arg| arg == "bypassPermissions"));
-    assert!(plan.files.is_empty());
     assert!(
         plan.env
             .iter()
@@ -78,6 +93,22 @@ fn claude_launch_through_the_boundary_preserves_the_existing_plan() {
         "{:?}",
         plan.env
     );
+
+    let strict = ClaudeCode
+        .launch(
+            &setup(),
+            None,
+            Path::new("/bin/kudo-shim"),
+            Some("hub:15400"),
+            &forward,
+            LaunchOptions {
+                strict_mcp: true,
+                ..options
+            },
+        )
+        .unwrap();
+    assert_eq!(strict.argv[0], "claude");
+    assert!(strict.argv.iter().any(|arg| arg == "--strict-mcp-config"));
 }
 
 #[test]
@@ -99,6 +130,7 @@ fn claude_hook_replies_preserve_the_existing_wire_protocol() {
         ClaudeCode.stop_reply(&Stop::Allow(kudo_worker::LeaseEnd::QueueEmpty)),
         HookReply::quiet()
     );
+    assert_eq!(ClaudeCode.stop_reply(&Stop::Wait), HookReply::quiet());
 
     let evidence = ClaudeCode.post_tool_reply("PostToolUse", "cite kino://abc");
     let evidence: Value = serde_json::from_str(&evidence.stdout).unwrap();
@@ -110,4 +142,36 @@ fn claude_hook_replies_preserve_the_existing_wire_protocol() {
         evidence["hookSpecificOutput"]["additionalContext"],
         "cite kino://abc"
     );
+}
+
+#[test]
+fn claude_normalizes_prompts_and_shell_payloads_inside_the_adapter() {
+    let prompt = serde_json::json!({"prompt": "take over"});
+    assert_eq!(ClaudeCode.user_prompt(&prompt), Some("take over"));
+
+    let success = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": "uptime"},
+        "tool_response": {"stdout": "up", "stderr": "warning", "exit_code": 0}
+    });
+    let call = ClaudeCode.shell_call(&success).unwrap();
+    assert_eq!(call.event, "PostToolUse");
+    assert_eq!(call.command, "uptime");
+    assert_eq!(call.output, "up\n[stderr]\nwarning");
+    assert_eq!(call.exit, Some(0));
+
+    let failure = serde_json::json!({
+        "hook_event_name": "PostToolUseFailure",
+        "tool_name": "Bash",
+        "tool_input": {"command": "false"},
+        "tool_response": "no output",
+        "error": "Exit code 1"
+    });
+    let call = ClaudeCode.shell_call(&failure).unwrap();
+    assert_eq!(call.event, "PostToolUseFailure");
+    assert_eq!(call.output, "no output\n[error]\nExit code 1");
+
+    let read = serde_json::json!({"tool_name": "Read"});
+    assert!(ClaudeCode.shell_call(&read).is_none());
 }
