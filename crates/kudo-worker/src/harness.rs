@@ -171,6 +171,10 @@ impl AgentHarness for ClaudeCode {
         if options.bypass {
             plan = plan.bypassing();
         }
+        if options.mode == LaunchMode::Headless {
+            let at = plan.argv.len().saturating_sub(1);
+            plan.argv.insert(at, "-p".to_owned());
+        }
         plan.env.push((HARNESS_ENV.to_owned(), "claude".to_owned()));
         Ok(plan.for_node_mcp(options.strict_mcp, options.repo))
     }

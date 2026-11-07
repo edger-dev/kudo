@@ -175,3 +175,24 @@ fn claude_normalizes_prompts_and_shell_payloads_inside_the_adapter() {
     let read = serde_json::json!({"tool_name": "Read"});
     assert!(ClaudeCode.shell_call(&read).is_none());
 }
+
+#[test]
+fn claude_headless_launch_uses_print_mode() {
+    let plan = ClaudeCode
+        .launch(
+            &setup(),
+            None,
+            Path::new("/bin/kudo-shim"),
+            None,
+            &[],
+            LaunchOptions {
+                mode: LaunchMode::Headless,
+                bypass: false,
+                strict_mcp: false,
+                repo: Path::new("/tmp"),
+            },
+        )
+        .unwrap();
+    assert!(plan.argv.iter().any(|arg| arg == "-p"), "{:?}", plan.argv);
+    assert_eq!(plan.argv.last().unwrap(), KICKOFF);
+}
