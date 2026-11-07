@@ -248,6 +248,12 @@ fn a_recorded_shell_call_is_evidence_in_its_context() {
     let elsewhere = store
         .record_tool_call(&other, "lease-o", "uptime", Some(0), "up 3 days", T0)
         .unwrap();
+    let evidence = store.tool_evidence(&ctx, "lease-t").unwrap();
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].id, call);
+    assert_eq!(evidence[0].command, "df -h /");
+    assert_eq!(evidence[0].exit, Some(0));
+    assert!(store.tool_evidence(&ctx, "lease-o").unwrap().is_empty());
     let events: Vec<TraceEvent> = store
         .trace(&ctx)
         .unwrap()

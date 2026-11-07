@@ -383,7 +383,6 @@ fn launch_artifacts_land_where_the_worker_runs() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-
 #[test]
 fn launch_plugins_merge_with_the_existing_registry() {
     let root = std::env::temp_dir().join(format!("kudo-launch-plugins-{}", std::process::id()));
@@ -404,7 +403,7 @@ fn launch_plugins_merge_with_the_existing_registry() {
             r#"{"name":"kudo"}"#,
         )],
     };
-    cli::install_launch_plugins(&[plugin.clone()], &registry).unwrap();
+    cli::install_launch_plugins(std::slice::from_ref(&plugin), &registry).unwrap();
     let installed: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&registry).unwrap()).unwrap();
     let plugins = installed["plugins"].as_array().unwrap();

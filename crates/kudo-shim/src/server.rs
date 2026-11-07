@@ -278,7 +278,14 @@ fn reply(result: Result<String, crate::ShimError>) -> Result<CallToolResult, Err
 const DIAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// The tools that work against the context store, with or without a hub.
-const WORKER_TOOLS: [&str; 5] = ["context_read", "pull", "submit", "release", "inbox"];
+const WORKER_TOOLS: [&str; 6] = [
+    "context_read",
+    "pull",
+    "submit",
+    "release",
+    "inbox",
+    "evidence",
+];
 
 /// Where the hub stands for this session.
 enum HubState {
@@ -365,7 +372,7 @@ impl ShimServer {
         let no_hub = |why: String| {
             CallToolResult::error(vec![ContentBlock::text(format!(
                 "no hub: {why}. This session's worker tools (context_read, pull, submit, \
-                 release, inbox) work without one; the job and node tools need a hub."
+                 release, inbox, evidence) work without one; the job and node tools need a hub."
             ))])
         };
         match self.hub.as_ref() {
@@ -504,6 +511,14 @@ impl ShimServer {
     )]
     async fn context_read(&self) -> Result<CallToolResult, ErrorData> {
         self.worker_call(|s, _| worker_tools::context_read(s))
+    }
+
+    #[tool(
+        name = "evidence",
+        description = "List this lease's recorded shell calls with the kino ids to cite as evidence. Use after a shell call when the harness does not deliver hook context."
+    )]
+    async fn evidence(&self) -> Result<CallToolResult, ErrorData> {
+        self.worker_call(|s, _| worker_tools::evidence(s))
     }
 
     #[tool(
@@ -1131,8 +1146,8 @@ impl ServerHandler for ShimServer {
                     .to_string()
             }
             HubState::Absent(why) => format!(
-                "This session has no hub ({why}): the worker tools — context_read, pull, \
-                 submit, release, inbox — work against the context store directly; the job \
+                "This session has no hub ({why}): the worker tools — context_read, evidence, \
+                 pull, submit, release, inbox — work against the context store directly; the job \
                  and node tools are unavailable."
             ),
         });
@@ -1180,7 +1195,14 @@ mod tests {
             .into_iter()
             .map(|t| t.name.to_string())
             .collect();
-        for tool in ["context_read", "pull", "submit", "release", "inbox"] {
+        for tool in [
+            "context_read",
+            "pull",
+            "submit",
+            "release",
+            "inbox",
+            "evidence",
+        ] {
             assert!(
                 names.iter().any(|n| n == tool),
                 "{tool} missing from {names:?}"

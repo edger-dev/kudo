@@ -100,9 +100,17 @@ pub fn run_with_harness(
         "pre-compact" => worker.pre_compact(now).map(|()| harness.quiet_reply()),
         "user-prompt-submit" => {
             let prompt = harness.user_prompt(&input).unwrap_or_default();
-            worker
-                .user_prompt(prompt, now)
-                .map(|()| harness.quiet_reply())
+            if prompt == kudo_worker::KICKOFF {
+                worker.session_start(now).and_then(|context| {
+                    worker
+                        .user_prompt(prompt, now)
+                        .map(|()| harness.user_prompt_reply(Some(&context)))
+                })
+            } else {
+                worker
+                    .user_prompt(prompt, now)
+                    .map(|()| harness.user_prompt_reply(None))
+            }
         }
         other => return HookReply::failed(format!("no hook named `{other}`")),
     };

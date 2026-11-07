@@ -1,4 +1,4 @@
-//! The worker's MCP tools — `context_read`, `pull`, `submit`, `release` — as
+//! The worker's MCP tools — `context_read`, `evidence`, `pull`, `submit`, `release` — as
 //! plain functions over the context store. The server wraps them; like the
 //! hooks, they reach the store directly, never through the hub.
 //!
@@ -35,6 +35,27 @@ pub fn context_read(setup: &WorkerSetup) -> Result<String, String> {
         setup.context.0,
         kudo_worker::render_heads(&heads)
     ))
+}
+
+/// The shell evidence this lease has recorded, with the ids to cite.
+pub fn evidence(setup: &WorkerSetup) -> Result<String, String> {
+    let records = open(setup)?
+        .tool_evidence(&setup.context, &setup.lease)
+        .map_err(|error| error.to_string())?;
+    if records.is_empty() {
+        return Ok("No shell evidence recorded for this lease yet.".to_owned());
+    }
+    let mut out = "Shell evidence for this lease; cite the kino ids in submit:".to_owned();
+    for record in records {
+        let exit = record
+            .exit
+            .map_or_else(|| "unknown".to_owned(), |code| code.to_string());
+        out.push_str(&format!(
+            "\n- kino://{} — {} (exit {exit})",
+            record.id, record.command
+        ));
+    }
+    Ok(out)
 }
 
 /// Claim the next item under the bound context for this lease — unless this

@@ -138,7 +138,14 @@ fn with_no_hub_address_only_the_worker_tools_are_listed() {
     names.sort();
     assert_eq!(
         names,
-        ["context_read", "inbox", "pull", "release", "submit"]
+        [
+            "context_read",
+            "evidence",
+            "inbox",
+            "pull",
+            "release",
+            "submit"
+        ]
     );
 }
 

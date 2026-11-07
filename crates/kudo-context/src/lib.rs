@@ -331,6 +331,14 @@ impl TraceEvent {
     }
 }
 
+/// A shell call a worker can cite as evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolEvidence {
+    pub id: String,
+    pub command: String,
+    pub exit: Option<i32>,
+}
+
 /// A recorded trace event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceEntry {

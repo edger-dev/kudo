@@ -394,6 +394,9 @@ fn a_shell_call_is_recorded_and_its_kino_named() {
         traced.iter().any(|t| matches!(&t.event, kudo_context::TraceEvent::ToolCall { command, .. } if command == "df -h /")),
         "{traced:?}"
     );
+    let evidence = worker_tools::evidence(&setup).unwrap();
+    assert!(evidence.contains("kino://"), "{evidence}");
+    assert!(evidence.contains("df -h /"), "{evidence}");
 
     let read = serde_json::json!({
         "hook_event_name": "PostToolUse",

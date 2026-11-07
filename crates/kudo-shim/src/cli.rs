@@ -546,6 +546,23 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
     if let Err(error) = install_launch_files(&plan.files, &repo) {
         return error;
     }
+    if !plan.plugins.is_empty() {
+        let home = std::env::var("KIMI_CODE_HOME")
+            .map(PathBuf::from)
+            .ok()
+            .or_else(|| {
+                std::env::var("HOME")
+                    .map(|home| PathBuf::from(home).join(".kimi-code"))
+                    .ok()
+            });
+        let Some(home) = home else {
+            return "cannot find Kimi Code's data directory: set KIMI_CODE_HOME".to_owned();
+        };
+        let registry = home.join("plugins/installed.json");
+        if let Err(error) = install_launch_plugins(&plan.plugins, &registry) {
+            return error;
+        }
+    }
     let Some((program, rest)) = plan.argv.split_first() else {
         return "empty launch plan".to_owned();
     };
@@ -581,9 +598,43 @@ pub fn install_launch_files(files: &[kudo_worker::LaunchFile], repo: &Path) -> R
 
 /// Register launch plugins without replacing the user's existing registry.
 pub fn install_launch_plugins(
-    _plugins: &[kudo_worker::harness::LaunchPlugin],
-    _registry: &Path,
+    plugins: &[kudo_worker::harness::LaunchPlugin],
+    registry: &Path,
 ) -> Result<(), String> {
+    let mut installed: serde_json::Value = match std::fs::read_to_string(registry) {
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|error| format!("cannot parse {}: {error}", registry.display()))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            serde_json::json!({"version": 1, "plugins": []})
+        }
+        Err(error) => return Err(format!("cannot read {}: {error}", registry.display())),
+    };
+    let records = installed["plugins"]
+        .as_array_mut()
+        .ok_or_else(|| format!("{} has no plugins array", registry.display()))?;
+    for plugin in plugins {
+        install_launch_files(&plugin.files, Path::new("/"))?;
+        records.retain(|record| record["id"] != plugin.id);
+        records.push(serde_json::json!({
+            "id": plugin.id,
+            "root": plugin.root,
+            "source": "local-path",
+            "enabled": true,
+            "installedAt": jiff::Timestamp::now().to_string(),
+        }));
+    }
+    if let Some(parent) = registry.parent()
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        return Err(format!("cannot create {}: {error}", parent.display()));
+    }
+    let temporary = registry.with_extension("json.tmp");
+    let bytes = serde_json::to_string_pretty(&installed)
+        .map_err(|error| format!("cannot encode the plugin registry: {error}"))?;
+    std::fs::write(&temporary, bytes)
+        .map_err(|error| format!("cannot write {}: {error}", temporary.display()))?;
+    std::fs::rename(&temporary, registry)
+        .map_err(|error| format!("cannot replace {}: {error}", registry.display()))?;
     Ok(())
 }
 

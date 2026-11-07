@@ -652,6 +652,37 @@ impl ContextStore {
         Ok(strip_marker(&self.read(&event.hash)?))
     }
 
+    /// The shell evidence recorded by one lease, oldest first.
+    pub fn tool_evidence(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+    ) -> Result<Vec<crate::ToolEvidence>, Error> {
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let mut events: Vec<&Event> = view
+            .of_kind_in("trace", ctx)
+            .into_iter()
+            .filter(|event| field(event, LEASE) == lease && field(event, EVENT) == "tool-call")
+            .collect();
+        events.sort_by_key(|event| seq_of(event));
+        Ok(events
+            .into_iter()
+            .filter_map(|event| {
+                let TraceEvent::ToolCall { command, exit } =
+                    TraceEvent::from_line(field(event, REASON))?
+                else {
+                    return None;
+                };
+                Some(crate::ToolEvidence {
+                    id: event.id.clone(),
+                    command,
+                    exit,
+                })
+            })
+            .collect())
+    }
+
     /// Record that `lease` runs in the pane `job` on `node`: written by the
     /// console when it starts a worker there, so the worker can be shown and
     /// taken over.

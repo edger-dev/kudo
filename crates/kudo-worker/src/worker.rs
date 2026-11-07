@@ -106,8 +106,9 @@ impl<'a> Worker<'a> {
              established / open), a short log, and what you established — each \
              line with its evidence (kino ids or http(s) URLs; a line without \
              evidence that resolves lands as claimed) — what you ruled out and \
-             what you could not see; then end your turn. Do not pull again in the \
-             same turn: the next item is handed to you when you stop.",
+             what you could not see. Call `evidence` to retrieve the kino ids of \
+             your shell calls before you submit; then end your turn. Do not pull \
+             again in the same turn: the next item is handed to you when you stop.",
             ctx = self.cfg.context.0,
             body = render_heads(&heads).trim_end(),
         ))
