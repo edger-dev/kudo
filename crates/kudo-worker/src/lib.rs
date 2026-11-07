@@ -22,7 +22,7 @@ pub mod pane;
 pub mod worker;
 
 pub use env::{DEFAULT_CLAIM_TTL, DEFAULT_MAX_TURNS, KICKOFF, WorkerSetup};
-pub use harness::{AgentHarness, ClaudeCode, LaunchFile, LaunchOptions, harness_from};
+pub use harness::{AgentHarness, ClaudeCode, KimiCode, LaunchFile, LaunchOptions, harness_from};
 pub use launch::{LaunchPlan, new_lease_id, plan};
 pub use lease::LeaseRecord;
 pub use lease::{LeaseBook, LeaseEnd};

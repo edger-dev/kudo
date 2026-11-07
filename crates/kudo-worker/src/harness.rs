@@ -9,6 +9,9 @@ use serde_json::Value;
 
 use crate::{LaunchPlan, Stop, WorkerSetup};
 
+mod kimi;
+pub use kimi::KimiCode;
+
 /// The environment variable selecting the agent harness.
 pub const HARNESS_ENV: &str = "KUDO_AGENT_HARNESS";
 
@@ -38,6 +41,14 @@ impl LaunchFile {
             contents: contents.into(),
         }
     }
+}
+
+/// A plugin and the files that make it available to an agent CLI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchPlugin {
+    pub id: String,
+    pub root: PathBuf,
+    pub files: Vec<LaunchFile>,
 }
 
 /// The worker mode a launch must provide.
@@ -117,6 +128,10 @@ pub trait AgentHarness {
     ) -> Result<LaunchPlan, String>;
 
     fn user_prompt<'a>(&self, input: &'a Value) -> Option<&'a str>;
+
+    fn user_prompt_reply(&self, _context: Option<&str>) -> HookReply {
+        HookReply::quiet()
+    }
 
     fn shell_call(&self, input: &Value) -> Option<ShellCall>;
 
@@ -263,8 +278,9 @@ pub fn harness_from(
 ) -> Result<Box<dyn AgentHarness>, String> {
     match lookup(HARNESS_ENV).as_deref() {
         None | Some("claude") => Ok(Box::new(ClaudeCode)),
+        Some("kimi") => Ok(Box::new(KimiCode)),
         Some(other) => Err(format!(
-            "unknown agent harness {other:?}: supported harnesses are claude"
+            "unknown agent harness {other:?}: supported harnesses are claude and kimi"
         )),
     }
 }

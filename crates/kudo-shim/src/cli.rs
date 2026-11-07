@@ -579,6 +579,14 @@ pub fn install_launch_files(files: &[kudo_worker::LaunchFile], repo: &Path) -> R
     Ok(())
 }
 
+/// Register launch plugins without replacing the user's existing registry.
+pub fn install_launch_plugins(
+    _plugins: &[kudo_worker::harness::LaunchPlugin],
+    _registry: &Path,
+) -> Result<(), String> {
+    Ok(())
+}
+
 fn env_num(key: &str) -> Option<i64> {
     std::env::var(key).ok()?.parse().ok()
 }

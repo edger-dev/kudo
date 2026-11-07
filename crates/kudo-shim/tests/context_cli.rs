@@ -382,3 +382,43 @@ fn launch_artifacts_land_where_the_worker_runs() {
     assert!(error.contains("blocked"), "{error}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+
+#[test]
+fn launch_plugins_merge_with_the_existing_registry() {
+    let root = std::env::temp_dir().join(format!("kudo-launch-plugins-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let registry = root.join("installed.json");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        &registry,
+        r#"{"version":1,"plugins":[{"id":"other","root":"/other","source":"local-path","enabled":true,"installedAt":"2026-01-01T00:00:00.000Z"}]}"#,
+    )
+    .unwrap();
+    let plugin_root = root.join("kudo");
+    let plugin = kudo_worker::harness::LaunchPlugin {
+        id: "kudo".into(),
+        root: plugin_root.clone(),
+        files: vec![kudo_worker::LaunchFile::new(
+            plugin_root.join("kimi.plugin.json"),
+            r#"{"name":"kudo"}"#,
+        )],
+    };
+    cli::install_launch_plugins(&[plugin.clone()], &registry).unwrap();
+    let installed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&registry).unwrap()).unwrap();
+    let plugins = installed["plugins"].as_array().unwrap();
+    assert_eq!(plugins.len(), 2, "{installed}");
+    assert!(plugins.iter().any(|p| p["id"] == "other"));
+    assert!(plugins.iter().any(|p| p["id"] == "kudo"));
+    assert_eq!(
+        std::fs::read_to_string(plugin_root.join("kimi.plugin.json")).unwrap(),
+        r#"{"name":"kudo"}"#
+    );
+
+    cli::install_launch_plugins(&[plugin], &registry).unwrap();
+    let again: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&registry).unwrap()).unwrap();
+    assert_eq!(again["plugins"].as_array().unwrap().len(), 2, "{again}");
+    let _ = std::fs::remove_dir_all(&root);
+}
