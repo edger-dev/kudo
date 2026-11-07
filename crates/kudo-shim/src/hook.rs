@@ -18,28 +18,9 @@ use kudo_context::Now;
 use kudo_worker::{LeaseBook, Stop, Worker, WorkerSetup};
 use serde_json::{Value, json};
 
-/// What a hook prints and how it exits.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HookReply {
-    pub stdout: String,
-    pub code: i32,
-}
+pub use kudo_worker::harness::HookReply;
 
 impl HookReply {
-    fn quiet() -> Self {
-        Self {
-            stdout: String::new(),
-            code: 0,
-        }
-    }
-
-    fn json(value: &Value) -> Self {
-        Self {
-            stdout: value.to_string(),
-            code: 0,
-        }
-    }
-
     /// A failure the CLI shows the human (exit code 1 is non-blocking: the
     /// session goes on, but the error is visible).
     fn failed(message: impl std::fmt::Display) -> Self {

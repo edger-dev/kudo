@@ -9,13 +9,14 @@ use std::path::Path;
 
 use serde_json::{Map, Value, json};
 
-use crate::{KICKOFF, WorkerSetup};
+use crate::{KICKOFF, LaunchFile, WorkerSetup};
 
 /// The command line and environment that start one worker session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchPlan {
     pub argv: Vec<String>,
     pub env: Vec<(String, String)>,
+    pub files: Vec<LaunchFile>,
 }
 
 impl LaunchPlan {
@@ -186,6 +187,7 @@ pub fn plan(
     ));
 
     LaunchPlan {
+        files: Vec::new(),
         argv: vec![
             cli.to_owned(),
             "--settings".to_owned(),
