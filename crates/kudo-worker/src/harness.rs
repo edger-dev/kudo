@@ -43,6 +43,13 @@ impl LaunchFile {
     }
 }
 
+/// A read-only link into a launcher's existing configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchLink {
+    pub source: PathBuf,
+    pub target: PathBuf,
+}
+
 /// A plugin and the files that make it available to an agent CLI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchPlugin {

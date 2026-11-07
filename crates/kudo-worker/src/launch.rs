@@ -9,7 +9,10 @@ use std::path::Path;
 
 use serde_json::{Map, Value, json};
 
-use crate::{KICKOFF, LaunchFile, WorkerSetup, harness::LaunchPlugin};
+use crate::{
+    KICKOFF, LaunchFile, WorkerSetup,
+    harness::{LaunchLink, LaunchPlugin},
+};
 
 /// The command line and environment that start one worker session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +21,7 @@ pub struct LaunchPlan {
     pub env: Vec<(String, String)>,
     pub files: Vec<LaunchFile>,
     pub plugins: Vec<LaunchPlugin>,
+    pub links: Vec<LaunchLink>,
 }
 
 impl LaunchPlan {
@@ -190,6 +194,7 @@ pub fn plan(
     LaunchPlan {
         files: Vec::new(),
         plugins: Vec::new(),
+        links: Vec::new(),
         argv: vec![
             cli.to_owned(),
             "--settings".to_owned(),

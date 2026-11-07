@@ -8,7 +8,7 @@ use std::path::Path;
 use serde_json::{Map, Value, json};
 
 use crate::harness::{
-    HARNESS_ENV, HarnessCapabilities, HookReply, LaunchFile, LaunchMode, LaunchOptions,
+    HARNESS_ENV, HarnessCapabilities, HookReply, LaunchFile, LaunchLink, LaunchMode, LaunchOptions,
     LaunchPlugin, ShellCall,
 };
 use crate::{AgentHarness, KICKOFF, LaunchPlan, Stop, WorkerSetup};
@@ -44,12 +44,53 @@ impl AgentHarness for KimiCode {
         if options.strict_mcp {
             return Err("Kimi Code strict MCP is not implemented yet".to_owned());
         }
+        if !options.bypass {
+            return Err(
+                "Kimi Code headless workers require KUDO_WORKER_BYPASS=1: print mode always \
+                 uses auto permissions"
+                    .to_owned(),
+            );
+        }
+
+        let source_home = std::env::var("KIMI_CODE_HOME")
+            .map(std::path::PathBuf::from)
+            .ok()
+            .or_else(|| {
+                std::env::var("HOME")
+                    .map(|home| std::path::PathBuf::from(home).join(".kimi-code"))
+                    .ok()
+            })
+            .ok_or_else(|| {
+                "cannot find Kimi Code's data directory: set KIMI_CODE_HOME".to_owned()
+            })?;
+        let isolated_home = setup.store_dir.join("kimi-home").join(&setup.lease);
+        let mut links = vec![
+            LaunchLink {
+                source: source_home.join("config.toml"),
+                target: isolated_home.join("config.toml"),
+            },
+            LaunchLink {
+                source: source_home.join("credentials"),
+                target: isolated_home.join("credentials"),
+            },
+        ];
+        let user_mcp = source_home.join("mcp.json");
+        if user_mcp.exists() {
+            links.push(LaunchLink {
+                source: user_mcp,
+                target: isolated_home.join("mcp.json"),
+            });
+        }
 
         let mut passed = forward.to_vec();
         if let Some(addr) = hub_addr {
             passed.push(("KUDO_HUB_ADDR".to_owned(), addr.to_owned()));
         }
         passed.push((HARNESS_ENV.to_owned(), "kimi".to_owned()));
+        passed.push((
+            "KIMI_CODE_HOME".to_owned(),
+            isolated_home.display().to_string(),
+        ));
         let mut env = setup.to_env();
         env.extend(passed.clone());
         let server_env: Map<String, Value> = env
@@ -88,7 +129,7 @@ impl AgentHarness for KimiCode {
                 }
             }
         });
-        let root = setup.store_dir.join("kimi-plugin");
+        let root = isolated_home.join("plugins/managed/kudo");
         let plugin = LaunchPlugin {
             id: "kudo".to_owned(),
             root: root.clone(),
@@ -108,6 +149,7 @@ impl AgentHarness for KimiCode {
             env,
             files: Vec::new(),
             plugins: vec![plugin],
+            links,
         })
     }
 

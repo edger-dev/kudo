@@ -30,7 +30,7 @@ usage:
                                  pre-compact, user-prompt-submit)
   kudo-shim context <command>    drive a context by hand (new, enqueue, show,
                                  list, trace, why, repo add, check, wake-node)
-  kudo-shim worker <context> [--repo <name>]
+  kudo-shim worker <context> [--repo <name>] [--headless]
                                  start a worker session here
   kudo-shim waker                wake a worker when a context's check comes due
                                  (a user service on one node)
@@ -73,15 +73,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(2);
         };
         if cmd == "worker" {
-            let (ctx, repo) = match &args[2..] {
-                [ctx] => (ctx, None),
-                [ctx, flag, repo] if flag == "--repo" => (ctx, Some(repo.as_str())),
+            let (ctx, repo, mode) = match &args[2..] {
+                [ctx] => (ctx, None, kudo_worker::harness::LaunchMode::Interactive),
+                [ctx, flag] if flag == "--headless" => {
+                    (ctx, None, kudo_worker::harness::LaunchMode::Headless)
+                }
+                [ctx, flag, repo] if flag == "--repo" => (
+                    ctx,
+                    Some(repo.as_str()),
+                    kudo_worker::harness::LaunchMode::Interactive,
+                ),
+                [ctx, flag, repo, headless] if flag == "--repo" && headless == "--headless" => (
+                    ctx,
+                    Some(repo.as_str()),
+                    kudo_worker::harness::LaunchMode::Headless,
+                ),
+                [ctx, headless, flag, repo] if headless == "--headless" && flag == "--repo" => (
+                    ctx,
+                    Some(repo.as_str()),
+                    kudo_worker::harness::LaunchMode::Headless,
+                ),
                 _ => {
-                    eprintln!("usage: kudo-shim worker <context> [--repo <name>]");
+                    eprintln!("usage: kudo-shim worker <context> [--repo <name>] [--headless]");
                     std::process::exit(2);
                 }
             };
-            eprintln!("{}", kudo_shim::cli::exec_worker(&store, ctx, repo));
+            eprintln!("{}", kudo_shim::cli::exec_worker(&store, ctx, repo, mode));
             std::process::exit(1);
         }
         match kudo_shim::cli::context(&store, &args[2..], unix_now()) {

@@ -421,3 +421,51 @@ fn launch_plugins_merge_with_the_existing_registry() {
     assert_eq!(again["plugins"].as_array().unwrap().len(), 2, "{again}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn launch_links_are_idempotent_and_registry_merges_survive_concurrency() {
+    let root = std::env::temp_dir().join(format!("kudo-launch-concurrent-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("source.toml");
+    std::fs::write(&source, "model = 'test'").unwrap();
+    let target = root.join("home/config.toml");
+    cli::install_launch_links(&[kudo_worker::harness::LaunchLink {
+        source: source.clone(),
+        target: target.clone(),
+    }])
+    .unwrap();
+    cli::install_launch_links(&[kudo_worker::harness::LaunchLink {
+        source,
+        target: target.clone(),
+    }])
+    .unwrap();
+    assert_eq!(std::fs::read_to_string(target).unwrap(), "model = 'test'");
+
+    let registry = root.join("installed.json");
+    std::thread::scope(|scope| {
+        let root = &root;
+        let registry = &registry;
+        for id in ["one", "two"] {
+            scope.spawn(move || {
+                let plugin_root = root.join(id);
+                let plugin = kudo_worker::harness::LaunchPlugin {
+                    id: id.into(),
+                    root: plugin_root.clone(),
+                    files: vec![kudo_worker::LaunchFile::new(
+                        plugin_root.join("kimi.plugin.json"),
+                        format!(r#"{{"name":"{id}"}}"#),
+                    )],
+                };
+                cli::install_launch_plugins(&[plugin], registry).unwrap();
+            });
+        }
+    });
+    let installed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&registry).unwrap()).unwrap();
+    let plugins = installed["plugins"].as_array().unwrap();
+    assert_eq!(plugins.len(), 2, "{installed}");
+    assert!(plugins.iter().any(|plugin| plugin["id"] == "one"));
+    assert!(plugins.iter().any(|plugin| plugin["id"] == "two"));
+    let _ = std::fs::remove_dir_all(&root);
+}

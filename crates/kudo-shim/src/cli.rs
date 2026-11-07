@@ -15,7 +15,7 @@ const USAGE: &str = "usage: kudo-shim context new <title>\n       \
                      kudo-shim context trace <context>\n       \
                      kudo-shim context why <context> [head-version]\n       \
                      kudo-shim context repo add <context> <name> [path] [--node <node>]\n       \
-                     kudo-shim worker <context> [--repo <name>]";
+                     kudo-shim worker <context> [--repo <name>] [--headless]";
 
 /// Where the context store lives: `KUDO_CONTEXT_STORE`, else
 /// `$XDG_STATE_HOME/kudo/contexts`, else `~/.local/state/kudo/contexts`.
@@ -465,7 +465,12 @@ pub fn worker_dir(
 
 /// Replace this process with the agent CLI, started as a worker under `ctx`.
 /// Returns only on failure.
-pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
+pub fn exec_worker(
+    store_dir: &Path,
+    ctx: &str,
+    repo: Option<&str>,
+    mode: kudo_worker::harness::LaunchMode,
+) -> String {
     // The worker may start in a repo's directory: a relative store path must
     // not move with it.
     let store_dir = match std::path::absolute(store_dir) {
@@ -534,7 +539,7 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
         hub.as_deref(),
         &mirror_settings(),
         kudo_worker::LaunchOptions {
-            mode: kudo_worker::harness::LaunchMode::Interactive,
+            mode,
             bypass,
             strict_mcp: strict,
             repo: &repo,
@@ -546,15 +551,15 @@ pub fn exec_worker(store_dir: &Path, ctx: &str, repo: Option<&str>) -> String {
     if let Err(error) = install_launch_files(&plan.files, &repo) {
         return error;
     }
+    if let Err(error) = install_launch_links(&plan.links) {
+        return error;
+    }
     if !plan.plugins.is_empty() {
-        let home = std::env::var("KIMI_CODE_HOME")
-            .map(PathBuf::from)
-            .ok()
-            .or_else(|| {
-                std::env::var("HOME")
-                    .map(|home| PathBuf::from(home).join(".kimi-code"))
-                    .ok()
-            });
+        let home = plan
+            .env
+            .iter()
+            .find(|(key, _)| key == "KIMI_CODE_HOME")
+            .map(|(_, value)| PathBuf::from(value));
         let Some(home) = home else {
             return "cannot find Kimi Code's data directory: set KIMI_CODE_HOME".to_owned();
         };
@@ -596,11 +601,39 @@ pub fn install_launch_files(files: &[kudo_worker::LaunchFile], repo: &Path) -> R
     Ok(())
 }
 
+/// Link read-only launch inputs into an isolated harness home.
+pub fn install_launch_links(links: &[kudo_worker::harness::LaunchLink]) -> Result<(), String> {
+    for link in links {
+        if std::fs::symlink_metadata(&link.target).is_ok() {
+            continue;
+        }
+        if let Some(parent) = link.target.parent()
+            && let Err(error) = std::fs::create_dir_all(parent)
+        {
+            return Err(format!("cannot create {}: {error}", parent.display()));
+        }
+        std::os::unix::fs::symlink(&link.source, &link.target).map_err(|error| {
+            format!(
+                "cannot link {} to {}: {error}",
+                link.target.display(),
+                link.source.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
 /// Register launch plugins without replacing the user's existing registry.
 pub fn install_launch_plugins(
     plugins: &[kudo_worker::harness::LaunchPlugin],
     registry: &Path,
 ) -> Result<(), String> {
+    if let Some(parent) = registry.parent()
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        return Err(format!("cannot create {}: {error}", parent.display()));
+    }
+    let _lock = RegistryLock::acquire(&registry.with_extension("lock"))?;
     let mut installed: serde_json::Value = match std::fs::read_to_string(registry) {
         Ok(text) => serde_json::from_str(&text)
             .map_err(|error| format!("cannot parse {}: {error}", registry.display()))?,
@@ -623,12 +656,7 @@ pub fn install_launch_plugins(
             "installedAt": jiff::Timestamp::now().to_string(),
         }));
     }
-    if let Some(parent) = registry.parent()
-        && let Err(error) = std::fs::create_dir_all(parent)
-    {
-        return Err(format!("cannot create {}: {error}", parent.display()));
-    }
-    let temporary = registry.with_extension("json.tmp");
+    let temporary = registry.with_extension(format!("json.{}.tmp", std::process::id()));
     let bytes = serde_json::to_string_pretty(&installed)
         .map_err(|error| format!("cannot encode the plugin registry: {error}"))?;
     std::fs::write(&temporary, bytes)
@@ -636,6 +664,35 @@ pub fn install_launch_plugins(
     std::fs::rename(&temporary, registry)
         .map_err(|error| format!("cannot replace {}: {error}", registry.display()))?;
     Ok(())
+}
+
+struct RegistryLock(PathBuf);
+
+impl RegistryLock {
+    fn acquire(path: &Path) -> Result<Self, String> {
+        for _ in 0..100 {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+            {
+                Ok(_) => return Ok(Self(path.to_owned())),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(error) => {
+                    return Err(format!("cannot lock {}: {error}", path.display()));
+                }
+            }
+        }
+        Err(format!("timed out locking {}", path.display()))
+    }
+}
+
+impl Drop for RegistryLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 fn env_num(key: &str) -> Option<i64> {

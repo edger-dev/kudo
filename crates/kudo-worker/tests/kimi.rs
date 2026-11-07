@@ -75,8 +75,27 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
             .any(|(key, value)| key == HARNESS_ENV && value == "kimi")
     );
 
+    let isolated_home = plan
+        .env
+        .iter()
+        .find(|(key, _)| key == "KIMI_CODE_HOME")
+        .map(|(_, value)| value.as_str())
+        .unwrap();
+    assert_eq!(isolated_home, "/state/contexts/kimi-home/lease-1");
+    assert!(
+        plan.links.iter().any(|link| {
+            link.target == Path::new("/state/contexts/kimi-home/lease-1/config.toml")
+        })
+    );
+    assert!(
+        plan.links.iter().any(|link| {
+            link.target == Path::new("/state/contexts/kimi-home/lease-1/credentials")
+        })
+    );
+
     assert_eq!(plan.plugins.len(), 1);
     let plugin = &plan.plugins[0];
+    assert!(plugin.root.starts_with(isolated_home));
     assert_eq!(plugin.id, "kudo");
     assert_eq!(plugin.files.len(), 1);
     let manifest: Value = serde_json::from_str(&plugin.files[0].contents).unwrap();
@@ -109,9 +128,10 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
 
 #[test]
 fn kimi_interactive_and_strict_mcp_are_refused_until_implemented() {
-    for (mode, strict_mcp) in [
-        (LaunchMode::Interactive, false),
-        (LaunchMode::Headless, true),
+    for (mode, strict_mcp, bypass) in [
+        (LaunchMode::Interactive, false, true),
+        (LaunchMode::Headless, true, true),
+        (LaunchMode::Headless, false, false),
     ] {
         let error = KimiCode
             .launch(
@@ -122,7 +142,7 @@ fn kimi_interactive_and_strict_mcp_are_refused_until_implemented() {
                 &[],
                 LaunchOptions {
                     mode,
-                    bypass: false,
+                    bypass,
                     strict_mcp,
                     repo: Path::new("/tmp"),
                 },
