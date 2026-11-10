@@ -1,0 +1,2 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"9881a66160f569f8377ffe6775af82141e2598bc778f0f27ea11a8260091f930","hash":"87f9119f4c032fb92e934a4deaf35c43b4b8b5217a44895efdec29eef34247f1","parents":["bf0e271581729f2dfb3a7ad099c6afa6b4718ca8ae81f0a9858c7dd0205c7639"],"ts":"2026-11-10T15:09:54.489300569Z","author":"YJ Park","provenance":"phase 3 complete: interactive Kimi, console, strict MCP, takeover and compaction","metadata":{"name":"worker-harnesses-plan","status::resolved":"false","task::milestone":"v1"}}
