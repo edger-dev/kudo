@@ -339,7 +339,25 @@ impl<'a> Worker<'a> {
 
     /// The agent process ended without another Stop decision.
     pub fn session_end(&self, now: Now) -> Result<(), Error> {
-        self.end_releasing(LeaseEnd::Exit, now)
+        let record = self.record()?;
+        if record.ended.is_some() {
+            return Ok(());
+        }
+        if self
+            .store
+            .held_by(&self.cfg.context, &self.cfg.lease, now)?
+            .is_some()
+        {
+            return self.end_releasing(LeaseEnd::Exit, now);
+        }
+        let why = if record.turns >= self.cfg.max_turns {
+            LeaseEnd::Budget
+        } else if self.store.ready_count(&self.cfg.context, now)? == 0 {
+            LeaseEnd::QueueEmpty
+        } else {
+            LeaseEnd::Exit
+        };
+        self.end_releasing(why, now)
     }
 
     /// UserPromptSubmit: a human took over; the lease ends, and an open claim
