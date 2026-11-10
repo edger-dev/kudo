@@ -127,6 +127,7 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
         "Stop",
         "PreCompact",
         "UserPromptSubmit",
+        "UserPromptQueued",
         "PostToolUse",
         "PostToolUseFailure",
     ] {
@@ -169,8 +170,10 @@ fn kimi_interactive_launch_uses_a_pty_and_controls_permissions() {
         assert_eq!(plan.argv[0], "sh");
         assert_eq!(plan.argv[1], "-c");
         let command = &plan.argv[2];
-        assert!(command.contains("sleep 1"), "{command}");
+        assert!(command.contains("sleep 8"), "{command}");
         assert!(command.contains("printf"), "{command}");
+        assert!(command.contains("printf '%s'"), "{command}");
+        assert!(command.contains(r"sleep 1; printf '\033[13u'"), "{command}");
         assert!(command.contains("cat"), "{command}");
         assert!(command.contains("script -q -e -c"), "{command}");
         assert!(command.contains(KICKOFF), "{command}");

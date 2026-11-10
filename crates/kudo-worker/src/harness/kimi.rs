@@ -96,6 +96,7 @@ impl AgentHarness for KimiCode {
             json!({"event": "Stop", "command": command("stop"), "timeout": 600}),
             json!({"event": "PreCompact", "command": command("pre-compact")}),
             json!({"event": "UserPromptSubmit", "command": command("user-prompt-submit")}),
+            json!({"event": "UserPromptQueued", "command": command("user-prompt-submit")}),
         ];
         for (event, arg) in [
             ("PostToolUse", "post-tool-use"),
@@ -158,7 +159,7 @@ impl AgentHarness for KimiCode {
                     cli
                 };
                 format!(
-                    "{{ sleep 1; printf '%s\\r' {}; cat; }} | script -q -e -c {} /dev/null\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
+                    "{{ sleep 8; printf '%s' {}; sleep 1; printf '\\033[13u'; cat; }} | script -q -e -c {} /dev/null\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
                     shell_quote(KICKOFF),
                     shell_quote(&cli),
                     shell_quote(&shim_text),
