@@ -193,6 +193,28 @@ fn a_spent_turn_budget_ends_the_lease() {
 }
 
 #[test]
+fn process_exit_preserves_a_spent_turn_budget() {
+    let f = Fixture::new();
+    f.store.enqueue(&f.ctx, "one", T0).unwrap();
+    f.store.enqueue(&f.ctx, "two", T0).unwrap();
+    let w = f.worker(1);
+    let _ = block_reason(w.stop(T0).unwrap());
+    f.submit_held(T0 + 1);
+
+    w.session_end(T0 + 2).unwrap();
+    assert_eq!(w.stop(T0 + 3).unwrap(), Stop::Allow(LeaseEnd::Budget));
+    assert!(f.store.has_ready(&f.ctx, T0 + 4).unwrap());
+}
+
+#[test]
+fn process_exit_preserves_an_empty_queue() {
+    let f = Fixture::new();
+    let w = f.worker(10);
+    w.session_end(T0).unwrap();
+    assert_eq!(w.stop(T0 + 1).unwrap(), Stop::Allow(LeaseEnd::QueueEmpty));
+}
+
+#[test]
 fn a_human_prompt_ends_the_lease_even_with_a_claim_open() {
     let f = Fixture::new();
     f.store.enqueue(&f.ctx, "taken over", T0).unwrap();
