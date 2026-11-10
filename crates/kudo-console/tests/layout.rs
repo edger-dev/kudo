@@ -144,6 +144,7 @@ fn a_taken_over_pane_offers_arrow_keys() {
     assert_eq!(bytes("←"), Some(&b"\x1b[D"[..]));
     assert_eq!(bytes("Tab"), Some(&b"\t"[..]));
     assert_eq!(bytes("Enter"), Some(&b"\r"[..]));
+    assert_eq!(bytes("Ctrl-S"), Some(&b"\x13"[..]));
     let html = render(THREE_PANES);
     for (label, _) in KEYS {
         assert!(
