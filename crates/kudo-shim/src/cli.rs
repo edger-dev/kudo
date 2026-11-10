@@ -594,9 +594,21 @@ pub fn install_launch_files(files: &[kudo_worker::LaunchFile], repo: &Path) -> R
         {
             return Err(format!("cannot create {}: {error}", parent.display()));
         }
-        if let Err(error) = std::fs::write(&path, &file.contents) {
-            return Err(format!("cannot write {}: {error}", path.display()));
-        }
+        use std::io::Write as _;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut output = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+            .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
+        output
+            .set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("cannot protect {}: {error}", path.display()))?;
+        output
+            .write_all(file.contents.as_bytes())
+            .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
     }
     Ok(())
 }

@@ -19,11 +19,11 @@ pub struct KimiCode;
 impl AgentHarness for KimiCode {
     fn capabilities(&self) -> HarnessCapabilities {
         HarnessCapabilities {
-            interactive: false,
+            interactive: true,
             headless: true,
             caller_session_id: false,
             config_artifacts: true,
-            strict_mcp: false,
+            strict_mcp: true,
             session_start_context: false,
             post_tool_context: false,
         }
@@ -38,13 +38,7 @@ impl AgentHarness for KimiCode {
         forward: &[(String, String)],
         options: LaunchOptions<'_>,
     ) -> Result<LaunchPlan, String> {
-        if options.mode != LaunchMode::Headless {
-            return Err("Kimi Code interactive workers are not implemented yet".to_owned());
-        }
-        if options.strict_mcp {
-            return Err("Kimi Code strict MCP is not implemented yet".to_owned());
-        }
-        if !options.bypass {
+        if options.mode == LaunchMode::Headless && !options.bypass {
             return Err(
                 "Kimi Code headless workers require KUDO_WORKER_BYPASS=1: print mode always \
                  uses auto permissions"
@@ -64,16 +58,11 @@ impl AgentHarness for KimiCode {
                 "cannot find Kimi Code's data directory: set KIMI_CODE_HOME".to_owned()
             })?;
         let isolated_home = setup.store_dir.join("kimi-home").join(&setup.lease);
-        let links = vec![
-            LaunchLink {
-                source: source_home.join("config.toml"),
-                target: isolated_home.join("config.toml"),
-            },
-            LaunchLink {
-                source: source_home.join("credentials"),
-                target: isolated_home.join("credentials"),
-            },
-        ];
+        let config = worker_config(&source_home.join("config.toml"))?;
+        let links = vec![LaunchLink {
+            source: source_home.join("credentials"),
+            target: isolated_home.join("credentials"),
+        }];
         let user_mcp = source_home.join("mcp.json");
 
         let mut passed = forward.to_vec();
@@ -116,13 +105,17 @@ impl AgentHarness for KimiCode {
             "args": [],
             "env": server_env,
         });
-        let mut mcp = match std::fs::read_to_string(user_mcp) {
-            Ok(text) => serde_json::from_str::<Value>(&text)
-                .map_err(|error| format!("cannot parse Kimi Code's mcp.json: {error}"))?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                json!({"mcpServers": {}})
+        let mut mcp = if options.strict_mcp {
+            json!({"mcpServers": {}})
+        } else {
+            match std::fs::read_to_string(user_mcp) {
+                Ok(text) => serde_json::from_str::<Value>(&text)
+                    .map_err(|error| format!("cannot parse Kimi Code's mcp.json: {error}"))?,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    json!({"mcpServers": {}})
+                }
+                Err(error) => return Err(format!("cannot read Kimi Code's mcp.json: {error}")),
             }
-            Err(error) => return Err(format!("cannot read Kimi Code's mcp.json: {error}")),
         };
         let Some(servers) = mcp.get_mut("mcpServers").and_then(Value::as_object_mut) else {
             return Err("Kimi Code's mcp.json must contain an mcpServers object".to_owned());
@@ -143,19 +136,34 @@ impl AgentHarness for KimiCode {
                 manifest.to_string(),
             )],
         };
-        let command = format!(
-            "{} --output-format stream-json -p {}\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
-            shell_quote(cli.unwrap_or("kimi")),
-            shell_quote(KICKOFF),
-            shell_quote(&shim_text),
-        );
+        let cli = shell_quote(cli.unwrap_or("kimi"));
+        let command = match options.mode {
+            LaunchMode::Headless => format!(
+                "{cli} --output-format stream-json -p {}\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
+                shell_quote(KICKOFF),
+                shell_quote(&shim_text),
+            ),
+            LaunchMode::Interactive => {
+                let cli = if options.bypass {
+                    format!("{cli} --auto")
+                } else {
+                    cli
+                };
+                format!(
+                    "{{ printf '%s\\r' {}; cat; }} | script -q -c {} /dev/null\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
+                    shell_quote(KICKOFF),
+                    shell_quote(&cli),
+                    shell_quote(&shim_text),
+                )
+            }
+        };
         Ok(LaunchPlan {
             argv: vec!["sh".to_owned(), "-c".to_owned(), command],
             env,
-            files: vec![LaunchFile::new(
-                isolated_home.join("mcp.json"),
-                mcp.to_string(),
-            )],
+            files: vec![
+                LaunchFile::new(isolated_home.join("config.toml"), config),
+                LaunchFile::new(isolated_home.join("mcp.json"), mcp.to_string()),
+            ],
             plugins: vec![plugin],
             links,
         })
@@ -247,6 +255,61 @@ impl AgentHarness for KimiCode {
     fn post_tool_reply(&self, _event: &str, _context: &str) -> HookReply {
         HookReply::quiet()
     }
+}
+
+fn worker_config(path: &Path) -> Result<String, String> {
+    let source = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("cannot read {}: {error}", path.display())),
+    };
+    let manual = toml_setting(&source, None, "default_permission_mode", "\"manual\"");
+    Ok(toml_setting(
+        &manual,
+        Some("workspace"),
+        "require_trust",
+        "true",
+    ))
+}
+
+fn toml_setting(text: &str, section: Option<&str>, key: &str, value: &str) -> String {
+    let setting = format!("{key} = {value}");
+    let mut out = Vec::new();
+    let mut selected = section.is_none();
+    let mut saw_section = selected;
+    let mut wrote = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            if selected && !wrote {
+                out.push(setting.clone());
+                wrote = true;
+            }
+            selected = section.is_some_and(|name| trimmed == format!("[{name}]"));
+            saw_section |= selected;
+        }
+        if selected
+            && line
+                .split_once('=')
+                .is_some_and(|(candidate, _)| candidate.trim() == key)
+        {
+            if !wrote {
+                out.push(setting.clone());
+                wrote = true;
+            }
+        } else {
+            out.push(line.to_owned());
+        }
+    }
+    if !wrote {
+        if !saw_section
+            && let Some(name) = section
+        {
+            out.push(format!("[{name}]"));
+        }
+        out.push(setting);
+    }
+    format!("{}\n", out.join("\n"))
 }
 
 fn shell_quote(text: &str) -> String {
