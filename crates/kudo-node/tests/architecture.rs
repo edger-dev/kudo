@@ -151,7 +151,7 @@ fn the_home_module_keeps_the_three_load_bearing_lines() {
 #[test]
 fn the_home_module_installs_the_cli() {
     assert!(
-        home_module().contains("home.packages = [ cfg.package ]"),
+        home_module().contains("home.packages = [ cfg.package pkgs.util-linux ]"),
         "packaging/home-module.nix must install the package for the user"
     );
 }

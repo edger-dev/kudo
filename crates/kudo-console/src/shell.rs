@@ -780,6 +780,7 @@ pub const KEYS: &[(&str, &[u8])] = &[
     ("Enter", b"\r"),
     ("Esc", b"\x1b"),
     ("Ctrl-C", b"\x03"),
+    ("Ctrl-S", b"\x13"),
 ];
 
 /// The bytes for a key pressed in the empty line field: the arrows and

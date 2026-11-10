@@ -6,7 +6,7 @@
 #
 # The same deployment as ./kudo-node.service, written for home-manager; the
 # three load-bearing lines are asserted by tests/architecture.rs.
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.services.kudo-node;
 in
@@ -39,8 +39,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # kudo-shim (worker, context, hooks) on PATH for any pane on this node.
-    home.packages = [ cfg.package ];
+    # kudo-shim (worker, context, hooks) and script (Kimi's interactive PTY).
+    home.packages = [ cfg.package pkgs.util-linux ];
 
     systemd.user.services.kudo-node = {
       # No network ordering: a user manager has no network-online.target, and

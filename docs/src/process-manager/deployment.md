@@ -110,8 +110,10 @@ worker needs at run time has to be in the node's own environment:
   MCP servers included, also need `NODE_USE_ENV_PROXY=1` to honour them.
 - **Certificates.** `SSL_CERT_FILE` and `NIX_SSL_CERT_FILE` for a private CA
   bundle, and `NODE_EXTRA_CA_CERTS` for Node.js.
-- **The worker's own switches.** `KUDO_WORKER_BYPASS`, `KUDO_WORKER_STRICT_MCP`
-  (see [Console](../contexts/console.md)).
+- **The worker's own switches.** `KUDO_AGENT_HARNESS` (`claude` or `kimi`),
+  `KUDO_WORKER_BYPASS`, `KUDO_WORKER_STRICT_MCP` (see
+  [Console](../contexts/console.md)). Interactive Kimi also needs `script` from
+  util-linux; kudo's Home Manager module installs it.
 
 When the login shell sets these from a file it sources, give the unit the same
 file rather than copying values:

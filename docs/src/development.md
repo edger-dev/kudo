@@ -27,7 +27,11 @@ Two limits of the hub's real side:
   not at the hub your real sessions use.
 
 A worker needs no hub: `kudo-shim worker <context>` with `KUDO_HUB_ADDR`
-unset serves the worker tools on their own.
+unset serves the worker tools on their own. Set `KUDO_AGENT_HARNESS=claude` or
+`kimi` to choose the adapter (Claude is the default), and add `--headless` for
+print mode. Kimi headless workers also require `KUDO_WORKER_BYPASS=1` because
+Kimi print mode always uses auto permissions. Interactive Kimi uses `script`
+from util-linux.
 
 ## The full topology
 

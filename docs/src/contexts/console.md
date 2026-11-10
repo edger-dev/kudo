@@ -65,14 +65,14 @@ nothing stops a person on the network. So:
 
 ## Starting a worker, and taking it over
 
-Under each context, **start a worker on <node>** starts `kudo-shim worker`
+Under each context, **start a worker on `<node>`** starts `kudo-shim worker`
 for that context as a terminal job on that node (in the context's repo there,
 when it declares one — otherwise in `/tmp`, where the agent CLI first asks to
 trust the folder). The console picks the worker's lease, records the pane,
 and selects it: the **terminal** pane shows its screen (re-read every second)
 and takes typing — a line with Enter, or a key alone (the arrows, Tab, Enter,
-Esc, Ctrl-C; the arrows and Esc also work from the empty line field), sent in
-order. A worker
+Esc, Ctrl-C, Ctrl-S; the arrows and Esc also work from the empty line field),
+sent in order. A worker
 whose CLI has not started its session yet shows as *starting*, and can be
 taken over all the same — which is how you answer a startup prompt. One still
 silent after ten minutes shows as *quiet* (stuck at a prompt, or dead), and
@@ -88,7 +88,22 @@ minutes of waiting it replies one idle line (a cheap turn)
 and waits again; after `KUDO_IDLE_LIMIT` seconds in a row with nothing
 (default 7200, on the node) its lease ends. `KUDO_IDLE_LIMIT=0` ends it as
 soon as nothing is ready. To take over a waiting worker, interrupt (Esc) and
-type.
+type. In Kimi, typing during a running turn queues the message; press **Ctrl-S**
+to steer immediately, which releases the worker's open claim and ends its lease
+as a takeover.
+
+### Which agent CLI runs
+
+The node's own `KUDO_AGENT_HARNESS` selects `claude` (the default) or `kimi`;
+the console's start request cannot change it. `KUDO_AGENT_CLI` is a separate
+executable-path override. Both harnesses use the same claims, leases, evidence,
+and console semantics.
+
+Kimi interactive workers need util-linux's `script` (installed by kudo's Home
+Manager module) and use `--auto` when the node enables bypass. Kimi print mode
+always uses auto permissions, so `kudo-shim worker <context> --headless` with
+the Kimi harness requires `KUDO_WORKER_BYPASS=1`; without it, launch is refused
+rather than silently running unattended with prompts.
 
 ### Which nodes run workers, and how
 
@@ -104,8 +119,9 @@ refused — redeploy it.
 
 Whether a worker's CLI asks before running tools is the **node's** decision,
 never the console's: a node whose own environment has `KUDO_WORKER_BYPASS=1`
-runs its workers with `--permission-mode bypassPermissions`. No caller can set
-it: the worker's environment is composed by the node. Set it only on a
+maps that choice to the selected harness (`--permission-mode bypassPermissions`
+for Claude, `--auto` for interactive Kimi). No caller can set it: the worker's
+environment is composed by the node. Set it only on a
 sandboxed node — yolo, whose outbound traffic goes through OneCLI:
 
 ```nix
@@ -118,16 +134,17 @@ Which MCP servers a worker gets is the node's decision too. By default it gets
 kudo's server and the user's own (chat, trackers, search — whatever the CLI
 loads for that user), so a check can read them. A node whose own environment
 has `KUDO_WORKER_STRICT_MCP=1` gives its workers kudo's server only
-(`--strict-mcp-config`):
+(`--strict-mcp-config` for Claude, an isolated MCP config for Kimi):
 
 ```nix
 services.kudo-node.environment.KUDO_WORKER_STRICT_MCP = "1";
 ```
 
-Either way, project servers (a `.mcp.json` in the repository or any directory
-above it) are not offered:
-the launch declines them in the settings it passes, so an unattended worker
-never stops at the CLI's "use this project's servers?" prompt.
+Either way, project servers are not offered. Claude declines servers from
+`.mcp.json` in the repository and its ancestors. Kimi reads project servers from
+`.kimi-code/mcp.json`; because Kimi cannot trust a workspace while declining
+those servers, a repo declaring any is refused before launch rather than
+silently loading them.
 
 To reach the console by a name other than localhost (through a tunnel that
 keeps a hostname), list it in `KUDO_CONSOLE_HOSTS` (comma-separated); any

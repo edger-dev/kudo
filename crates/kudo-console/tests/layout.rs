@@ -131,9 +131,8 @@ fn a_second_arrangement_is_only_a_different_value() {
     );
 }
 
-/// A taken-over pane offers the keys a CLI's menus need (Claude Code's trust
-/// prompt is answered with the arrows and Enter), each as the bytes a
-/// terminal sends.
+/// A taken-over pane offers the keys a CLI's menus and Kimi's immediate
+/// takeover need, each as the bytes a terminal sends.
 #[test]
 fn a_taken_over_pane_offers_arrow_keys() {
     use kudo_console::shell::KEYS;
