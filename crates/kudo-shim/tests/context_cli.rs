@@ -489,9 +489,9 @@ fn kimi_input_translates_console_enter_without_changing_other_keys() {
         .stdin
         .take()
         .unwrap()
-        .write_all(b"text\r\x1b[A\x13")
+        .write_all(b"text\r\n\x1b[A\x13")
         .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success(), "{out:?}");
-    assert_eq!(out.stdout, b"text\x1b[13u\x1b[A\x13");
+    assert_eq!(out.stdout, b"text\x1b[13u\x1b[13u\x1b[A\x13");
 }

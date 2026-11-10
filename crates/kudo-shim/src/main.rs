@@ -172,7 +172,7 @@ fn run_kimi_input() -> std::io::Result<()> {
             return output.flush();
         }
         for byte in &bytes[..read] {
-            if *byte == b'\r' {
+            if matches!(*byte, b'\r' | b'\n') {
                 output.write_all(b"\x1b[13u")?;
             } else {
                 output.write_all(&[*byte])?;
