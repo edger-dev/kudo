@@ -95,6 +95,7 @@ impl AgentHarness for KimiCode {
         let command = |event: &str| format!("{} hook {event}", shell_quote(&shim_text));
         let mut hooks = vec![
             json!({"event": "SessionStart", "command": command("session-start")}),
+            json!({"event": "SessionEnd", "command": command("stop"), "timeout": 600}),
             json!({"event": "Stop", "command": command("stop"), "timeout": 600}),
             json!({"event": "PreCompact", "command": command("pre-compact")}),
             json!({"event": "UserPromptSubmit", "command": command("user-prompt-submit")}),
