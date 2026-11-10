@@ -169,12 +169,18 @@ fn kimi_interactive_launch_uses_a_pty_and_controls_permissions() {
         assert_eq!(plan.argv[0], "sh");
         assert_eq!(plan.argv[1], "-c");
         let command = &plan.argv[2];
+        assert!(command.contains("sleep 1"), "{command}");
         assert!(command.contains("printf"), "{command}");
         assert!(command.contains("cat"), "{command}");
         assert!(command.contains("script -q -c"), "{command}");
         assert!(command.contains(KICKOFF), "{command}");
         assert_eq!(command.contains("--auto"), bypass, "{command}");
         assert!(!command.contains("--output-format"), "{command}");
+        assert!(
+            plan.env
+                .iter()
+                .any(|(key, value)| key == "KIMI_CODE_TRUST_WORKSPACE" && value == "1")
+        );
 
         let config = plan
             .files
@@ -212,6 +218,37 @@ fn kimi_strict_mcp_loads_only_kudo() {
     let mcp: Value = serde_json::from_str(&mcp_file.contents).unwrap();
     let servers = mcp["mcpServers"].as_object().unwrap();
     assert_eq!(servers.keys().collect::<Vec<_>>(), ["kudo"]);
+}
+
+#[test]
+fn kimi_refuses_project_mcp_instead_of_inheriting_workspace_trust() {
+    let repo = std::env::temp_dir().join(format!("kudo-kimi-project-mcp-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(repo.join(".kimi-code")).unwrap();
+    std::fs::write(
+        repo.join(".kimi-code/mcp.json"),
+        r#"{"mcpServers":{"other":{"command":"other"}}}"#,
+    )
+    .unwrap();
+    for strict_mcp in [false, true] {
+        let error = KimiCode
+            .launch(
+                &setup(),
+                None,
+                Path::new("/bin/kudo-shim"),
+                None,
+                &[],
+                LaunchOptions {
+                    mode: LaunchMode::Interactive,
+                    bypass: true,
+                    strict_mcp,
+                    repo: &repo,
+                },
+            )
+            .unwrap_err();
+        assert!(error.contains(".kimi-code/mcp.json"), "{error}");
+    }
+    let _ = std::fs::remove_dir_all(&repo);
 }
 
 #[test]
