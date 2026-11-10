@@ -156,6 +156,15 @@ fn the_home_module_installs_the_cli() {
     );
 }
 
+/// Kimi interactive workers launch through util-linux's `script`.
+#[test]
+fn the_home_module_installs_the_pty_launcher() {
+    assert!(
+        home_module().contains("pkgs.util-linux"),
+        "packaging/home-module.nix must install script for Kimi workers"
+    );
+}
+
 /// A job is the user's own program: the daemon must find it on the user's
 /// PATH, not on systemd's bare one (seen live — a deployed node could not
 /// spawn `echo`, `sh` or `sleep`; its PATH held only systemd's bin).
