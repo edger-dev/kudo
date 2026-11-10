@@ -155,7 +155,17 @@ fn kimi_interactive_and_strict_mcp_are_refused_until_implemented() {
 #[test]
 fn kimi_uses_plain_prompt_context_and_exit_two_for_stop() {
     let startup = KimiCode.user_prompt_reply(Some("the head"));
-    assert_eq!(startup.stdout, "the head");
+    assert!(startup.stdout.starts_with("the head\n\n"));
+    for tool in [
+        "mcp__kudo__pull",
+        "mcp__kudo__submit",
+        "mcp__kudo__evidence",
+        "mcp__kudo__release",
+    ] {
+        assert!(startup.stdout.contains(tool), "missing {tool}");
+    }
+    assert!(startup.stdout.contains("Do not invoke `kudo` through Bash"));
+    assert!(startup.stdout.contains("speak JSON-RPC manually"));
     assert_eq!(startup.code, 0);
     assert!(KimiCode.user_prompt_reply(None).stdout.is_empty());
     assert!(KimiCode.session_start_reply("ignored").stdout.is_empty());
