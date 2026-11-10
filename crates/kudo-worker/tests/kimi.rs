@@ -174,7 +174,7 @@ fn kimi_interactive_launch_uses_a_pty_and_controls_permissions() {
         assert!(command.contains("printf"), "{command}");
         assert!(command.contains("printf '%s'"), "{command}");
         assert!(command.contains(r"sleep 1; printf '\033[13u'"), "{command}");
-        assert!(command.contains("cat"), "{command}");
+        assert!(command.contains("kimi-input"), "{command}");
         assert!(command.contains("script -q -e -c"), "{command}");
         assert!(command.contains(KICKOFF), "{command}");
         assert_eq!(command.contains("--auto"), bypass, "{command}");

@@ -159,8 +159,9 @@ impl AgentHarness for KimiCode {
                     cli
                 };
                 format!(
-                    "{{ sleep 8; printf '%s' {}; sleep 1; printf '\\033[13u'; cat; }} | script -q -e -c {} /dev/null\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
+                    "{{ sleep 8; printf '%s' {}; sleep 1; printf '\\033[13u'; {} kimi-input; }} | script -q -e -c {} /dev/null\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
                     shell_quote(KICKOFF),
+                    shell_quote(&shim_text),
                     shell_quote(&cli),
                     shell_quote(&shim_text),
                 )

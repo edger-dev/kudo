@@ -32,6 +32,7 @@ usage:
                                  list, trace, why, repo add, check, wake-node)
   kudo-shim worker <context> [--repo <name>] [--headless]
                                  start a worker session here
+  kudo-shim kimi-input           bridge console input to Kimi's terminal
   kudo-shim waker                wake a worker when a context's check comes due
                                  (a user service on one node)
   kudo-shim --version | --help
@@ -59,6 +60,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(run_hook(
             args.get(2).map(String::as_str).unwrap_or_default(),
         ));
+    }
+
+    if args.get(1).map(String::as_str) == Some("kimi-input") {
+        run_kimi_input()?;
+        return Ok(());
     }
 
     // The waker: a long-running loop on one node.
@@ -153,6 +159,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = server.with_worker(worker).serve((stdin, stdout)).await?;
     service.waiting().await?;
     Ok(())
+}
+
+fn run_kimi_input() -> std::io::Result<()> {
+    use std::io::{Read, Write};
+    let mut input = std::io::stdin().lock();
+    let mut output = std::io::stdout().lock();
+    let mut bytes = [0; 4096];
+    loop {
+        let read = input.read(&mut bytes)?;
+        if read == 0 {
+            return output.flush();
+        }
+        for byte in &bytes[..read] {
+            if *byte == b'\r' {
+                output.write_all(b"\x1b[13u")?;
+            } else {
+                output.write_all(&[*byte])?;
+            }
+        }
+        output.flush()?;
+    }
 }
 
 /// Run one hook: the event JSON on stdin, the decision on stdout.

@@ -474,3 +474,24 @@ fn launch_links_are_idempotent_and_registry_merges_survive_concurrency() {
     assert!(plugins.iter().any(|plugin| plugin["id"] == "two"));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn kimi_input_translates_console_enter_without_changing_other_keys() {
+    use std::io::Write as _;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(env!("CARGO_BIN_EXE_kudo-shim"))
+        .arg("kimi-input")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"text\r\x1b[A\x13")
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(out.stdout, b"text\x1b[13u\x1b[A\x13");
+}
