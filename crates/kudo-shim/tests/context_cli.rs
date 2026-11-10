@@ -370,7 +370,12 @@ fn launch_artifacts_land_where_the_worker_runs() {
         std::fs::read_to_string(repo.join(".agent/nested/settings.json")).unwrap(),
         "relative"
     );
-    assert_eq!(std::fs::read_to_string(absolute).unwrap(), "absolute");
+    assert_eq!(std::fs::read_to_string(&absolute).unwrap(), "absolute");
+    use std::os::unix::fs::PermissionsExt;
+    for path in [repo.join(".agent/nested/settings.json"), absolute] {
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "{} is private", path.display());
+    }
 
     let blocked = root.join("blocked");
     std::fs::create_dir_all(&blocked).unwrap();
