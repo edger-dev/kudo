@@ -1,6 +1,6 @@
 //! The hook decisions for one worker: a lease bound to one context.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 
 use kudo_context::{
     Claim, ClaimId, ContextId, ContextStore, Error, Now, Submission, Submitted, TraceEvent,
@@ -362,7 +362,7 @@ impl<'a> Worker<'a> {
 
     /// UserPromptSubmit: a human took over; the lease ends, and an open claim
     /// is released.
-    // implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@e60af5df023b9c371fc558a8a11ee450eabe48d03f12b2da11fd01cbe5497874
+    // implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
     pub fn user_prompt(&self, prompt: &str, now: Now) -> Result<(), Error> {
         let prompt = prompt.trim();
         if prompt == crate::KICKOFF {

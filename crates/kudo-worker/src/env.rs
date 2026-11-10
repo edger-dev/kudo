@@ -28,7 +28,7 @@ pub const MAX_TURNS_ENV: &str = "KUDO_MAX_TURNS";
 /// Set to `1` in a node's own environment: its workers run the agent CLI in
 /// bypass-permissions mode. The node's opt-in; the console never sends it (on
 /// an ungoverned node a start request's env could — see the spec).
-// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@30903341e298e231be2b4ad5aa49dc0007d06621ec749f52a03d78cc74aa58e3
+// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@3ab1a4e735b851802e773873ce516aaba9e5a5184f63c4b59ea373f03545b18a
 pub const BYPASS_ENV: &str = "KUDO_WORKER_BYPASS";
 
 /// Whether this node's workers bypass permissions: only `1` says so.
@@ -39,7 +39,7 @@ pub fn bypass_from(lookup: impl Fn(&str) -> Option<String>) -> bool {
 /// Set to `1` in a node's own environment: its workers get kudo's MCP server
 /// only (`--strict-mcp-config`), not the user's own servers. The node's
 /// opt-in; the console never sends it.
-// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9@fdfdca43cff843a35a326a9ebbfe9c8f86c0817745be4c67528e62fe1eb41210
+// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9@57e52e9594073132eb79c8121ad1359e6c0c39325ff9fb1543752930262de155
 pub const STRICT_MCP_ENV: &str = "KUDO_WORKER_STRICT_MCP";
 
 /// Whether this node's workers see only kudo's MCP server: only `1` says so.

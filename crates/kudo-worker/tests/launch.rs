@@ -1,7 +1,7 @@
 //! The launch plan: the CLI started with the worker's hooks and MCP server on
 //! its command line, under the lease's session id, with the kickoff prompt.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
@@ -181,7 +181,7 @@ fn the_mirror_settings_are_forwarded_to_the_shim() {
 
 /// A node that says so runs its workers' CLI in bypass-permissions mode; any
 /// other node, or any other value, leaves the CLI asking.
-// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@30903341e298e231be2b4ad5aa49dc0007d06621ec749f52a03d78cc74aa58e3
+// implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@3ab1a4e735b851802e773873ce516aaba9e5a5184f63c4b59ea373f03545b18a
 #[test]
 fn a_worker_bypasses_permissions_only_where_its_node_says_so() {
     use kudo_worker::env::{BYPASS_ENV, bypass_from};
@@ -217,7 +217,7 @@ fn a_worker_bypasses_permissions_only_where_its_node_says_so() {
 
 /// The launch pre-answers the CLI's first-run prompts: tips and non-essential
 /// traffic (promotions) are off. (Project MCP servers: see below.)
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@fccf5f8c7f0c646cdd00265204fcac5372dfbd04f017e3c36609e44cd2d0d460
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@9ee7f15ca68f69c0d1c7d7929f78d2b912a001f15d1b4cb0886096d3ae3d899a
 #[test]
 fn the_launch_preanswers_first_run_prompts() {
     let p = plan(
@@ -262,7 +262,7 @@ fn shell_calls_are_recorded_by_a_post_tool_use_hook() {
 
 /// A node that says so gives its workers kudo's MCP server only; any other
 /// node, or any other value, leaves them the user's own servers too.
-// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9@fdfdca43cff843a35a326a9ebbfe9c8f86c0817745be4c67528e62fe1eb41210
+// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9@57e52e9594073132eb79c8121ad1359e6c0c39325ff9fb1543752930262de155
 #[test]
 fn a_worker_sees_only_kudos_mcp_server_where_its_node_says_so() {
     use kudo_worker::env::{STRICT_MCP_ENV, strict_mcp_from};
@@ -325,7 +325,7 @@ fn repo_with(mcp_json: Option<&str>) -> PathBuf {
 
 /// The servers a repository declares in its `.mcp.json`, by name; none when
 /// it has no such file, or one that does not parse.
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@fccf5f8c7f0c646cdd00265204fcac5372dfbd04f017e3c36609e44cd2d0d460
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@9ee7f15ca68f69c0d1c7d7929f78d2b912a001f15d1b4cb0886096d3ae3d899a
 #[test]
 fn a_repositorys_project_servers_are_read_by_name() {
     use kudo_worker::launch::project_servers;
@@ -343,7 +343,7 @@ fn a_repositorys_project_servers_are_read_by_name() {
 /// Without strict mode, the repository's project servers are declined in the
 /// settings the launch passes, so the CLI asks about none of them; the rest
 /// of the settings stay as they were.
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@fccf5f8c7f0c646cdd00265204fcac5372dfbd04f017e3c36609e44cd2d0d460
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@9ee7f15ca68f69c0d1c7d7929f78d2b912a001f15d1b4cb0886096d3ae3d899a
 #[test]
 fn project_servers_are_declined_without_a_prompt() {
     let p = plan(
@@ -373,7 +373,7 @@ fn project_servers_are_declined_without_a_prompt() {
 
 /// Project servers in any directory above the repository are declined too:
 /// the CLI reads `.mcp.json` from the working directory and every parent.
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@fccf5f8c7f0c646cdd00265204fcac5372dfbd04f017e3c36609e44cd2d0d460
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@9ee7f15ca68f69c0d1c7d7929f78d2b912a001f15d1b4cb0886096d3ae3d899a
 #[test]
 fn project_servers_above_the_repository_are_read_too() {
     use kudo_worker::launch::project_servers;
@@ -397,7 +397,7 @@ fn project_servers_above_the_repository_are_read_too() {
 
 /// The node's choice, applied: strict where it says so (nothing declined, no
 /// file read), otherwise the repository's project servers declined.
-// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9@fdfdca43cff843a35a326a9ebbfe9c8f86c0817745be4c67528e62fe1eb41210
+// implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9@57e52e9594073132eb79c8121ad1359e6c0c39325ff9fb1543752930262de155
 #[test]
 fn the_launcher_applies_the_nodes_mcp_choice_in_the_repository() {
     let p = plan(

@@ -2,7 +2,7 @@
 //! plain functions over the context store. The server wraps them; like the
 //! hooks, they reach the store directly, never through the hub.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 
 use kudo_context::{ClaimId, ContextStore, Error, Now, Submission};
 use kudo_worker::{LeaseBook, Pull, Worker, WorkerSetup};

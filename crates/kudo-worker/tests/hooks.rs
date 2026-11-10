@@ -1,7 +1,7 @@
 //! The hook decisions: one item per turn, the open-claim guard, and the four
 //! conditions and process exit that end a lease.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
@@ -253,7 +253,7 @@ fn the_launchers_kickoff_prompt_is_not_a_takeover() {
 
 /// A prompt the CLI delivers itself — a background task finishing — is not
 /// a person taking over: the lease and its claim stay.
-// implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@e60af5df023b9c371fc558a8a11ee450eabe48d03f12b2da11fd01cbe5497874
+// implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 #[test]
 fn a_task_notification_is_not_a_takeover() {
     let f = Fixture::new();

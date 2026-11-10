@@ -13,7 +13,7 @@
 //! | `session-end`        | ends the lease without handing off more work       |
 //! | `user-prompt-submit` | ends the lease unless it is the launcher's kickoff or the CLI's own task notification |
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 
 use kudo_context::Now;
 use kudo_worker::{AgentHarness, ClaudeCode, LeaseBook, Worker, WorkerSetup, harness_from};

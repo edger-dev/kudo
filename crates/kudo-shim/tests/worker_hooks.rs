@@ -1,7 +1,7 @@
 //! The worker side of the shim: `kudo-shim hook <event>` and the worker's MCP
 //! tools, over a real context store and no hub.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
