@@ -19,7 +19,7 @@ run = "cargo fmt --all"
 description = "Format all Rust code"
 
 [tasks._bacon-claude-diagnostics]
-run = "bacon claude-diagnostics"
+run = "bacon --headless claude-diagnostics"
 description = "⭐ Run bacon background checker (exports diagnostics to .bacon-claude-diagnostics)"
 
 # Shared docs tasks (from jig)
