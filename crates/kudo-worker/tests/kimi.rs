@@ -25,7 +25,7 @@ fn setup() -> WorkerSetup {
 }
 
 #[test]
-fn kimi_is_selected_explicitly_and_reports_headless_only_at_this_phase() {
+fn kimi_is_selected_explicitly_and_reports_headless_and_interactive_support() {
     let harness = harness_from(|key| {
         (key == HARNESS_ENV)
             .then(|| Some("kimi".to_owned()))
@@ -33,11 +33,11 @@ fn kimi_is_selected_explicitly_and_reports_headless_only_at_this_phase() {
     })
     .unwrap();
     let capabilities = harness.capabilities();
-    assert!(!capabilities.interactive);
+    assert!(capabilities.interactive);
     assert!(capabilities.headless);
     assert!(!capabilities.caller_session_id);
     assert!(capabilities.config_artifacts);
-    assert!(!capabilities.strict_mcp);
+    assert!(capabilities.strict_mcp);
     assert!(!capabilities.session_start_context);
     assert!(!capabilities.post_tool_context);
 }
@@ -89,7 +89,7 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
         .unwrap();
     assert_eq!(isolated_home, "/state/contexts/kimi-home/lease-1");
     assert!(
-        plan.links.iter().any(|link| {
+        !plan.links.iter().any(|link| {
             link.target == Path::new("/state/contexts/kimi-home/lease-1/config.toml")
         })
     );
@@ -106,9 +106,13 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
     assert_eq!(plugin.files.len(), 1);
     let manifest: Value = serde_json::from_str(&plugin.files[0].contents).unwrap();
     assert!(manifest.get("mcpServers").is_none());
-    assert_eq!(plan.files.len(), 1);
-    assert_eq!(plan.files[0].path.to_str().unwrap(), format!("{isolated_home}/mcp.json"));
-    let mcp: Value = serde_json::from_str(&plan.files[0].contents).unwrap();
+    assert_eq!(plan.files.len(), 2);
+    let mcp_file = plan
+        .files
+        .iter()
+        .find(|file| file.path == Path::new(&format!("{isolated_home}/mcp.json")))
+        .unwrap();
+    let mcp: Value = serde_json::from_str(&mcp_file.contents).unwrap();
     let server = &mcp["mcpServers"]["kudo"];
     assert_eq!(server["command"], "/bin/kudo-shim");
     assert_eq!(server["env"]["KUDO_CONTEXT"], "ctx1");
@@ -145,13 +149,9 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
 }
 
 #[test]
-fn kimi_interactive_and_strict_mcp_are_refused_until_implemented() {
-    for (mode, strict_mcp, bypass) in [
-        (LaunchMode::Interactive, false, true),
-        (LaunchMode::Headless, true, true),
-        (LaunchMode::Headless, false, false),
-    ] {
-        let error = KimiCode
+fn kimi_interactive_launch_uses_a_pty_and_controls_permissions() {
+    for bypass in [false, true] {
+        let plan = KimiCode
             .launch(
                 &setup(),
                 None,
@@ -159,15 +159,79 @@ fn kimi_interactive_and_strict_mcp_are_refused_until_implemented() {
                 None,
                 &[],
                 LaunchOptions {
-                    mode,
+                    mode: LaunchMode::Interactive,
                     bypass,
-                    strict_mcp,
+                    strict_mcp: false,
                     repo: Path::new("/tmp"),
                 },
             )
-            .unwrap_err();
-        assert!(!error.is_empty());
+            .unwrap();
+        assert_eq!(plan.argv[0], "sh");
+        assert_eq!(plan.argv[1], "-c");
+        let command = &plan.argv[2];
+        assert!(command.contains("printf"), "{command}");
+        assert!(command.contains("cat"), "{command}");
+        assert!(command.contains("script -q -c"), "{command}");
+        assert!(command.contains(KICKOFF), "{command}");
+        assert_eq!(command.contains("--auto"), bypass, "{command}");
+        assert!(!command.contains("--output-format"), "{command}");
+
+        let config = plan
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("config.toml"))
+            .unwrap();
+        assert!(config.contents.contains("default_permission_mode = \"manual\""));
+        assert!(!config.contents.contains("default_permission_mode = \"auto\""));
+        assert!(config.contents.contains("require_trust = true"));
     }
+}
+
+#[test]
+fn kimi_strict_mcp_loads_only_kudo() {
+    let plan = KimiCode
+        .launch(
+            &setup(),
+            None,
+            Path::new("/bin/kudo-shim"),
+            None,
+            &[],
+            LaunchOptions {
+                mode: LaunchMode::Headless,
+                bypass: true,
+                strict_mcp: true,
+                repo: Path::new("/tmp"),
+            },
+        )
+        .unwrap();
+    let mcp_file = plan
+        .files
+        .iter()
+        .find(|file| file.path.ends_with("mcp.json"))
+        .unwrap();
+    let mcp: Value = serde_json::from_str(&mcp_file.contents).unwrap();
+    let servers = mcp["mcpServers"].as_object().unwrap();
+    assert_eq!(servers.keys().collect::<Vec<_>>(), ["kudo"]);
+}
+
+#[test]
+fn kimi_headless_without_bypass_is_refused() {
+    let error = KimiCode
+        .launch(
+            &setup(),
+            None,
+            Path::new("/bin/kudo-shim"),
+            None,
+            &[],
+            LaunchOptions {
+                mode: LaunchMode::Headless,
+                bypass: false,
+                strict_mcp: false,
+                repo: Path::new("/tmp"),
+            },
+        )
+        .unwrap_err();
+    assert!(error.contains("KUDO_WORKER_BYPASS=1"));
 }
 
 #[test]
