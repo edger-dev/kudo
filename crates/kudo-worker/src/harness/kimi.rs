@@ -166,7 +166,11 @@ impl AgentHarness for KimiCode {
     fn user_prompt_reply(&self, context: Option<&str>) -> HookReply {
         match context {
             Some(text) => HookReply {
-                stdout: text.to_owned(),
+                stdout: format!(
+                    "{text}\n\nUse the kudo MCP tools directly: `mcp__kudo__pull`, \
+                     `mcp__kudo__submit`, `mcp__kudo__evidence`, and `mcp__kudo__release`. \
+                     Do not invoke `kudo` through Bash or speak JSON-RPC manually."
+                ),
                 code: 0,
             },
             None => HookReply::quiet(),
