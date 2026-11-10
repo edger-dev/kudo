@@ -113,6 +113,7 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
     assert_eq!(server["env"][HARNESS_ENV], "kimi");
     for event in [
         "SessionStart",
+        "SessionEnd",
         "Stop",
         "PreCompact",
         "UserPromptSubmit",
