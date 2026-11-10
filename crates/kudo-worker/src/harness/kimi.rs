@@ -95,7 +95,7 @@ impl AgentHarness for KimiCode {
         let command = |event: &str| format!("{} hook {event}", shell_quote(&shim_text));
         let mut hooks = vec![
             json!({"event": "SessionStart", "command": command("session-start")}),
-            json!({"event": "SessionEnd", "command": command("stop"), "timeout": 600}),
+            json!({"event": "SessionEnd", "command": command("session-end")}),
             json!({"event": "Stop", "command": command("stop"), "timeout": 600}),
             json!({"event": "PreCompact", "command": command("pre-compact")}),
             json!({"event": "UserPromptSubmit", "command": command("user-prompt-submit")}),
@@ -143,14 +143,14 @@ impl AgentHarness for KimiCode {
                 manifest.to_string(),
             )],
         };
+        let command = format!(
+            "{} --output-format stream-json -p {}\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
+            shell_quote(cli.unwrap_or("kimi")),
+            shell_quote(KICKOFF),
+            shell_quote(&shim_text),
+        );
         Ok(LaunchPlan {
-            argv: vec![
-                cli.unwrap_or("kimi").to_owned(),
-                "--output-format".to_owned(),
-                "stream-json".to_owned(),
-                "-p".to_owned(),
-                KICKOFF.to_owned(),
-            ],
+            argv: vec!["sh".to_owned(), "-c".to_owned(), command],
             env,
             files: vec![LaunchFile::new(
                 isolated_home.join("mcp.json"),

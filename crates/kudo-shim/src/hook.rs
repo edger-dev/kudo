@@ -10,6 +10,7 @@
 //! | `session-start`      | the head and the worker's rules as added context   |
 //! | `stop`               | `{"decision":"block","reason":…}`, or nothing      |
 //! | `pre-compact`        | ends the lease                                     |
+//! | `session-end`        | ends the lease without handing off more work       |
 //! | `user-prompt-submit` | ends the lease unless it is the launcher's kickoff or the CLI's own task notification |
 //!
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
@@ -98,6 +99,7 @@ pub fn run_with_harness(
         }
         .map(|stop| harness.stop_reply(&stop)),
         "pre-compact" => worker.pre_compact(now).map(|()| harness.quiet_reply()),
+        "session-end" => worker.session_end(now).map(|()| harness.quiet_reply()),
         "user-prompt-submit" => {
             let prompt = harness.user_prompt(&input).unwrap_or_default();
             if prompt == kudo_worker::KICKOFF {
