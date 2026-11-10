@@ -99,7 +99,11 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
     assert_eq!(plugin.id, "kudo");
     assert_eq!(plugin.files.len(), 1);
     let manifest: Value = serde_json::from_str(&plugin.files[0].contents).unwrap();
-    let server = &manifest["mcpServers"]["kudo"];
+    assert!(manifest.get("mcpServers").is_none());
+    assert_eq!(plan.files.len(), 1);
+    assert_eq!(plan.files[0].path.to_str().unwrap(), format!("{isolated_home}/mcp.json"));
+    let mcp: Value = serde_json::from_str(&plan.files[0].contents).unwrap();
+    let server = &mcp["mcpServers"]["kudo"];
     assert_eq!(server["command"], "/bin/kudo-shim");
     assert_eq!(server["env"]["KUDO_CONTEXT"], "ctx1");
     assert_eq!(server["env"]["KUDO_LEASE"], "lease-1");
