@@ -63,9 +63,15 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
             },
         )
         .unwrap();
-    assert_eq!(plan.argv[0], "kimi");
-    assert!(plan.argv.iter().any(|arg| arg == "-p"));
-    assert_eq!(plan.argv.last().unwrap(), KICKOFF);
+    assert_eq!(plan.argv[0], "sh");
+    assert_eq!(plan.argv[1], "-c");
+    let command = &plan.argv[2];
+    assert!(command.contains("kimi"));
+    assert!(command.contains("--output-format stream-json"));
+    assert!(command.contains("-p"));
+    assert!(command.contains(KICKOFF));
+    assert!(command.contains("hook session-end"));
+    assert!(command.contains("exit $status"));
     assert!(!plan.argv.iter().any(|arg| arg == "--settings"));
     assert!(!plan.argv.iter().any(|arg| arg == "--mcp-config"));
     assert!(!plan.argv.iter().any(|arg| arg == "--session-id"));
@@ -129,6 +135,13 @@ fn kimi_headless_launch_uses_print_mode_and_a_kudo_plugin() {
             "missing {event}: {manifest}"
         );
     }
+    let session_end = manifest["hooks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|hook| hook["event"] == "SessionEnd")
+        .unwrap();
+    assert!(session_end["command"].as_str().unwrap().ends_with("hook session-end"));
 }
 
 #[test]

@@ -159,6 +159,19 @@ fn pre_compact_ends_the_lease() {
 }
 
 #[test]
+fn session_end_settles_the_lease_without_handing_off_more_work() {
+    let (s, store) = setup();
+    store.enqueue(&s.context, "one", T0).unwrap();
+    let _ = hook::run("stop", &event("Stop", ""), &s, T0);
+    assert!(store.held_by(&s.context, &s.lease, T0).unwrap().is_some());
+
+    let ended = hook::run("session-end", &event("SessionEnd", ""), &s, T0 + 1);
+    assert_eq!(ended, HookReply::quiet());
+    assert!(store.held_by(&s.context, &s.lease, T0 + 1).unwrap().is_none());
+    assert_eq!(hook::run("stop", &event("Stop", ""), &s, T0 + 2).stdout, "");
+}
+
+#[test]
 fn an_unknown_event_is_refused_loudly() {
     let (s, _store) = setup();
     let reply = hook::run("frobnicate", "{}", &s, T0);
