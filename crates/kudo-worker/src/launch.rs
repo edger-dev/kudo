@@ -2,7 +2,7 @@
 //! the kudo MCP server passed on the command line, so a repo needs no setup of
 //! its own and the repo's own settings are never touched.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
 
 use std::io::Read;
 use std::path::Path;
@@ -27,7 +27,7 @@ pub struct LaunchPlan {
 impl LaunchPlan {
     /// The same plan, with the CLI in bypass-permissions mode: its tools
     /// run unasked.
-    // implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@e46433161767390901da276f230249c0a35964412899db7ad9bf2335db511061
+    // implements: 1cc106dd91b0b36d535c15bec7fd446c3a46384519220c689786266e721661c8@30903341e298e231be2b4ad5aa49dc0007d06621ec749f52a03d78cc74aa58e3
     pub fn bypassing(mut self) -> Self {
         let at = self.argv.len().min(1);
         self.argv.splice(
@@ -41,7 +41,7 @@ impl LaunchPlan {
     }
 
     /// The same plan, with kudo's MCP server the only one the CLI loads.
-    // implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9
+    // implements: 130ca83438842f6cd1eeda1eafdda4a1cd34e9c5e9530587ea39bb85b02a06b9@fdfdca43cff843a35a326a9ebbfe9c8f86c0817745be4c67528e62fe1eb41210
     pub fn strict_mcp(mut self) -> Self {
         // Before the kickoff prompt, which stays last.
         let at = self.argv.len().saturating_sub(1);
@@ -51,7 +51,7 @@ impl LaunchPlan {
 
     /// The same plan, with `servers` (a repository's project MCP servers)
     /// declined in its settings, so the CLI asks about none of them.
-    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@e74b1ca92af3bfdb2c11c59e38d8f9109ad170cfbbf2846d6cfb8ec0e8ffaad3
+    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@fccf5f8c7f0c646cdd00265204fcac5372dfbd04f017e3c36609e44cd2d0d460
     pub fn declining(mut self, servers: &[String]) -> Self {
         if servers.is_empty() {
             return self;
@@ -86,7 +86,7 @@ impl LaunchPlan {
 /// above it, by name, each once — the CLI reads them all as project servers.
 /// A missing or unparsable file declares none (the CLI then has nothing from
 /// it to ask about either).
-// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@e74b1ca92af3bfdb2c11c59e38d8f9109ad170cfbbf2846d6cfb8ec0e8ffaad3
+// implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@fccf5f8c7f0c646cdd00265204fcac5372dfbd04f017e3c36609e44cd2d0d460
 pub fn project_servers(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     for at in dir.ancestors() {
@@ -142,7 +142,7 @@ pub fn plan(
         .collect();
     // An unattended pane has no person to answer a prompt: no tips (project
     // MCP servers: declined by the launcher, or strict — see `declining`).
-    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@e74b1ca92af3bfdb2c11c59e38d8f9109ad170cfbbf2846d6cfb8ec0e8ffaad3
+    // implements: 14129413411817d90fddd2bfff863c0f9a05dac9bef672a7aac7270676b2a697@fccf5f8c7f0c646cdd00265204fcac5372dfbd04f017e3c36609e44cd2d0d460
     let mut hooks = hooks;
     // Shell calls are recorded as they return, as citable evidence.
     // implements: 6061a14e7f9b9eb2c7a3bbc0f5ff4f3778ceb08d71d46f8de4515f62ef3a2a0b@fdf56a326ad7b945b7ee31bb9503ee3365f629c5bf46347c3a8c970398fa65bd

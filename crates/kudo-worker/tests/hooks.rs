@@ -1,7 +1,7 @@
 //! The hook decisions: one item per turn, the open-claim guard, and the four
 //! conditions and process exit that end a lease.
 //!
-//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@fcfe5ccb3d93596f43b2613510e6683f314db40859230f60087eb334dea04439
+//! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@5574cc129568b913b53d58558c5227b182900331a5b8899019e7a4c28fdd503e
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
