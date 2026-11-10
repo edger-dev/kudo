@@ -64,7 +64,7 @@ impl AgentHarness for KimiCode {
                 "cannot find Kimi Code's data directory: set KIMI_CODE_HOME".to_owned()
             })?;
         let isolated_home = setup.store_dir.join("kimi-home").join(&setup.lease);
-        let mut links = vec![
+        let links = vec![
             LaunchLink {
                 source: source_home.join("config.toml"),
                 target: isolated_home.join("config.toml"),
@@ -75,12 +75,6 @@ impl AgentHarness for KimiCode {
             },
         ];
         let user_mcp = source_home.join("mcp.json");
-        if user_mcp.exists() {
-            links.push(LaunchLink {
-                source: user_mcp,
-                target: isolated_home.join("mcp.json"),
-            });
-        }
 
         let mut passed = forward.to_vec();
         if let Some(addr) = hub_addr {
@@ -116,18 +110,28 @@ impl AgentHarness for KimiCode {
                 "timeout": 30,
             }));
         }
+        let server = json!({
+            "command": shim_text,
+            "args": [],
+            "env": server_env,
+        });
+        let mut mcp = match std::fs::read_to_string(user_mcp) {
+            Ok(text) => serde_json::from_str::<Value>(&text)
+                .map_err(|error| format!("cannot parse Kimi Code's mcp.json: {error}"))?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                json!({"mcpServers": {}})
+            }
+            Err(error) => return Err(format!("cannot read Kimi Code's mcp.json: {error}")),
+        };
+        let Some(servers) = mcp.get_mut("mcpServers").and_then(Value::as_object_mut) else {
+            return Err("Kimi Code's mcp.json must contain an mcpServers object".to_owned());
+        };
+        servers.insert("kudo".to_owned(), server);
         let manifest = json!({
             "name": "kudo",
             "version": env!("CARGO_PKG_VERSION"),
             "description": "Kudo context workers and process tools",
             "hooks": hooks,
-            "mcpServers": {
-                "kudo": {
-                    "command": shim_text,
-                    "args": [],
-                    "env": server_env,
-                }
-            }
         });
         let root = isolated_home.join("plugins/managed/kudo");
         let plugin = LaunchPlugin {
@@ -147,7 +151,10 @@ impl AgentHarness for KimiCode {
                 KICKOFF.to_owned(),
             ],
             env,
-            files: Vec::new(),
+            files: vec![LaunchFile::new(
+                isolated_home.join("mcp.json"),
+                mcp.to_string(),
+            )],
             plugins: vec![plugin],
             links,
         })
