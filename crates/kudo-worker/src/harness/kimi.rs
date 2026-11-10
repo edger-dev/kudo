@@ -45,6 +45,13 @@ impl AgentHarness for KimiCode {
                     .to_owned(),
             );
         }
+        if has_project_mcp(options.repo)? {
+            return Err(
+                "Kimi Code workers cannot decline .kimi-code/mcp.json while trusting the \
+                 workspace; remove the project MCP servers or use Claude Code"
+                    .to_owned(),
+            );
+        }
 
         let source_home = std::env::var("KIMI_CODE_HOME")
             .map(std::path::PathBuf::from)
@@ -74,6 +81,7 @@ impl AgentHarness for KimiCode {
             "KIMI_CODE_HOME".to_owned(),
             isolated_home.display().to_string(),
         ));
+        passed.push(("KIMI_CODE_TRUST_WORKSPACE".to_owned(), "1".to_owned()));
         let mut env = setup.to_env();
         env.extend(passed.clone());
         let server_env: Map<String, Value> = env
@@ -150,7 +158,7 @@ impl AgentHarness for KimiCode {
                     cli
                 };
                 format!(
-                    "{{ printf '%s\\r' {}; cat; }} | script -q -c {} /dev/null\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
+                    "{{ sleep 1; printf '%s\\r' {}; cat; }} | script -q -e -c {} /dev/null\nstatus=$?\n{} hook session-end </dev/null\nexit $status",
                     shell_quote(KICKOFF),
                     shell_quote(&cli),
                     shell_quote(&shim_text),
@@ -257,6 +265,21 @@ impl AgentHarness for KimiCode {
     }
 }
 
+fn has_project_mcp(repo: &Path) -> Result<bool, String> {
+    let path = repo.join(".kimi-code/mcp.json");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("cannot read {}: {error}", path.display())),
+    };
+    let config: Value = serde_json::from_str(&text)
+        .map_err(|error| format!("cannot parse {}: {error}", path.display()))?;
+    Ok(config
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .is_some_and(|servers| !servers.is_empty()))
+}
+
 fn worker_config(path: &Path) -> Result<String, String> {
     let source = match std::fs::read_to_string(path) {
         Ok(text) => text,
@@ -285,7 +308,15 @@ fn toml_setting(text: &str, section: Option<&str>, key: &str, value: &str) -> St
                 out.push(setting.clone());
                 wrote = true;
             }
-            selected = section.is_some_and(|name| trimmed == format!("[{name}]"));
+            let table = trimmed
+                .strip_prefix('[')
+                .and_then(|header| header.split_once(']'))
+                .map(|(name, rest)| (name, rest.trim()));
+            selected = section.is_some_and(|name| {
+                table.is_some_and(|(candidate, rest)| {
+                    candidate == name && (rest.is_empty() || rest.starts_with('#'))
+                })
+            });
             saw_section |= selected;
         }
         if selected
@@ -318,5 +349,23 @@ fn shell_quote(text: &str) -> String {
         text.to_owned()
     } else {
         format!("'{}'", text.replace('\'', r"'\''"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::toml_setting;
+
+    #[test]
+    fn toml_table_headers_may_have_comments() {
+        let out = toml_setting(
+            "[workspace] # local policy\nrequire_trust = false\n",
+            Some("workspace"),
+            "require_trust",
+            "true",
+        );
+        assert_eq!(out.matches("[workspace]").count(), 1, "{out}");
+        assert!(out.contains("require_trust = true"), "{out}");
+        assert!(!out.contains("require_trust = false"), "{out}");
     }
 }
