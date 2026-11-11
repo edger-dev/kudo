@@ -68,6 +68,10 @@ fn keep_tail(text: &mut String) {
     text.drain(..cut);
 }
 
+fn last_success<T>(_last: Option<T>, _current: Option<Result<T, ServerFnError>>) -> Option<T> {
+    None
+}
+
 #[component]
 pub fn App() -> Element {
     let mut selection = use_context_provider(|| Signal::new(Selection::default()));
@@ -333,5 +337,13 @@ pub fn App() -> Element {
         }
         Some(Err(e)) => rsx! { p { "{e}" } },
         None => rsx! { p { "loading" } },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_refresh_keeps_the_last_successful_data() {
+        assert_eq!(super::last_success(Some(42), None), Some(42));
     }
 }
