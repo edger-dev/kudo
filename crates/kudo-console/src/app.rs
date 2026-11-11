@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 
 use crate::history::{History, Write};
 use crate::layout::{Layout, THREE_PANES};
-use crate::model::JobOutput;
+use crate::model::{ConsoleData, JobOutput};
 use crate::selection::{Notice, Outcome, Selection};
 use crate::shell::Shell;
 use crate::theme::Theme;
@@ -68,8 +68,11 @@ fn keep_tail(text: &mut String) {
     text.drain(..cut);
 }
 
-fn last_success<T>(_last: Option<T>, _current: Option<Result<T, ServerFnError>>) -> Option<T> {
-    None
+fn last_success<T>(last: Option<T>, current: Option<Result<T, ServerFnError>>) -> Option<T> {
+    match current {
+        Some(Ok(value)) => Some(value),
+        Some(Err(_)) | None => last,
+    }
 }
 
 #[component]
@@ -300,11 +303,11 @@ pub fn App() -> Element {
         }
     });
 
-    let data = use_server_future(move || {
+    let data = use_resource(move || {
         let _ = tick();
         let selected = selection.read().context.clone();
         async move { crate::api::console_data(selected).await }
-    })?;
+    });
     let terminal = use_resource(move || {
         let _ = screen_tick();
         let pane = selection.read().pane.clone();
@@ -326,17 +329,24 @@ pub fn App() -> Element {
             }
         }
     });
-    let read = data.read();
-    match &*read {
-        Some(Ok(d)) => {
-            let mut d = d.clone();
+    let mut settled = use_signal(|| None::<ConsoleData>);
+    use_effect(move || {
+        let next = last_success(settled(), data.read().as_ref().cloned());
+        if settled() != next {
+            settled.set(next);
+        }
+    });
+    match settled() {
+        Some(mut d) => {
             d.terminal = terminal.read().clone().flatten();
             d.jobs = jobs.read().clone().flatten();
             d.output = output.read().clone();
             rsx! { Shell { layout: LAYOUT, data: d } }
         }
-        Some(Err(e)) => rsx! { p { "{e}" } },
-        None => rsx! { p { "loading" } },
+        None => match &*data.read() {
+            Some(Err(e)) => rsx! { p { "{e}" } },
+            _ => rsx! { p { "loading" } },
+        },
     }
 }
 
