@@ -342,17 +342,11 @@ pub fn App() -> Element {
         .and_then(|result| result.as_ref().err().map(|error| error.to_string()));
     match settled() {
         Some(mut d) => {
+            d.error = refresh_error.or(d.error);
             d.terminal = terminal.read().clone().flatten();
             d.jobs = jobs.read().clone().flatten();
             d.output = output.read().clone();
-            rsx! {
-                Fragment {
-                    if let Some(error) = refresh_error {
-                        div { class: "kudo-band", "refresh failed: {error}" }
-                    }
-                    Shell { layout: LAYOUT, data: d }
-                }
-            }
+            rsx! { Shell { layout: LAYOUT, data: d } }
         }
         None => match &*data.read() {
             Some(Err(e)) => rsx! { p { "{e}" } },
