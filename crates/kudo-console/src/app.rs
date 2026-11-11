@@ -336,12 +336,23 @@ pub fn App() -> Element {
             settled.set(next);
         }
     });
+    let refresh_error = data
+        .read()
+        .as_ref()
+        .and_then(|result| result.as_ref().err().map(|error| error.to_string()));
     match settled() {
         Some(mut d) => {
             d.terminal = terminal.read().clone().flatten();
             d.jobs = jobs.read().clone().flatten();
             d.output = output.read().clone();
-            rsx! { Shell { layout: LAYOUT, data: d } }
+            rsx! {
+                Fragment {
+                    if let Some(error) = refresh_error {
+                        div { class: "kudo-band", "refresh failed: {error}" }
+                    }
+                    Shell { layout: LAYOUT, data: d }
+                }
+            }
         }
         None => match &*data.read() {
             Some(Err(e)) => rsx! { p { "{e}" } },
