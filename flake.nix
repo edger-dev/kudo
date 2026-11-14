@@ -1,9 +1,12 @@
 {
   description = "Kudo — composable platform for human-agent workflows";
 
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   inputs.jig.url = "github:edger-dev/jig";
+  inputs.jig.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.nixpkgs-dioxus074.url = "github:NixOS/nixpkgs/8d8c1fa5b412c223ffa47410867813290cdedfef";
 
-  outputs = { self, jig }:
+  outputs = { self, jig, nixpkgs-dioxus074, ... }:
     jig.lib.mkWorkspace
       {
         pname = "kudo";
@@ -15,6 +18,9 @@
         # the lockfile's wasm-bindgen.
         extraDevPackages = pkgs:
           let
+            dx074 = import nixpkgs-dioxus074 {
+              system = pkgs.stdenv.hostPlatform.system;
+            };
             wasm-bindgen-cli = pkgs.buildWasmBindgenCli rec {
               src = pkgs.fetchCrate {
                 pname = "wasm-bindgen-cli";
@@ -28,7 +34,7 @@
               };
             };
           in
-          [ wasm-bindgen-cli pkgs.dioxus-cli pkgs.binaryen ];
+          [ wasm-bindgen-cli dx074.dioxus-cli pkgs.binaryen ];
       }
       {
         rust = { wasm = true; };
