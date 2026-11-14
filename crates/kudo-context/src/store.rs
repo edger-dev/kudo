@@ -20,7 +20,7 @@
 //! implements: 6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd@6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd
 //! implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@aaddfc2e7ee067ea5780ce6ee2dfe4587bfb47b0c067b2670a31308c019a7e21
 //! implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
-//! implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9
+//! implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@c868baa4981cfe04640653e676360b77dd1a6a69c253a7b60da7a3d43b0b9605
 //! implements: a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098@a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098
 
 use std::collections::{BTreeMap, HashMap};
@@ -428,11 +428,14 @@ impl ContextStore {
         self.repos_in(&view, ctx)
     }
 
-    /// The repo of this name on this node.
+    /// The repo of this name on this node, matching a qualified node's final segment.
+    // implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@c868baa4981cfe04640653e676360b77dd1a6a69c253a7b60da7a3d43b0b9605
     pub fn repo_on(&self, ctx: &ContextId, name: &str, node: &str) -> Result<Repo, Error> {
         self.repos(ctx)?
             .into_iter()
-            .find(|r| r.name == name && r.node == node)
+            .find(|r| {
+                r.name == name && (r.node == node || r.node.rsplit("::").next() == Some(node))
+            })
             .ok_or_else(|| Error::UnknownRepo {
                 name: name.to_owned(),
                 node: node.to_owned(),
@@ -1081,7 +1084,7 @@ impl ContextStore {
 
     /// Declare the node this context's woken workers start on; the latest
     /// declaration wins.
-    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0@550531c07103cb27e03f2d4362bcb4ed367debf0a67293484865999f716c77a4
+    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0@dec0096b20bdb8926a02934a1bc2f6b8d9e1470540eb25a32d0d75c26739b8fa
     pub fn declare_wake_node(&self, ctx: &ContextId, node: &str, now: Now) -> Result<(), Error> {
         let node = node.trim();
         if node.is_empty() || node.contains(char::is_whitespace) {
@@ -1103,7 +1106,7 @@ impl ContextStore {
 
     /// Where this context's woken workers start: the declared wake node,
     /// else its first repo's node (by name), else `None` (the waker's own).
-    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0@550531c07103cb27e03f2d4362bcb4ed367debf0a67293484865999f716c77a4
+    // implements: 4afb77c56fe120a92c8ecb4f01b9a8873e9a41fb8eecb450b9a60e1b1ec327c0@dec0096b20bdb8926a02934a1bc2f6b8d9e1470540eb25a32d0d75c26739b8fa
     pub fn wake_node(&self, ctx: &ContextId) -> Result<Option<String>, Error> {
         let view = self.view()?;
         view.require_context(ctx)?;
@@ -2222,19 +2225,33 @@ impl Checked {
     }
 }
 
-/// A repo declaration that can stand: a name and a node with no spaces, `@`
-/// or `:` (the declaration's own separators), and an absolute path.
+/// A repo declaration that can stand: a plain name, a local or hub-qualified
+/// node, and an absolute path.
+// implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@c868baa4981cfe04640653e676360b77dd1a6a69c253a7b60da7a3d43b0b9605
 fn validate(repo: &Repo) -> Result<(), Error> {
-    for (what, word) in [("name", &repo.name), ("node", &repo.node)] {
-        if word.is_empty()
-            || word
-                .chars()
-                .any(|c| c.is_whitespace() || c == '@' || c == ':')
-        {
-            return Err(Error::InvalidRepo(format!(
-                "the {what} {word:?} must be one word with no '@' or ':'"
-            )));
-        }
+    if repo.name.is_empty()
+        || repo
+            .name
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '@' | ':'))
+    {
+        return Err(Error::InvalidRepo(format!(
+            "the name {:?} must be one word with no '@' or ':'",
+            repo.name
+        )));
+    }
+    let valid_node = !repo.node.is_empty()
+        && repo.node.split("::").all(|part| {
+            !part.is_empty()
+                && !part
+                    .chars()
+                    .any(|c| c.is_whitespace() || matches!(c, '@' | ':'))
+        });
+    if !valid_node {
+        return Err(Error::InvalidRepo(format!(
+            "the node {:?} must be a local name or hub-qualified with '::'",
+            repo.node
+        )));
     }
     let Some(path) = repo.path.to_str() else {
         return Err(Error::InvalidRepo(format!(
@@ -2596,7 +2613,7 @@ mod tests {
 
     /// Two declarations raced and forked the repos kino: both entries show,
     /// and the next declaration keeps them both.
-    // implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9
+    // implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@c868baa4981cfe04640653e676360b77dd1a6a69c253a7b60da7a3d43b0b9605
     #[test]
     fn a_forked_repos_declaration_loses_no_repo() {
         let dir =

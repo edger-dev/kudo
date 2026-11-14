@@ -89,6 +89,13 @@ including unfinished changes. Worktrees are never deleted automatically; review
 and remove them deliberately. Contexts created without the option keep the
 existing shared-directory behavior.
 
+Repo and wake-node declarations use the hub-qualified registry name when peers
+share a local name, for example `edger::yolo`. A worker on that node also matches
+the final segment against its local `KUDO_NODE`, so launch works offline. Migrate
+existing short declarations by redeclaring them; nothing rewrites them silently.
+A direct launch on a same-named peer remains ambiguous until declarations are
+qualified.
+
 A worker with nothing ready **waits** for the next item instead of ending: it
 shows as `wait` in the *where* pane, and an item queued later is handed to it.
 It looks locally every 3 s and syncs the mirror every 30 s. About every nine

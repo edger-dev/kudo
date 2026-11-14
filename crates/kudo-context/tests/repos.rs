@@ -1,7 +1,7 @@
 //! A context's repos: a declaration of its own, by name and node, that a
 //! worker starts in by name — and whose ledgers back a submission's evidence.
 //!
-//! implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9
+//! implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@c868baa4981cfe04640653e676360b77dd1a6a69c253a7b60da7a3d43b0b9605
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
 
