@@ -484,7 +484,7 @@ fn a_submit_from_a_moved_head_hands_back_the_head_as_it_is_now() {
     );
 }
 
-// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@8962f87f281eae287580211f68aadf1d069e1c0709d60e5ddbe1281f41599de4
 #[test]
 fn the_submit_tool_says_which_lines_landed_as_claimed() {
     let (s, store) = setup();

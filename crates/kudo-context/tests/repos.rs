@@ -153,7 +153,7 @@ fn a_submit_never_touches_the_repos() {
 
 /// A kino in the ledger of a declared repo is evidence; its bytes are copied
 /// into the context store, so it still resolves when the repo is gone.
-// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@8962f87f281eae287580211f68aadf1d069e1c0709d60e5ddbe1281f41599de4
 #[test]
 fn a_kino_in_a_declared_repo_ledger_is_evidence_and_is_cached() {
     let (dir, store, ctx) = store_with_context("repos-cite");
@@ -218,7 +218,7 @@ fn repo_kino(repo: &Path, content: &str) -> String {
 
 /// Evidence is the context's own: a kino another context cached, or another
 /// context's submission, backs nothing here.
-// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
+// implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@8962f87f281eae287580211f68aadf1d069e1c0709d60e5ddbe1281f41599de4
 #[test]
 fn evidence_does_not_cross_contexts() {
     let (dir, store, a) = store_with_context("repos-cross");

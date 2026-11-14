@@ -19,7 +19,7 @@
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 //! implements: 6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd@6f2cfc2264e8f880d1300d1d79b96c597b995b36b756a03d6871a945b986f2dd
 //! implements: 3a472b4021f7b7496dd37779f3d0c76cafe1c95e8e80b1b236786a81e4c7d0ab@aaddfc2e7ee067ea5780ce6ee2dfe4587bfb47b0c067b2670a31308c019a7e21
-//! implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@1b7ca6a98f08e1312c89a21ba22a046c2f9677965e58dd2fde0cae2756307a74
+//! implements: 4e67251bc978f34e7d6ce4278eb1503f9e803e51f0057d4d5954c701830f22b9@8962f87f281eae287580211f68aadf1d069e1c0709d60e5ddbe1281f41599de4
 //! implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@c868baa4981cfe04640653e676360b77dd1a6a69c253a7b60da7a3d43b0b9605
 //! implements: a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098@a6751902e8e01e5d7d5983196da9170f33f40d0d74246b5746977ea1c5e45098
 
@@ -70,6 +70,7 @@ const WORKTREE: &str = "kudo::worktree";
 const TOOL: &str = "kudo::tool";
 const REQUEST: &str = "kudo::request";
 const DOWNGRADED: &str = "kudo::downgraded";
+const DERIVED_FROM: &str = "kudo::derived-from";
 
 const SUBMITTED: &str = "submitted";
 const RELEASED: &str = "released";
@@ -1246,6 +1247,36 @@ impl ContextStore {
         self.submit_checked(None, claim, submission, now)
     }
 
+    fn valid_transcript_spans(
+        &self,
+        view: &View,
+        ctx: &ContextId,
+        submission: &Submission,
+    ) -> Result<std::collections::HashSet<String>, Error> {
+        let mut valid = std::collections::HashSet::new();
+        for evidence in submission
+            .established
+            .iter()
+            .flat_map(|line| line.evidence.iter())
+            .map(|e| normalize(e))
+        {
+            let Some((id, first, last)) = transcript_span(&evidence) else {
+                continue;
+            };
+            let Some(event) = view.by_id.get(id).and_then(|events| events.first()) else {
+                continue;
+            };
+            if field(event, KIND) != "transcript-distilled" || field(event, CONTEXT) != ctx.0 {
+                continue;
+            }
+            let lines = self.read(&event.hash)?.lines().count();
+            if first > 0 && first <= last && last <= lines {
+                valid.insert(evidence);
+            }
+        }
+        Ok(valid)
+    }
+
     // implements: 8c1fc5e54c5e48bb4086bd6b27a2d09bf41e100de7c743c6b04fd44b48af3d54
     fn submit_checked(
         &self,
@@ -1341,7 +1372,8 @@ impl ContextStore {
 
         self.cache_cited(&view, &ctx, submission, now)?;
         let view = self.view()?;
-        let checked = view.check_evidence(&ctx, submission);
+        let transcript_spans = self.valid_transcript_spans(&view, &ctx, submission)?;
+        let checked = view.check_evidence(&ctx, submission, &transcript_spans);
         let seq = (view.of_kind_in("submission", &ctx).len() + 1).to_string();
         let mut content = format!(
             "<!-- kudo submission {} -->\n{}",
@@ -1541,6 +1573,8 @@ impl ContextStore {
         Ok(out)
     }
 
+    /// File a completed session's raw transcript and its deterministic distillation.
+    // implements: 0139122baa08b2f39720a8b6fb15e848c96ca7fb8ccdd6056ae9e2287e0397ea
     pub fn file_transcript(
         &self,
         ctx: &ContextId,
@@ -1549,19 +1583,61 @@ impl ContextStore {
         distilled: &str,
         now: Now,
     ) -> Result<crate::TranscriptIds, Error> {
-        let _ = (ctx, lease, raw, distilled, now);
-        Err(Error::Kinora(
-            "transcript capture is not implemented".into(),
-        ))
+        self.view()?.require_context(ctx)?;
+        let raw = self.put(
+            "text",
+            raw.to_vec(),
+            meta([(KIND, "transcript-raw"), (CONTEXT, &ctx.0), (LEASE, lease)]),
+            None,
+            now,
+        )?;
+        let distilled = self.put(
+            "text",
+            distilled.as_bytes().to_vec(),
+            meta([
+                (KIND, "transcript-distilled"),
+                (CONTEXT, &ctx.0),
+                (LEASE, lease),
+                (DERIVED_FROM, &raw.id),
+            ]),
+            None,
+            now,
+        )?;
+        Ok(crate::TranscriptIds {
+            raw: raw.id,
+            distilled: distilled.id,
+        })
     }
 
+    /// The session's raw/distilled record pairs, oldest first.
     pub fn transcripts(
         &self,
         ctx: &ContextId,
         lease: &str,
     ) -> Result<Vec<crate::TranscriptIds>, Error> {
-        let _ = (ctx, lease);
-        Ok(Vec::new())
+        let view = self.view()?;
+        let mut raw: Vec<&Event> = view
+            .of_kind_in("transcript-raw", ctx)
+            .into_iter()
+            .filter(|event| field(event, LEASE) == lease)
+            .collect();
+        raw.sort_by(|a, b| a.ts.cmp(&b.ts).then_with(|| a.id.cmp(&b.id)));
+        raw.into_iter()
+            .map(|raw| {
+                let distilled = view
+                    .of_kind_in("transcript-distilled", ctx)
+                    .into_iter()
+                    .find(|event| field(event, DERIVED_FROM) == raw.id)
+                    .map(|event| event.id.clone())
+                    .ok_or_else(|| {
+                        Error::Kinora(format!("transcript {} has no distillation", raw.id))
+                    })?;
+                Ok(crate::TranscriptIds {
+                    raw: raw.id.clone(),
+                    distilled,
+                })
+            })
+            .collect()
     }
 
     pub fn transcript(&self, id: &str) -> Result<String, Error> {
@@ -1997,7 +2073,12 @@ impl View {
     /// Sort a submission's established lines by whether their evidence
     /// resolves: a kino id this store holds (or cached from a declared repo's
     /// ledger), or a URL.
-    fn check_evidence(&self, ctx: &ContextId, submission: &Submission) -> Checked {
+    fn check_evidence(
+        &self,
+        ctx: &ContextId,
+        submission: &Submission,
+        transcript_spans: &std::collections::HashSet<String>,
+    ) -> Checked {
         let known = self.known(ctx);
         let mut checked = Checked::default();
         for line in &submission.established {
@@ -2011,9 +2092,9 @@ impl View {
                     evidence.push(e);
                 }
             }
-            let (good, bad): (Vec<String>, Vec<String>) = evidence
-                .into_iter()
-                .partition(|e| is_url(e) || known.contains(e.as_str()));
+            let (good, bad): (Vec<String>, Vec<String>) = evidence.into_iter().partition(|e| {
+                is_url(e) || known.contains(e.as_str()) || transcript_spans.contains(e)
+            });
             for e in bad {
                 if !checked.unresolved.contains(&e) {
                     checked.unresolved.push(e);
@@ -2316,6 +2397,16 @@ fn is_url(evidence: &str) -> bool {
 
 /// An evidence entry as checked: trimmed, a `kino://` link reduced to its id,
 /// an id lowercased.
+fn transcript_span(evidence: &str) -> Option<(&str, usize, usize)> {
+    let rest = evidence.strip_prefix("transcript:")?;
+    let (id, range) = rest.rsplit_once(':')?;
+    let (first, last) = range.split_once('-')?;
+    if !is_kino_id(id) {
+        return None;
+    }
+    Some((id, first.parse().ok()?, last.parse().ok()?))
+}
+
 fn normalize(evidence: &str) -> String {
     let e = evidence.trim();
     let e = e.strip_prefix("kino://").unwrap_or(e);

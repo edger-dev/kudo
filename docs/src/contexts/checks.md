@@ -66,6 +66,18 @@ of what the job printed. A submission citing these is
 mirror): whatever a command prints, secrets included, goes with it — keep
 credentials out of output a worker runs.
 
+At SessionEnd, a harness with a completed transcript path files the raw JSONL
+record and a separate deterministic distilled record, linked by `derived-from`.
+The distilled record has one turn per numbered line. A later submission can cite
+`transcript:<distilled-id>:<first>-<last>`; the id must belong to this context and
+the range must exist. Earlier submissions never cite a transcript that did not
+yet exist. Missing or unreadable transcripts file an inbox gap without keeping
+the lease open.
+
+Raw transcripts use the context store's existing private-by-tenancy mirror and
+can contain everything the session saw, including secrets. A shared workplace
+mirror needs its own encryption boundary before transcripts are stored there.
+
 ## Waking
 
 `kudo-shim waker` runs as a user service on one node. Once a minute it looks

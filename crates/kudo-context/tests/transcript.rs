@@ -54,5 +54,24 @@ fn raw_and_distilled_records_are_linked_and_spans_resolve() {
     assert!(done.downgraded.is_empty(), "{done:?}");
     assert!(done.unresolved.is_empty(), "{done:?}");
 
+    store.enqueue(&ctx, "reject a bad span", T0 + 3).unwrap();
+    let claim = store.pull(&ctx, "lease-b", T0 + 3, 600).unwrap().unwrap();
+    let rejected = store
+        .submit(
+            &claim.id,
+            &Submission {
+                head: "bad span\n".into(),
+                log: "bad span".into(),
+                established: vec![Established {
+                    claim: "outside the transcript".into(),
+                    evidence: vec![format!("transcript:{}:3-3", ids.distilled)],
+                }],
+                ..Default::default()
+            },
+            T0 + 4,
+        )
+        .unwrap();
+    assert_eq!(rejected.downgraded, ["outside the transcript"]);
+
     let _ = std::fs::remove_dir_all(&dir);
 }

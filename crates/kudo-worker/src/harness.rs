@@ -281,6 +281,42 @@ impl AgentHarness for ClaudeCode {
         })
     }
 
+    fn distill_transcript(&self, raw: &[u8]) -> Result<String, String> {
+        let mut out = String::new();
+        let mut line = 0usize;
+        for bytes in raw
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+        {
+            let Ok(event) = serde_json::from_slice::<Value>(bytes) else {
+                continue;
+            };
+            let Some(message) = event.get("message") else {
+                continue;
+            };
+            let speaker = message
+                .get("role")
+                .or_else(|| event.get("type"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let text = transcript_text(message.get("content"));
+            if speaker.is_empty() || text.is_empty() {
+                continue;
+            }
+            line += 1;
+            let record = serde_json::json!({
+                "line": line,
+                "speaker": speaker,
+                "kind": event.get("type").and_then(Value::as_str).unwrap_or(speaker),
+                "text": text,
+                "ts": event.get("timestamp").and_then(Value::as_str).unwrap_or_default(),
+            });
+            out.push_str(&record.to_string());
+            out.push('\n');
+        }
+        Ok(out)
+    }
+
     fn session_start_reply(&self, context: &str) -> HookReply {
         HookReply::json(&serde_json::json!({
             "hookSpecificOutput": {
@@ -307,6 +343,31 @@ impl AgentHarness for ClaudeCode {
                 "additionalContext": context,
             }
         }))
+    }
+}
+
+fn transcript_text(content: Option<&Value>) -> String {
+    match content {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|part| {
+                if let Some(text) = part.get("text").and_then(Value::as_str) {
+                    return Some(text.to_owned());
+                }
+                if part.get("type").and_then(Value::as_str) == Some("tool_use") {
+                    let name = part
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown");
+                    return Some(format!("[tool {name}] {}", part["input"]));
+                }
+                transcript_text(part.get("content")).into()
+            })
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
     }
 }
 

@@ -103,7 +103,10 @@ pub fn run_with_harness(
         }
         .map(|stop| harness.stop_reply(&stop)),
         "pre-compact" => worker.pre_compact(now).map(|()| harness.quiet_reply()),
-        "session-end" => worker.session_end(now).map(|()| harness.quiet_reply()),
+        "session-end" => {
+            capture_transcript(&input, setup, now, harness, &store);
+            worker.session_end(now).map(|()| harness.quiet_reply())
+        }
         "user-prompt-submit" => {
             let prompt = harness.user_prompt(&input).unwrap_or_default();
             if prompt == kudo_worker::KICKOFF {
@@ -121,6 +124,38 @@ pub fn run_with_harness(
         other => return HookReply::failed(format!("no hook named `{other}`")),
     };
     result.unwrap_or_else(HookReply::failed)
+}
+
+// implements: 0139122baa08b2f39720a8b6fb15e848c96ca7fb8ccdd6056ae9e2287e0397ea
+fn capture_transcript(
+    input: &Value,
+    setup: &WorkerSetup,
+    now: Now,
+    harness: &dyn AgentHarness,
+    store: &kudo_context::ContextStore,
+) {
+    let result = (|| {
+        let path = harness
+            .transcript_path(input)
+            .ok_or_else(|| "the hook supplied no transcript_path".to_owned())?;
+        let raw = std::fs::read(&path)
+            .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        let distilled = harness.distill_transcript(&raw)?;
+        store
+            .file_transcript(&setup.context, &setup.lease, &raw, &distilled, now)
+            .map_err(|error| error.to_string())
+    })();
+    if let Err(error) = result {
+        if let Err(write) = store.file_inbox(
+            &setup.context,
+            &setup.lease,
+            "session transcript was not captured",
+            Some(&error),
+            now,
+        ) {
+            eprintln!("kudo: could not record the transcript gap: {write}");
+        }
+    }
 }
 
 fn external_mcp(tool: &str) -> bool {
