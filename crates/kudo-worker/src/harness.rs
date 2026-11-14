@@ -149,6 +149,17 @@ pub trait AgentHarness {
 
     fn shell_call(&self, input: &Value) -> Option<ShellCall>;
 
+    fn transcript_path(&self, input: &Value) -> Option<PathBuf> {
+        input
+            .get("transcript_path")
+            .and_then(Value::as_str)
+            .map(PathBuf::from)
+    }
+
+    fn distill_transcript(&self, _raw: &[u8]) -> Result<String, String> {
+        Err("this harness has no transcript distiller".into())
+    }
+
     fn quiet_reply(&self) -> HookReply {
         HookReply::quiet()
     }

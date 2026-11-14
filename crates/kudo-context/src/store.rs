@@ -1541,6 +1541,39 @@ impl ContextStore {
         Ok(out)
     }
 
+    pub fn file_transcript(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+        raw: &[u8],
+        distilled: &str,
+        now: Now,
+    ) -> Result<crate::TranscriptIds, Error> {
+        let _ = (ctx, lease, raw, distilled, now);
+        Err(Error::Kinora(
+            "transcript capture is not implemented".into(),
+        ))
+    }
+
+    pub fn transcripts(
+        &self,
+        ctx: &ContextId,
+        lease: &str,
+    ) -> Result<Vec<crate::TranscriptIds>, Error> {
+        let _ = (ctx, lease);
+        Ok(Vec::new())
+    }
+
+    pub fn transcript(&self, id: &str) -> Result<String, Error> {
+        let view = self.view()?;
+        let event = view
+            .by_id
+            .get(id)
+            .and_then(|events| events.first())
+            .ok_or_else(|| Error::Kinora(format!("no transcript {id}")))?;
+        self.read(&event.hash)
+    }
+
     /// Park one external MCP call for a single-use verdict.
     // implements: 53544d31b7dbadd28d6f2b3e9de57b79cb6cdf089069f2062418879f4d3621de@fdae3bbd25e0ab56206b07c5d58d6b105f7a32fa28ba95b81e635252c3295ef2
     pub fn request_mcp(

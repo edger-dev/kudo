@@ -176,6 +176,49 @@ fn session_end_settles_the_lease_without_handing_off_more_work() {
     assert_eq!(hook::run("stop", &event("Stop", ""), &s, T0 + 2).stdout, "");
 }
 
+// implements: 0139122baa08b2f39720a8b6fb15e848c96ca7fb8ccdd6056ae9e2287e0397ea
+#[test]
+fn session_end_files_the_raw_and_distilled_transcript() {
+    let (s, store) = setup();
+    let path = s.store_dir.join("session.jsonl");
+    std::fs::write(&path, concat!(
+        "{\"type\":\"user\",\"timestamp\":\"t0\",\"message\":{\"role\":\"user\",\"content\":\"hello\"}}\n",
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"worked\"}]}}\n"
+    )).unwrap();
+    let input = serde_json::json!({
+        "hook_event_name": "SessionEnd",
+        "transcript_path": path,
+    });
+    assert_eq!(
+        hook::run("session-end", &input.to_string(), &s, T0),
+        HookReply::quiet()
+    );
+    let records = store.transcripts(&s.context, &s.lease).unwrap();
+    assert_eq!(records.len(), 1);
+    let distilled = store.transcript(&records[0].distilled).unwrap();
+    assert_eq!(distilled.lines().count(), 2);
+    assert!(store.inbox(&s.context).unwrap().is_empty());
+}
+
+#[test]
+fn an_unreadable_transcript_records_a_gap_without_keeping_the_lease() {
+    let (s, store) = setup();
+    let input = serde_json::json!({
+        "hook_event_name": "SessionEnd",
+        "transcript_path": s.store_dir.join("missing.jsonl"),
+    });
+    assert_eq!(
+        hook::run("session-end", &input.to_string(), &s, T0),
+        HookReply::quiet()
+    );
+    let inbox = store.inbox(&s.context).unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert!(
+        inbox[0].line.to_lowercase().contains("transcript"),
+        "{inbox:?}"
+    );
+}
+
 #[test]
 fn an_unknown_event_is_refused_loudly() {
     let (s, _store) = setup();

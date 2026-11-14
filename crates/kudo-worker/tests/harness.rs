@@ -176,6 +176,33 @@ fn claude_normalizes_prompts_and_shell_payloads_inside_the_adapter() {
     assert!(ClaudeCode.shell_call(&read).is_none());
 }
 
+// implements: 0139122baa08b2f39720a8b6fb15e848c96ca7fb8ccdd6056ae9e2287e0397ea
+#[test]
+fn claude_distills_a_completed_jsonl_transcript_deterministically() {
+    let raw = concat!(
+        "not json\n",
+        "{\"type\":\"user\",\"timestamp\":\"t0\",\"message\":{\"role\":\"user\",\"content\":\"hello\"}}\n",
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"worked\"}]}}\n"
+    );
+    let distilled = ClaudeCode.distill_transcript(raw.as_bytes()).unwrap();
+    assert_eq!(
+        distilled,
+        ClaudeCode.distill_transcript(raw.as_bytes()).unwrap()
+    );
+    let lines: Vec<Value> = distilled
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["line"], 1);
+    assert_eq!(lines[0]["speaker"], "user");
+    assert_eq!(lines[0]["text"], "hello");
+    assert_eq!(lines[0]["ts"], "t0");
+    assert_eq!(lines[1]["line"], 2);
+    assert_eq!(lines[1]["speaker"], "assistant");
+    assert_eq!(lines[1]["text"], "worked");
+}
+
 #[test]
 fn claude_headless_launch_uses_print_mode() {
     let plan = ClaudeCode

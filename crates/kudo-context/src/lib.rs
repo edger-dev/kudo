@@ -139,6 +139,13 @@ pub struct Submission {
     pub blocked_on: Vec<ItemId>,
 }
 
+/// The raw and distilled records of one completed session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranscriptIds {
+    pub raw: String,
+    pub distilled: String,
+}
+
 /// A context's dogfood measures, derived from its records.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ContextMeasures {
