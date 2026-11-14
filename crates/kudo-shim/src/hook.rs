@@ -145,16 +145,16 @@ fn capture_transcript(
             .file_transcript(&setup.context, &setup.lease, &raw, &distilled, now)
             .map_err(|error| error.to_string())
     })();
-    if let Err(error) = result {
-        if let Err(write) = store.file_inbox(
+    if let Err(error) = result
+        && let Err(write) = store.file_inbox(
             &setup.context,
             &setup.lease,
             "session transcript was not captured",
             Some(&error),
             now,
-        ) {
-            eprintln!("kudo: could not record the transcript gap: {write}");
-        }
+        )
+    {
+        eprintln!("kudo: could not record the transcript gap: {write}");
     }
 }
 
