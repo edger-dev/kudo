@@ -52,6 +52,7 @@ fn sample() -> ConsoleData {
             title: "first kudo".into(),
             head: "# first kudo\nstate: active\n".into(),
             forked: false,
+            measures: None,
             trace: vec![TraceRow {
                 at: "2026-10-21T00:00:00Z".into(),
                 lease: "lease-1".into(),
@@ -91,6 +92,44 @@ fn render(layout: Layout) -> String {
 /// The order the panes appear in the rendered page.
 fn pane_order(html: &str) -> Vec<&'static str> {
     panes(html)
+}
+
+// implements: 94d1e02f634b9ddb6affcbf9079e5ca6467f286ec501de792189f6bf42e40da5
+#[test]
+fn the_measures_tab_renders_the_projection_and_unrecorded_gaps() {
+    let mut data = sample();
+    data.selected.as_mut().unwrap().measures = Some(kudo_console::model::MeasuresView {
+        leases: 2,
+        claims: 3,
+        submit_attempts: 2,
+        completed: 1,
+        blocked: 1,
+        releases: 1,
+        reclaims: 1,
+        lease_ends: vec![("queue-empty".into(), 1), ("takeover".into(), 1)],
+        downgraded_submissions: None,
+        inbox_entries: 2,
+    });
+    let mut selection = selected();
+    selection.tab = kudo_console::selection::Tab::Measures;
+    let html = common::markup(&render_with(THREE_PANES, data, selection)).to_owned();
+    for text in [
+        "measures",
+        "2 leases",
+        "3 claims",
+        "2 submit attempts",
+        "1 completed",
+        "1 blocked",
+        "1 release",
+        "1 re-claim",
+        "downgraded submissions: unknown",
+        "2 inbox entries",
+        "queue-empty: 1",
+        "takeover: 1",
+        "not recorded",
+    ] {
+        assert!(html.contains(text), "{text:?} missing from {html}");
+    }
 }
 
 #[test]

@@ -14,6 +14,7 @@ pub enum Tab {
     #[default]
     Head,
     Trace,
+    Measures,
 }
 
 /// The current selection. A context and a node are two views: selecting one
@@ -69,7 +70,7 @@ impl Selection {
         } else if self.context.is_some() {
             match self.tab {
                 Tab::Head => PaneKind::Head,
-                Tab::Trace => PaneKind::Trace,
+                Tab::Trace | Tab::Measures => PaneKind::Trace,
             }
         } else {
             PaneKind::Where

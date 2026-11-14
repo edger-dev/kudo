@@ -107,6 +107,17 @@ fn the_fragment_round_trips() {
     );
 }
 
+// implements: 94d1e02f634b9ddb6affcbf9079e5ca6467f286ec501de792189f6bf42e40da5
+#[test]
+fn the_measures_tab_round_trips_and_uses_the_trace_pane_on_a_phone() {
+    let mut s = Selection::default();
+    s.select_context(ctx());
+    s.tab = Tab::Measures;
+    assert_eq!(s.focus(), PaneKind::Trace);
+    assert!(s.fragment().contains("t=measures"), "{}", s.fragment());
+    assert_eq!(Selection::from_fragment(&s.fragment()), s);
+}
+
 /// A fragment that does not parse, or names a job without its node, selects
 /// nothing it cannot stand behind.
 #[test]

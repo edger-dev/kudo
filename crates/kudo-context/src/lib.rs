@@ -139,6 +139,21 @@ pub struct Submission {
     pub blocked_on: Vec<ItemId>,
 }
 
+/// A context's dogfood measures, derived from its records.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ContextMeasures {
+    pub leases: usize,
+    pub claims: usize,
+    pub submit_attempts: usize,
+    pub completed: usize,
+    pub blocked: usize,
+    pub releases: usize,
+    pub reclaims: usize,
+    pub lease_ends: Vec<(String, usize)>,
+    pub downgraded_submissions: Option<usize>,
+    pub inbox_entries: usize,
+}
+
 /// An external MCP call waiting for the author's verdict.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpRequest {

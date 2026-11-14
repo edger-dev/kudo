@@ -1491,6 +1491,11 @@ impl ContextStore {
         }))
     }
 
+    pub fn measures(&self, ctx: &ContextId) -> Result<crate::ContextMeasures, Error> {
+        self.view()?.require_context(ctx)?;
+        Ok(crate::ContextMeasures::default())
+    }
+
     /// Park one external MCP call for a single-use verdict.
     // implements: 53544d31b7dbadd28d6f2b3e9de57b79cb6cdf089069f2062418879f4d3621de@fdae3bbd25e0ab56206b07c5d58d6b105f7a32fa28ba95b81e635252c3295ef2
     pub fn request_mcp(

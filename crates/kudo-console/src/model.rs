@@ -60,6 +60,21 @@ pub struct TraceRow {
     pub line: String,
 }
 
+/// A selected context's dogfood measures.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasuresView {
+    pub leases: usize,
+    pub claims: usize,
+    pub submit_attempts: usize,
+    pub completed: usize,
+    pub blocked: usize,
+    pub releases: usize,
+    pub reclaims: usize,
+    pub lease_ends: Vec<(String, usize)>,
+    pub downgraded_submissions: Option<usize>,
+    pub inbox_entries: usize,
+}
+
 /// The selected context: its head and its trace.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextDetail {
@@ -68,6 +83,7 @@ pub struct ContextDetail {
     pub head: String,
     pub forked: bool,
     pub trace: Vec<TraceRow>,
+    pub measures: Option<MeasuresView>,
 }
 
 /// Everything the panes draw from.
