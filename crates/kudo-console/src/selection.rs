@@ -120,8 +120,10 @@ impl Selection {
         let mut parts = Vec::new();
         if let Some(c) = &self.context {
             parts.push(format!("c={}", escape(c)));
-            if self.tab == Tab::Trace {
-                parts.push("t=trace".to_owned());
+            match self.tab {
+                Tab::Head => {}
+                Tab::Trace => parts.push("t=trace".to_owned()),
+                Tab::Measures => parts.push("t=measures".to_owned()),
             }
         }
         if let Some(n) = &self.node {
@@ -161,6 +163,7 @@ impl Selection {
             match key {
                 "c" => s.context = Some(unescape(value)?),
                 "t" if value == "trace" => s.tab = Tab::Trace,
+                "t" if value == "measures" => s.tab = Tab::Measures,
                 "n" => s.node = Some(unescape(value)?),
                 "j" => s.job = Some(unescape(value)?),
                 "p" => {

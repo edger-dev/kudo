@@ -191,8 +191,10 @@ fn crumb(data: &ConsoleData, sel: &Selection) -> String {
             })
             .unwrap_or_else(|| short(c).to_owned());
         parts.push(title);
-        if sel.tab == Tab::Trace {
-            parts.push("trace".to_owned());
+        match sel.tab {
+            Tab::Head => {}
+            Tab::Trace => parts.push("trace".to_owned()),
+            Tab::Measures => parts.push("measures".to_owned()),
         }
     }
     if let Some(n) = &sel.node {
@@ -336,11 +338,11 @@ fn WherePane(data: ConsoleData, selection: Selection) -> Element {
     }
 }
 
-/// Head or trace, on a phone, where only one of them shows.
+/// Head, trace, or measures, with the selected tab's pane shown on a phone.
 #[component]
 fn Tabs(tab: Tab) -> Element {
     rsx! {
-        div { class: "tabs narrow-only",
+        div { class: "tabs",
             button {
                 "data-tab": "head",
                 "data-on": (tab == Tab::Head).then_some("true"),
@@ -352,6 +354,12 @@ fn Tabs(tab: Tab) -> Element {
                 "data-on": (tab == Tab::Trace).then_some("true"),
                 onclick: move |_| select(|s| s.tab = Tab::Trace),
                 "trace"
+            }
+            button {
+                "data-tab": "measures",
+                "data-on": (tab == Tab::Measures).then_some("true"),
+                onclick: move |_| select(|s| s.tab = Tab::Measures),
+                "measures"
             }
         }
     }
@@ -432,16 +440,43 @@ fn TracePane(data: ConsoleData, selection: Selection) -> Element {
     let tab = selection.tab;
     match detail_for(&data, &selection) {
         None => rsx! { NoDetail { data: data.clone(), selection: selection.clone() } },
-        Some(detail) => rsx! {
-            Tabs { tab }
-            h3 { "trace" }
-            for row in detail.trace.iter() {
-                div { key: "{row.lease}-{row.seq}", class: "trace-row",
-                    span { class: "muted", "{row.at}  {short(&row.lease)} #{row.seq}  " }
-                    "{row.line}"
+        Some(detail) => {
+            let downgraded = detail.measures.as_ref().map_or_else(String::new, |m| {
+                m.downgraded_submissions
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "unknown".into())
+            });
+            let ends = detail.measures.as_ref().map_or_else(String::new, |m| {
+                m.lease_ends
+                    .iter()
+                    .map(|(why, n)| format!("{why}: {n}"))
+                    .collect::<Vec<_>>()
+                    .join(" · ")
+            });
+            rsx! {
+                Tabs { tab }
+                if tab == Tab::Measures {
+                    h3 { "measures" }
+                    if let Some(m) = &detail.measures {
+                        div { class: "trace-row", "{m.leases} leases · {m.claims} claims" }
+                        div { class: "trace-row", "{m.submit_attempts} submit attempts · {m.completed} completed · {m.blocked} blocked" }
+                        div { class: "trace-row", "{m.releases} releases · {m.reclaims} re-claims" }
+                        div { class: "trace-row", "downgraded submissions: {downgraded}" }
+                        div { class: "trace-row", "{m.inbox_entries} inbox entries" }
+                        div { class: "trace-row", "lease ends: {ends}" }
+                        p { class: "muted", "bare CLI sessions and phone-only actions: not recorded" }
+                    }
+                } else {
+                    h3 { "trace" }
+                    for row in detail.trace.iter() {
+                        div { key: "{row.lease}-{row.seq}", class: "trace-row",
+                            span { class: "muted", "{row.at}  {short(&row.lease)} #{row.seq}  " }
+                            "{row.line}"
+                        }
+                    }
                 }
             }
-        },
+        }
     }
 }
 

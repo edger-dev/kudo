@@ -5,7 +5,9 @@
 
 use kudo_context::{ContextStore, Error, Now, TraceEvent};
 
-use crate::model::{ConsoleData, ContextCard, ContextDetail, PaneRef, TraceRow, WorkerView};
+use crate::model::{
+    ConsoleData, ContextCard, ContextDetail, MeasuresView, PaneRef, TraceRow, WorkerView,
+};
 
 /// A lease silent for longer than a claim lives is likely dead (killed,
 /// crashed, its machine asleep): shown as quiet, never as working.
@@ -138,7 +140,20 @@ pub fn detail(store: &ContextStore, id: &str) -> Result<ContextDetail, Error> {
         })
         .collect();
     trace.reverse();
+    let measures = store.measures(&ctx)?;
     Ok(ContextDetail {
+        measures: Some(MeasuresView {
+            leases: measures.leases,
+            claims: measures.claims,
+            submit_attempts: measures.submit_attempts,
+            completed: measures.completed,
+            blocked: measures.blocked,
+            releases: measures.releases,
+            reclaims: measures.reclaims,
+            lease_ends: measures.lease_ends,
+            downgraded_submissions: measures.downgraded_submissions,
+            inbox_entries: measures.inbox_entries,
+        }),
         id: ctx.0,
         title,
         head: heads.first().map(|h| h.body.clone()).unwrap_or_default(),

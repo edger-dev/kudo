@@ -75,7 +75,7 @@ pub struct MeasuresView {
     pub inbox_entries: usize,
 }
 
-/// The selected context: its head and its trace.
+/// The selected context: its head, trace, and measures.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextDetail {
     pub id: String,

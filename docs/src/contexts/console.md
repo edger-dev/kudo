@@ -14,7 +14,7 @@ the theme toggle.
 ## On a phone
 
 Below 720 px wide the console shows **one pane at a time**, the deepest thing
-selected: the list; a context (with *head* / *trace* tabs); a node's jobs; a
+selected: the list; a context (with *head* / *trace* / *measures* tabs); a node's jobs; a
 job's output; a taken-over pane. **‹ back** in the top bar — or the phone's
 own back — steps out one level. The approvals badge stays in the top bar on
 every level.
@@ -103,6 +103,13 @@ as a takeover.
 `KUDO_MAX_TURNS` is the maximum number of **queue items** one lease may submit,
 not the number of agent turns within an item. The default is 20; after that many
 submitted items the lease ends; a later worker starts with a fresh session.
+
+The context's **measures** tab derives its dogfood counters from existing store
+records: leases, claims, submit attempts, completed and blocked items, releases,
+re-claims, lease ends by reason, downgraded submissions, and inbox entries.
+Historical submissions without downgrade metadata show **unknown**, not zero.
+Bare CLI sessions and phone-only actions are marked **not recorded**; the view
+does not infer them from other events.
 
 ### Which agent CLI runs
 

@@ -69,6 +69,7 @@ const VERDICT: &str = "kudo::verdict";
 const WORKTREE: &str = "kudo::worktree";
 const TOOL: &str = "kudo::tool";
 const REQUEST: &str = "kudo::request";
+const DOWNGRADED: &str = "kudo::downgraded";
 
 const SUBMITTED: &str = "submitted";
 const RELEASED: &str = "released";
@@ -1390,6 +1391,7 @@ impl ContextStore {
                     .join(","),
             );
         }
+        metadata.insert(DOWNGRADED.to_owned(), checked.downgraded.len().to_string());
         let born = self.put("markdown", content.into_bytes(), metadata, None, now)?;
         // A snooze looks again later: the same check, due then — queued
         // before the claim settles, so a failed write leaves the claim live
@@ -1491,9 +1493,49 @@ impl ContextStore {
         }))
     }
 
+    /// The dogfood measures for one context, derived from its existing records.
+    // implements: 94d1e02f634b9ddb6affcbf9079e5ca6467f286ec501de792189f6bf42e40da5
     pub fn measures(&self, ctx: &ContextId) -> Result<crate::ContextMeasures, Error> {
-        self.view()?.require_context(ctx)?;
-        Ok(crate::ContextMeasures::default())
+        let view = self.view()?;
+        view.require_context(ctx)?;
+        let mut out = crate::ContextMeasures {
+            completed: self.submitted_count(ctx)?,
+            inbox_entries: view.of_kind_in("inbox", ctx).len(),
+            ..Default::default()
+        };
+        let mut ends = BTreeMap::<String, usize>::new();
+        let mut downgrades_known = true;
+        for entry in self.trace(ctx)? {
+            match entry.event {
+                TraceEvent::LeaseStart => out.leases += 1,
+                TraceEvent::Handoff(_) | TraceEvent::Pull(_) => out.claims += 1,
+                TraceEvent::Submit { .. } => out.submit_attempts += 1,
+                TraceEvent::Release(_) => out.releases += 1,
+                TraceEvent::LeaseEnd(why) => *ends.entry(why).or_default() += 1,
+                _ => {}
+            }
+        }
+        out.blocked = out.submit_attempts.saturating_sub(out.completed);
+        out.reclaims = view
+            .of_kind_in("claim", ctx)
+            .into_iter()
+            .filter(|claim| field(claim, ATTEMPT).parse::<u32>().unwrap_or(1) > 1)
+            .count();
+        out.downgraded_submissions = Some(0);
+        for submission in view.of_kind_in("submission", ctx) {
+            let Ok(count) = field(submission, DOWNGRADED).parse::<usize>() else {
+                downgrades_known = false;
+                continue;
+            };
+            if count > 0 {
+                *out.downgraded_submissions.get_or_insert(0) += 1;
+            }
+        }
+        if !downgrades_known {
+            out.downgraded_submissions = None;
+        }
+        out.lease_ends = ends.into_iter().collect();
+        Ok(out)
     }
 
     /// Park one external MCP call for a single-use verdict.

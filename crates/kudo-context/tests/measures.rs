@@ -93,3 +93,39 @@ fn measures_cover_the_loop_reclaims_downgrades_and_inbox() {
     assert_eq!(got.inbox_entries, 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn historical_submissions_without_downgrade_metadata_are_unknown() {
+    let dir = std::env::temp_dir().join(format!(
+        "kudo-context-measures-legacy-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let store = ContextStore::init(&dir).unwrap();
+    let ctx = store.create_context("legacy", "# legacy\n", T0).unwrap();
+    let metadata = [
+        ("kudo::kind", "submission"),
+        ("kudo::context", ctx.0.as_str()),
+    ]
+    .into_iter()
+    .map(|(key, value)| (key.to_owned(), value.to_owned()))
+    .collect();
+    kinora::kino::store_kino(
+        &dir.join(".kinora"),
+        kinora::kino::StoreKinoParams {
+            kind: "markdown".into(),
+            content: b"legacy submission".to_vec(),
+            author: "kudo".into(),
+            provenance: "test".into(),
+            ts: jiff::Timestamp::from_second(T0).unwrap().to_string(),
+            metadata,
+            id: None,
+            parents: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(store.measures(&ctx).unwrap().downgraded_submissions, None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
