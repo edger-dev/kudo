@@ -214,6 +214,13 @@ fn the_wake_node_is_declared_or_follows_the_repos() {
         store.wake_node(&ctx).unwrap().as_deref(),
         Some("edger::yolo")
     );
+    store
+        .declare_wake_node(&ctx, "edger::yolo", T0 + 2)
+        .unwrap();
+    assert_eq!(
+        store.wake_node(&ctx).unwrap().as_deref(),
+        Some("edger::yolo")
+    );
 }
 
 /// Fail closes the check too; a verdict without a note is refused.

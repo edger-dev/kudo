@@ -90,6 +90,25 @@ fn a_repo_is_found_by_name_on_a_node() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+// implements: b53b7abd832f2cd0e58e5084f5733af5d56f762c52cd6fd404913911920a6de9@c868baa4981cfe04640653e676360b77dd1a6a69c253a7b60da7a3d43b0b9605
+#[test]
+fn a_qualified_repo_node_matches_its_full_name_or_local_final_segment() {
+    let (dir, store, ctx) = store_with_context("repos-qualified");
+    store
+        .declare_repo(&ctx, &repo("kudo", "edger::yolo", "/w/kudo"), T0)
+        .unwrap();
+    assert_eq!(
+        store.repo_on(&ctx, "kudo", "edger::yolo").unwrap(),
+        repo("kudo", "edger::yolo", "/w/kudo")
+    );
+    assert_eq!(
+        store.repo_on(&ctx, "kudo", "yolo").unwrap(),
+        repo("kudo", "edger::yolo", "/w/kudo")
+    );
+    assert!(store.repo_on(&ctx, "kudo", "pc").is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn a_bad_declaration_is_refused() {
     let (dir, store, ctx) = store_with_context("repos-bad");

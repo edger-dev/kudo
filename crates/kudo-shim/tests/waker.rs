@@ -261,6 +261,8 @@ fn the_default_node_is_one_it_may_start_on() {
     let allowed = vec!["yolo".to_owned(), "edger::yolo".to_owned()];
     assert_eq!(default_node("yolo", &allowed), "yolo");
     assert_eq!(default_node("macbook", &allowed), "yolo");
+    let qualified_only = vec!["edger::yolo".to_owned()];
+    assert_eq!(default_node("yolo", &qualified_only), "edger::yolo");
 }
 
 /// A pane a person took over is theirs: its lease ended by takeover, and the
