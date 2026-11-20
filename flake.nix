@@ -6,8 +6,9 @@
   inputs.jig.inputs.nixpkgs.follows = "nixpkgs";
   inputs.nixpkgs-dioxus074.url = "github:NixOS/nixpkgs/8d8c1fa5b412c223ffa47410867813290cdedfef";
 
-  outputs = { self, jig, nixpkgs-dioxus074, ... }:
-    jig.lib.mkWorkspace
+  outputs = { self, jig, nixpkgs, nixpkgs-dioxus074, ... }:
+    let
+      workspace = jig.lib.mkWorkspace
       {
         pname = "kudo";
         src = ./.;
@@ -37,20 +38,35 @@
           [ wasm-bindgen-cli dx074.dioxus-cli pkgs.binaryen ];
       }
       {
-        rust = { wasm = true; };
+        rust = {
+          extraSrc = [
+            "docs"
+            "crates/kudo-node/packaging"
+            "moco-processes.styx"
+          ];
+          wasm = true;
+        };
         docs = { };
         kinora = { };
-      }
-    // {
+      };
+    in
+    workspace // {
+      packages = builtins.mapAttrs (system: packages:
+        let
+          # The worktree integration tests invoke git.
+          kudo = packages.kudo.overrideAttrs (old: {
+            nativeCheckInputs = (old.nativeCheckInputs or [])
+              ++ [ nixpkgs.legacyPackages.${system}.git ];
+          });
+        in
+        packages // { inherit kudo; default = kudo; }
+      ) workspace.packages;
+
       # kudo-node as a home-manager user service; see the module for options.
-      #
-      # The default package skips the test run: jig's crane source filter keeps
-      # only Rust sources, and kudo-node's tests read docs/ and packaging/
-      # files the sandbox never sees. The tests run under `cargo test`.
       homeModules.kudo-node = { lib, pkgs, ... }: {
         imports = [ ./crates/kudo-node/packaging/home-module.nix ];
         services.kudo-node.package = lib.mkDefault
-          (self.packages.${pkgs.stdenv.hostPlatform.system}.kudo.overrideAttrs { doCheck = false; });
+          self.packages.${pkgs.stdenv.hostPlatform.system}.kudo;
       };
     };
 }
