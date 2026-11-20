@@ -235,14 +235,14 @@ async fn a_timeout_says_the_work_may_still_be_running() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
-    // A budget so small that any real round trip exceeds it.
+    // An immediate deadline does not depend on a round trip taking a minimum time.
     let client = HubClient::dial(&addr)
         .await
         .expect("dial")
-        .with_timeout(Duration::from_millis(1));
+        .with_timeout(Duration::ZERO);
     let err = jobs::list(&client, Target::node("alpha"), DEFAULT_JOB_CONNECTOR)
         .await
-        .expect_err("a 1ms budget must expire");
+        .expect_err("a zero budget must expire");
 
     let message = err.to_string();
     assert!(
