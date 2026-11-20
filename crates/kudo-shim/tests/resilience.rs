@@ -30,6 +30,10 @@ fn serve_hub(listener: HubListener) -> tokio::task::JoinHandle<std::io::Result<(
 fn spawn_node(addr: &str, registry: Arc<JobRegistry>) -> tokio::task::JoinHandle<()> {
     let mut connectors = Connectors::new();
     connectors.register(Box::new(JobConnector::new(DEFAULT_JOB_CONNECTOR, registry)));
+    spawn_connectors(addr, connectors)
+}
+
+fn spawn_connectors(addr: &str, connectors: Connectors) -> tokio::task::JoinHandle<()> {
     let connectors = Arc::new(connectors);
 
     let cfg = node::NodeConfig::new(
@@ -61,6 +65,22 @@ fn spawn_node(addr: &str, registry: Arc<JobRegistry>) -> tokio::task::JoinHandle
         )
         .await;
     })
+}
+
+struct SlowJobs;
+
+impl node::Connector for SlowJobs {
+    fn descriptor(&self) -> Connector {
+        Connector {
+            id: DEFAULT_JOB_CONNECTOR.to_string(),
+            kind: ConnectorKind::ProcessManager,
+        }
+    }
+
+    fn call(&self, _method: &str, _payload: &[u8]) -> Result<Vec<u8>, hub_protocol::NodeError> {
+        std::thread::sleep(Duration::from_millis(50));
+        Err(hub_protocol::NodeError::Rejected("delayed".to_string()))
+    }
 }
 
 async fn wait_for_node(client: &HubClient) -> bool {
@@ -219,8 +239,9 @@ async fn a_timeout_says_the_work_may_still_be_running() {
     let listener = HubListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().to_string();
     let _hub = serve_hub(listener);
-    let registry = Arc::new(JobRegistry::ungoverned().expect("registry"));
-    let _node = spawn_node(&addr, registry.clone());
+    let mut connectors = Connectors::new();
+    connectors.register(Box::new(SlowJobs));
+    let _node = spawn_connectors(&addr, connectors);
 
     // **Wait for the node to register first.** Without this the 1ms call can
     // land before the node exists to the hub, and the reply is `UnknownNode` —
@@ -235,14 +256,14 @@ async fn a_timeout_says_the_work_may_still_be_running() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
-    // An immediate deadline does not depend on a round trip taking a minimum time.
+    // The connector takes 50ms; a 1ms budget must expire regardless of host speed.
     let client = HubClient::dial(&addr)
         .await
         .expect("dial")
-        .with_timeout(Duration::ZERO);
+        .with_timeout(Duration::from_millis(1));
     let err = jobs::list(&client, Target::node("alpha"), DEFAULT_JOB_CONNECTOR)
         .await
-        .expect_err("a zero budget must expire");
+        .expect_err("a 1ms budget must expire");
 
     let message = err.to_string();
     assert!(
