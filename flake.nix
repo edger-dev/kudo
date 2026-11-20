@@ -49,18 +49,23 @@
         docs = { };
         kinora = { };
       };
+      # The worktree integration tests invoke git.
+      withGit = system: package: package.overrideAttrs (old: {
+        nativeCheckInputs = (old.nativeCheckInputs or [])
+          ++ [ nixpkgs.legacyPackages.${system}.git ];
+      });
     in
     workspace // {
       packages = builtins.mapAttrs (system: packages:
         let
-          # The worktree integration tests invoke git.
-          kudo = packages.kudo.overrideAttrs (old: {
-            nativeCheckInputs = (old.nativeCheckInputs or [])
-              ++ [ nixpkgs.legacyPackages.${system}.git ];
-          });
+          kudo = withGit system packages.kudo;
         in
         packages // { inherit kudo; default = kudo; }
       ) workspace.packages;
+
+      checks = builtins.mapAttrs (system: checks:
+        checks // { build = withGit system checks.build; }
+      ) workspace.checks;
 
       # kudo-node as a home-manager user service; see the module for options.
       homeModules.kudo-node = { lib, pkgs, ... }: {
