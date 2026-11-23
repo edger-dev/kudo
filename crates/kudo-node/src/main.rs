@@ -51,6 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
         env!("CARGO_PKG_VERSION").to_string(),
     )?;
+    let config = match std::env::var("HUB_AUTH_TOKEN") {
+        Ok(token) => config.with_auth_token(token),
+        Err(_) => config,
+    };
     // Fail fast on an address that could never be dialed, rather than retrying
     // forever against a typo.
     // Workers dial the same hub, as a bare address (no scheme).

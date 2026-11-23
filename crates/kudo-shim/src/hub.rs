@@ -68,7 +68,7 @@ impl std::fmt::Debug for HubClient {
 }
 
 /// Open one consumer lane to `addr`, retaining its connection driver.
-async fn dial_lane(addr: &str) -> Result<ClientLane, ShimError> {
+async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, ShimError> {
     let socket = tokio::net::TcpStream::connect(addr)
         .await
         .map_err(|source| ShimError::HubUnreachable {
@@ -83,13 +83,21 @@ async fn dial_lane(addr: &str) -> Result<ClientLane, ShimError> {
             addr: addr.to_string(),
             detail: e.to_string(),
         })?;
-    let client = connection
+    let client: ConsumerApiClient = connection
         .open_lane()
         .await
         .map_err(|e| ShimError::HubHandshake {
             addr: addr.to_string(),
             detail: e.to_string(),
         })?;
+    if let Some(token) = token {
+        client.authenticate(token).await.map_err(|e| {
+            ShimError::HubHandshake {
+                addr: addr.to_string(),
+                detail: format!("{e:?}"),
+            }
+        })?;
+    }
     Ok(ClientLane { connection, client })
 }
 
@@ -110,7 +118,18 @@ impl HubClient {
     pub async fn dial(addr: &str) -> Result<Self, ShimError> {
         Ok(Self {
             addr: addr.to_string(),
-            client: RwLock::new(Arc::new(dial_lane(addr).await?)),
+            client: RwLock::new(Arc::new(
+                dial_lane(addr, std::env::var("HUB_AUTH_TOKEN").ok()).await?,
+            )),
+            timeout: DEFAULT_CALL_TIMEOUT,
+        })
+    }
+
+    /// Dial with an explicit credential, without consulting the environment.
+    pub async fn dial_with_token(addr: &str, token: &str) -> Result<Self, ShimError> {
+        Ok(Self {
+            addr: addr.to_string(),
+            client: RwLock::new(Arc::new(dial_lane(addr, Some(token.to_owned())).await?)),
             timeout: DEFAULT_CALL_TIMEOUT,
         })
     }
@@ -145,7 +164,9 @@ impl HubClient {
         if !Arc::ptr_eq(&guard, stale) {
             return Ok(guard.clone());
         }
-        let fresh = Arc::new(dial_lane(&self.addr).await?);
+        let fresh = Arc::new(
+            dial_lane(&self.addr, std::env::var("HUB_AUTH_TOKEN").ok()).await?,
+        );
         let old = std::mem::replace(&mut *guard, fresh.clone());
         let _ = old.connection.shutdown();
         Ok(fresh)

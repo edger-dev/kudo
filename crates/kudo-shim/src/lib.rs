@@ -18,6 +18,7 @@ pub mod error;
 pub mod events;
 pub mod hook;
 pub mod hub;
+pub mod intake;
 pub mod jobs;
 pub mod mesh;
 pub mod panes;

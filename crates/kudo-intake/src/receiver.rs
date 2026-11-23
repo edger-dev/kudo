@@ -23,7 +23,7 @@ pub enum ReceiveOutcome {
     Duplicate { kino_id: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(facet::Facet, Debug, Clone, PartialEq, Eq)]
 pub struct ReceivedNote {
     pub note_id: String,
     pub kino_id: String,

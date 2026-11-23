@@ -8,7 +8,7 @@ mod receiver;
 pub use receiver::{ReceiveError, ReceiveOutcome, ReceivedNote, Receiver};
 
 /// A note a sending session asks to deliver to a repository inbox.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(facet::Facet, Debug, Clone, PartialEq, Eq)]
 pub struct Note {
     pub id: String,
     pub target: String,
@@ -19,6 +19,23 @@ pub struct Note {
     pub machine: String,
     pub session: String,
     pub created_at: String,
+}
+
+/// A request to list one target's arrivals.
+#[derive(facet::Facet, Debug, Clone, PartialEq, Eq)]
+pub struct IntakeList {
+    pub target: String,
+    pub since: String,
+}
+
+/// A connector's reply to a send or list call.
+#[repr(u8)]
+#[derive(facet::Facet, Debug, Clone, PartialEq, Eq)]
+pub enum IntakeReply {
+    Delivered { kino_id: String },
+    Duplicate { kino_id: String },
+    Refused { reason: String },
+    Listed { notes: Vec<ReceivedNote> },
 }
 
 /// Deterministic admission checks configured by the sender.

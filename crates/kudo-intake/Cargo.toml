@@ -8,5 +8,6 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+facet = { workspace = true }
 jiff = { workspace = true }
 kinora = { workspace = true }

@@ -20,6 +20,7 @@
 //! implements: moco:3aa206d0a5ecd433ea159c78d3176934e98adef12bcca380b42ccf2b1ced591b
 
 pub mod governance;
+pub mod intake;
 pub mod job;
 pub mod worker;
 

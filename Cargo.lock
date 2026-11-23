@@ -3567,7 +3567,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 [[package]]
 name = "hub"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=828a6b05c9069c62d47bd53587f0ba897e43a8d2#828a6b05c9069c62d47bd53587f0ba897e43a8d2"
+source = "git+https://github.com/edger-dev/hub?rev=5f5e42d#5f5e42d3e4cc9b374e608c38545b1a03eaf783d8"
 dependencies = [
  "hub-protocol",
  "tokio",
@@ -3577,7 +3577,7 @@ dependencies = [
 [[package]]
 name = "hub-protocol"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=828a6b05c9069c62d47bd53587f0ba897e43a8d2#828a6b05c9069c62d47bd53587f0ba897e43a8d2"
+source = "git+https://github.com/edger-dev/hub?rev=5f5e42d#5f5e42d3e4cc9b374e608c38545b1a03eaf783d8"
 dependencies = [
  "facet 0.50.0-rc.5",
  "vox",
@@ -4179,6 +4179,7 @@ dependencies = [
 name = "kudo-intake"
 version = "0.1.0"
 dependencies = [
+ "facet 0.50.0-rc.5",
  "jiff",
  "kinora",
 ]
@@ -4187,9 +4188,13 @@ dependencies = [
 name = "kudo-node"
 version = "0.1.0"
 dependencies = [
+ "facet 0.50.0-rc.5",
+ "facet-json 0.50.0-rc.5",
  "hub",
  "hub-protocol",
+ "jiff",
  "kudo-context",
+ "kudo-intake",
  "kudo-worker",
  "moco-job",
  "node",
@@ -4206,7 +4211,9 @@ dependencies = [
  "hub",
  "hub-protocol",
  "jiff",
+ "kinora",
  "kudo-context",
+ "kudo-intake",
  "kudo-node",
  "kudo-worker",
  "moco-job",
@@ -4585,7 +4592,7 @@ dependencies = [
 [[package]]
 name = "node"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=828a6b05c9069c62d47bd53587f0ba897e43a8d2#828a6b05c9069c62d47bd53587f0ba897e43a8d2"
+source = "git+https://github.com/edger-dev/hub?rev=5f5e42d#5f5e42d3e4cc9b374e608c38545b1a03eaf783d8"
 dependencies = [
  "facet 0.50.0-rc.5",
  "facet-json 0.50.0-rc.5",
