@@ -249,11 +249,75 @@ pub struct InboxArgs {
     pub body: Option<String>,
 }
 
+/// Send one reviewed text note to a repository inbox.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct SendNoteArgs {
+    /// The home node running the intake connector.
+    pub node: String,
+    /// The repository alias, such as `kudo` or `kinora`.
+    pub target: String,
+    /// A short title for the note.
+    pub title: String,
+    /// The complete text of the note; code is not accepted.
+    pub body: String,
+    /// Confirm you reviewed this note and it contains no code or employer-specific information.
+    pub attestation: bool,
+    /// Reuse this id when retrying; omit for a fresh id.
+    pub id: Option<String>,
+    /// Override the sending author read from the environment.
+    pub author: Option<String>,
+    /// Override the sending machine alias read from the environment.
+    pub machine: Option<String>,
+    /// Override the sending session read from the environment.
+    pub session: Option<String>,
+}
+
+/// List remote notes that arrived at or after a time.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct IntakeListArgs {
+    /// The home node running the intake connector.
+    pub node: String,
+    /// The repository alias.
+    pub target: String,
+    /// An RFC 3339 timestamp; arrivals at or after it are returned, oldest first.
+    pub since: String,
+}
+
 /// Give a claim back.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
 pub struct ReleaseArgs {
     /// The claim id.
     pub claim: String,
+}
+
+impl SendNoteArgs {
+    fn into_note(self) -> Result<kudo_intake::Note, String> {
+        let id = match self.id {
+            Some(id) => id,
+            None => kudo_worker::new_lease_id().map_err(|e| e.to_string())?,
+        };
+        Ok(kudo_intake::Note {
+            id,
+            target: self.target,
+            title: self.title,
+            body: self.body,
+            attestation: self.attestation,
+            author: self
+                .author
+                .or_else(|| std::env::var("KUDO_INTAKE_AUTHOR").ok())
+                .or_else(|| std::env::var("USER").ok())
+                .unwrap_or_else(|| "unknown".into()),
+            machine: self
+                .machine
+                .or_else(|| std::env::var("KUDO_INTAKE_MACHINE").ok())
+                .unwrap_or_else(kudo_worker::env::node_name),
+            session: self
+                .session
+                .or_else(|| std::env::var("KUDO_LEASE").ok())
+                .unwrap_or_else(|| "bare".into()),
+            created_at: jiff::Timestamp::now().to_string(),
+        })
+    }
 }
 
 fn target(node: &str, link: &Option<String>) -> Target {
@@ -371,6 +435,20 @@ impl ShimServer {
     /// The `nodes` tool, called directly (for tests and other faces).
     pub async fn call_nodes(&self) -> CallToolResult {
         self.nodes()
+            .await
+            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
+    }
+
+    /// The `send_note` tool, called directly (for tests and other faces).
+    pub async fn call_send_note(&self, args: SendNoteArgs) -> CallToolResult {
+        self.send_note(Parameters(args))
+            .await
+            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
+    }
+
+    /// The `intake_list` tool, called directly (for tests and other faces).
+    pub async fn call_intake_list(&self, args: IntakeListArgs) -> CallToolResult {
+        self.intake_list(Parameters(args))
             .await
             .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
     }
@@ -569,6 +647,94 @@ impl ShimServer {
         Parameters(args): Parameters<InboxArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         self.worker_call(|s, now| worker_tools::inbox(s, &args.line, args.body.as_deref(), now))
+    }
+
+    #[tool(
+        name = "send_note",
+        description = "Deliver one reviewed text note to a repository's Kinora inbox through the authenticated hub. Before calling, verify the note contains no code and no employer-specific information, and set attestation true. Returns delivered or duplicate with the kino id; unavailable means nothing was accepted, so retry later with the same id."
+    )]
+    async fn send_note(
+        &self,
+        Parameters(args): Parameters<SendNoteArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        let node = args.node.clone();
+        let note = match args.into_note() {
+            Ok(note) => note,
+            Err(error) => return Ok(CallToolResult::error(vec![ContentBlock::text(error)])),
+        };
+        match crate::intake::send_note(&hub, &node, &note).await {
+            Ok(kudo_intake::IntakeReply::Delivered { kino_id }) => Ok(CallToolResult::success(
+                vec![ContentBlock::text(format!("delivered kino://{kino_id}"))],
+            )),
+            Ok(kudo_intake::IntakeReply::Duplicate { kino_id }) => Ok(CallToolResult::success(
+                vec![ContentBlock::text(format!("duplicate kino://{kino_id}"))],
+            )),
+            Ok(kudo_intake::IntakeReply::Refused { reason }) => {
+                Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "refused: {reason}"
+                ))]))
+            }
+            Ok(kudo_intake::IntakeReply::Listed { .. }) => {
+                Ok(CallToolResult::error(vec![ContentBlock::text(
+                    "the intake connector returned the wrong reply".to_string(),
+                )]))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "unavailable: {error}"
+            ))])),
+        }
+    }
+
+    #[tool(
+        name = "intake_list",
+        description = "List remote notes that arrived in a repository's inbox at or after an RFC 3339 time, oldest first, with unreviewed state and kino ids."
+    )]
+    async fn intake_list(
+        &self,
+        Parameters(args): Parameters<IntakeListArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        match crate::intake::list(&hub, &args.node, &args.target, &args.since).await {
+            Ok(kudo_intake::IntakeReply::Listed { notes }) => {
+                let text = if notes.is_empty() {
+                    "no arrivals since that time".to_string()
+                } else {
+                    notes
+                        .iter()
+                        .map(|note| {
+                            format!(
+                                "{} {} {} kino://{} unreviewed={}",
+                                note.received_at,
+                                note.note_id,
+                                note.title,
+                                note.kino_id,
+                                note.unreviewed
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                };
+                Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+            }
+            Ok(kudo_intake::IntakeReply::Refused { reason }) => {
+                Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "refused: {reason}"
+                ))]))
+            }
+            Ok(_) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                "the intake connector returned the wrong reply".to_string(),
+            )])),
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "unavailable: {error}"
+            ))])),
+        }
     }
 
     #[tool(
@@ -1216,6 +1382,25 @@ mod tests {
             assert!(
                 names.iter().any(|n| n == tool),
                 "{tool} missing from {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn remote_intake_tools_are_routed() {
+        let tools = ShimServer::tool_router().list_all();
+        for name in ["send_note", "intake_list"] {
+            assert!(tools.iter().any(|tool| tool.name == name), "{name}");
+        }
+        let send = tools.iter().find(|tool| tool.name == "send_note").unwrap();
+        let schema = serde_json::to_value(&*send.input_schema).unwrap();
+        for field in ["node", "target", "title", "body", "attestation"] {
+            assert!(schema["properties"].get(field).is_some(), "{schema}");
+            assert!(
+                schema["required"]
+                    .as_array()
+                    .is_some_and(|required| required.iter().any(|value| value == field)),
+                "{field} is not required: {schema}"
             );
         }
     }

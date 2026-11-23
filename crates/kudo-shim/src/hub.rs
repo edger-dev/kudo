@@ -83,20 +83,22 @@ async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, Shim
             addr: addr.to_string(),
             detail: e.to_string(),
         })?;
-    let client: ConsumerApiClient = connection
-        .open_lane()
-        .await
-        .map_err(|e| ShimError::HubHandshake {
-            addr: addr.to_string(),
-            detail: e.to_string(),
-        })?;
+    let client: ConsumerApiClient =
+        connection
+            .open_lane()
+            .await
+            .map_err(|e| ShimError::HubHandshake {
+                addr: addr.to_string(),
+                detail: e.to_string(),
+            })?;
     if let Some(token) = token {
-        client.authenticate(token).await.map_err(|e| {
-            ShimError::HubHandshake {
+        client
+            .authenticate(token)
+            .await
+            .map_err(|e| ShimError::HubHandshake {
                 addr: addr.to_string(),
                 detail: format!("{e:?}"),
-            }
-        })?;
+            })?;
     }
     Ok(ClientLane { connection, client })
 }
@@ -164,9 +166,7 @@ impl HubClient {
         if !Arc::ptr_eq(&guard, stale) {
             return Ok(guard.clone());
         }
-        let fresh = Arc::new(
-            dial_lane(&self.addr, std::env::var("HUB_AUTH_TOKEN").ok()).await?,
-        );
+        let fresh = Arc::new(dial_lane(&self.addr, std::env::var("HUB_AUTH_TOKEN").ok()).await?);
         let old = std::mem::replace(&mut *guard, fresh.clone());
         let _ = old.connection.shutdown();
         Ok(fresh)

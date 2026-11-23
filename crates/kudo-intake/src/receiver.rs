@@ -225,7 +225,6 @@ fn fingerprint(note: &Note) -> String {
         &note.author,
         &note.machine,
         &note.session,
-        &note.created_at,
     ] {
         canonical.push_str(&format!("{}:{}\n", value.len(), value));
     }

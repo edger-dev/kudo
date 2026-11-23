@@ -96,7 +96,9 @@ remote one.
 **`kudo-node`** — `MOCO_DIR` (state directory), `NODE_ID` (defaults to the
 hostname; a shim on the machine reads it too, to know its own node), `NODE_LINK` (default `stable`), `HUB_ADDR` (or argv[1]),
 `KUDO_JOB_CONNECTOR` (default `jobs-0`), `KUDO_PTY_HOLDER`, `MOCO_PORT_RANGE`
-(default `10000-19999`).
+(default `10000-19999`). `HUB_AUTH_TOKEN` optionally requires that exact token
+on every connection; see [Remote inbox notes](../contexts/intake.md) for its
+transport boundary and the `KUDO_INTAKE_*` receiver settings.
 
 ### The node's environment is every worker's
 

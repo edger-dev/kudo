@@ -10,8 +10,9 @@ use hub::{HubListener, ServedHub};
 use hub_protocol::{Connector as ConnectorDescriptor, ConnectorKind, LinkLabel, NodeId};
 use kudo_intake::{AdmissionRules, IntakeReply, Note, Receiver};
 use kudo_node::intake::{INTAKE_CONNECTOR, IntakeConnector};
-use kudo_shim::HubClient;
 use kudo_shim::intake;
+use kudo_shim::server::SendNoteArgs;
+use kudo_shim::{HubClient, ShimServer};
 use node::{Connectors, HubEndpoint, NodeConfig};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -73,6 +74,20 @@ fn note(id: &str) -> Note {
     }
 }
 
+fn send_args(id: &str) -> SendNoteArgs {
+    SendNoteArgs {
+        node: "home".into(),
+        target: "kudo".into(),
+        title: "A remote thought".into(),
+        body: "Keep the receiver thin.".into(),
+        attestation: true,
+        id: Some(id.into()),
+        author: Some("YJ Park".into()),
+        machine: Some("work".into()),
+        session: Some("session-123".into()),
+    }
+}
+
 async fn mesh(repo: &Path) -> (HubClient, vox::ConnectionHandle) {
     let listener = HubListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().to_string();
@@ -112,24 +127,20 @@ async fn mesh(repo: &Path) -> (HubClient, vox::ConnectionHandle) {
 async fn authenticated_delivery_deduplicates_and_lists() {
     let repo = repo();
     let (hub, _node) = mesh(&repo).await;
-    let kino_id = match intake::send_note(&hub, "home", &note("note-1")).await.unwrap() {
-        IntakeReply::Delivered { kino_id } => kino_id,
-        other => panic!("expected delivery, got {other:?}"),
-    };
-    assert_eq!(
-        intake::send_note(&hub, "home", &note("note-1")).await.unwrap(),
-        IntakeReply::Duplicate {
-            kino_id: kino_id.clone()
-        }
-    );
-    match intake::list(&hub, "home", "kudo", "2026-11-23T00:00:00Z")
+    let hub = Arc::new(hub);
+    let server = ShimServer::new(hub.clone());
+    let delivered = server.call_send_note(send_args("note-1")).await;
+    assert_eq!(delivered.is_error, Some(false), "{delivered:?}");
+    let duplicate = server.call_send_note(send_args("note-1")).await;
+    assert_eq!(duplicate.is_error, Some(false), "{duplicate:?}");
+    match intake::list(&hub, "home", "kudo", "2020-01-01T00:00:00Z")
         .await
         .unwrap()
     {
         IntakeReply::Listed { notes } => {
             assert_eq!(notes.len(), 1);
             assert_eq!(notes[0].note_id, "note-1");
-            assert_eq!(notes[0].kino_id, kino_id);
+            assert!(!notes[0].kino_id.is_empty());
         }
         other => panic!("expected a listing, got {other:?}"),
     }
@@ -140,4 +151,17 @@ async fn authenticated_delivery_deduplicates_and_lists() {
         intake::send_note(&hub, "home", &refused).await,
         Ok(IntakeReply::Refused { .. })
     ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unreachable_receiver_is_unavailable_not_accepted() {
+    let listener = HubListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().to_string();
+    let _hub = tokio::spawn(listener.serve(ServedHub::new()));
+    let hub = HubClient::dial(&addr).await.unwrap();
+    let server = ShimServer::new(Arc::new(hub));
+    let reply = server.call_send_note(send_args("note-1")).await;
+    assert_eq!(reply.is_error, Some(true), "{reply:?}");
+    let text = format!("{reply:?}");
+    assert!(text.contains("unavailable"), "{text}");
 }

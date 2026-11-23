@@ -19,6 +19,7 @@ use node::reconnect::{Backoff, DialOutcome};
 use node::{Connectors, HubEndpoint, NodeConfig};
 
 use kudo_node::JobConnector;
+use kudo_node::intake::{INTAKE_CONNECTOR, IntakeConnector};
 use kudo_node::worker::{PaneSetup, WORKER_CONNECTOR, WorkerConnector};
 
 #[tokio::main]
@@ -35,20 +36,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let policy = kudo_node::governance::policy_from(|k| std::env::var(k).ok())?;
     let pane_cwd = kudo_node::worker::pane_cwd(policy.allowed_root());
 
+    let intake = IntakeConnector::from_env()?;
+    let mut descriptors = vec![
+        ConnectorDescriptor {
+            id: connector_id.clone(),
+            kind: ConnectorKind::ProcessManager,
+        },
+        ConnectorDescriptor {
+            id: WORKER_CONNECTOR.to_string(),
+            kind: ConnectorKind::ProcessManager,
+        },
+    ];
+    if intake.is_some() {
+        descriptors.push(ConnectorDescriptor {
+            id: INTAKE_CONNECTOR.into(),
+            kind: ConnectorKind::Other("intake".into()),
+        });
+    }
     let config = NodeConfig::new(
         NodeId(node.clone()),
         LinkLabel(link),
         hub,
-        vec![
-            ConnectorDescriptor {
-                id: connector_id.clone(),
-                kind: ConnectorKind::ProcessManager,
-            },
-            ConnectorDescriptor {
-                id: WORKER_CONNECTOR.to_string(),
-                kind: ConnectorKind::ProcessManager,
-            },
-        ],
+        descriptors,
         env!("CARGO_PKG_VERSION").to_string(),
     )?;
     let config = match std::env::var("HUB_AUTH_TOKEN") {
@@ -171,6 +180,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             hub: Some(hub_addr),
         },
     )));
+    if let Some(connector) = intake {
+        connectors.register(Box::new(connector));
+    }
     let connectors = Arc::new(connectors);
 
     println!(

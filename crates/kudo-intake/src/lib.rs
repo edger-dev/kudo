@@ -3,6 +3,8 @@
 //! implements: intake-note-admission@901cfa34ef07a5318cf05122369a92ef3730999651fb495c8b595f9c26c74ad3
 //! task: remote-inbox-channel@67edb688a93e1923a760c609d04639fee94974a30498f9a67b3d8173a04cac86
 
+pub const INTAKE_CONNECTOR: &str = "kudo-intake";
+
 mod receiver;
 
 pub use receiver::{ReceiveError, ReceiveOutcome, ReceivedNote, Receiver};
