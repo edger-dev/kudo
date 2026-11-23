@@ -211,33 +211,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    node::reconnect::run_with(
-        &config,
-        connectors,
-        &Backoff {
-            initial: Duration::from_millis(200),
-            max: Duration::from_secs(5),
-        },
-        || {
-            let hub = config.hub.clone();
-            // The address was validated at startup, so this cannot fail on a
-            // malformed target. Panicking anyway would take the daemon — and
-            // every job it owns — down over a transient dial problem, which is
-            // the opposite of what a supervisor is for.
-            async move {
-                match node::tcp::dial(&hub).await {
-                    Ok(link) => link,
-                    Err(e) => {
-                        eprintln!("dial target became invalid: {e}");
-                        std::process::exit(1)
+    let backoff = Backoff {
+        initial: Duration::from_millis(200),
+        max: Duration::from_secs(5),
+    };
+    if matches!(config.hub.0.split_once("://"), Some(("ws" | "wss", _))) {
+        node::reconnect::run_with(
+            &config,
+            connectors,
+            &backoff,
+            || {
+                let hub = config.hub.clone();
+                async move {
+                    match node::websocket::dial(&hub).await {
+                        Ok(link) => link,
+                        Err(e) => {
+                            eprintln!("dial target became invalid: {e}");
+                            std::process::exit(1)
+                        }
                     }
                 }
-            }
-        },
-        tokio::time::sleep,
-        |_: DialOutcome| true,
-    )
-    .await;
+            },
+            tokio::time::sleep,
+            |_: DialOutcome| true,
+        )
+        .await;
+    } else {
+        node::reconnect::run_with(
+            &config,
+            connectors,
+            &backoff,
+            || {
+                let hub = config.hub.clone();
+                // The address was validated at startup, so this cannot fail on a
+                // malformed target. Panicking anyway would take the daemon — and
+                // every job it owns — down over a transient dial problem, which is
+                // the opposite of what a supervisor is for.
+                async move {
+                    match node::tcp::dial(&hub).await {
+                        Ok(link) => link,
+                        Err(e) => {
+                            eprintln!("dial target became invalid: {e}");
+                            std::process::exit(1)
+                        }
+                    }
+                }
+            },
+            tokio::time::sleep,
+            |_: DialOutcome| true,
+        )
+        .await;
+    }
 
     supervising.abort();
     Ok(())

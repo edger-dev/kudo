@@ -72,6 +72,12 @@ KUDO_HUB_ADDR=wss://hub_edger.yjpark.org
 HUB_AUTH_TOKEN=<same-token-as-home>
 ```
 
+Home `kudo-node` instances can also dial a VPS-hosted hub directly with
+`HUB_ADDR=wss://hub.example.com`; registration, callbacks, token authentication,
+and reconnect backoff are shared with TCP. Cloudflare Access service-token
+headers are currently supported by the sending shim, not by nodes. For nodes,
+use a direct VPS TLS endpoint or a private route without interactive Access.
+
 If Cloudflare Access protects the hostname, also configure a service token:
 
 ```sh
