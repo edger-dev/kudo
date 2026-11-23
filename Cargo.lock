@@ -4175,6 +4175,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kudo-intake"
+version = "0.1.0"
+
+[[package]]
 name = "kudo-node"
 version = "0.1.0"
 dependencies = [
