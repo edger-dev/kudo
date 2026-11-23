@@ -69,20 +69,24 @@ impl std::fmt::Debug for HubClient {
 
 /// Open one consumer lane to `addr`, retaining its connection driver.
 async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, ShimError> {
-    let socket = tokio::net::TcpStream::connect(addr)
-        .await
-        .map_err(|source| ShimError::HubUnreachable {
-            addr: addr.to_string(),
-            source,
-        })?;
+    let connection = if addr.starts_with("ws://") || addr.starts_with("wss://") {
+        dial_websocket(addr).await?
+    } else {
+        let socket = tokio::net::TcpStream::connect(addr)
+            .await
+            .map_err(|source| ShimError::HubUnreachable {
+                addr: addr.to_string(),
+                source,
+            })?;
 
-    let connection = vox::initiator_on(vox::transport::tcp::StreamLink::tcp(socket))
-        .establish_connection()
-        .await
-        .map_err(|e| ShimError::HubHandshake {
-            addr: addr.to_string(),
-            detail: e.to_string(),
-        })?;
+        vox::initiator_on(vox::transport::tcp::StreamLink::tcp(socket))
+            .establish_connection()
+            .await
+            .map_err(|e| ShimError::HubHandshake {
+                addr: addr.to_string(),
+                detail: e.to_string(),
+            })?
+    };
     let client: ConsumerApiClient =
         connection
             .open_lane()
@@ -103,7 +107,76 @@ async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, Shim
     Ok(ClientLane { connection, client })
 }
 
-/// Was this the connection dying, rather than someone answering?
+/// Open a WebSocket Vox connection, including optional Cloudflare Access credentials.
+async fn dial_websocket(addr: &str) -> Result<vox::ConnectionHandle, ShimError> {
+    let access = cloudflare_access_from_env().map_err(|detail| ShimError::HubHandshake {
+        addr: addr.to_string(),
+        detail,
+    })?;
+    let request = websocket_request(
+        addr,
+        access
+            .as_ref()
+            .map(|(id, secret)| (id.as_str(), secret.as_str())),
+    )
+    .map_err(|detail| ShimError::HubHandshake {
+        addr: addr.to_string(),
+        detail,
+    })?;
+    let (stream, _) = tokio_tungstenite::connect_async(request)
+        .await
+        .map_err(|error| ShimError::HubHandshake {
+            addr: addr.to_string(),
+            detail: error.to_string(),
+        })?;
+    let link = vox::transport::websocket::WsLink::new(stream);
+    vox::initiator_on(link)
+        .establish_connection()
+        .await
+        .map_err(|error| ShimError::HubHandshake {
+            addr: addr.to_string(),
+            detail: error.to_string(),
+        })
+}
+
+fn cloudflare_access_from_env() -> Result<Option<(String, String)>, String> {
+    let id = std::env::var("CF_ACCESS_CLIENT_ID").ok();
+    let secret = std::env::var("CF_ACCESS_CLIENT_SECRET").ok();
+    match (id, secret) {
+        (Some(id), Some(secret)) if !id.is_empty() && !secret.is_empty() => {
+            Ok(Some((id, secret)))
+        }
+        (None, None) => Ok(None),
+        _ => Err(
+            "CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must both be nonempty and set together"
+                .into(),
+        ),
+    }
+}
+
+fn websocket_request(
+    addr: &str,
+    access: Option<(&str, &str)>,
+) -> Result<tokio_tungstenite::tungstenite::handshake::client::Request, String> {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::tungstenite::http::{HeaderName, HeaderValue};
+
+    let mut request = addr
+        .into_client_request()
+        .map_err(|error| format!("invalid WebSocket URL: {error}"))?;
+    if let Some((id, secret)) = access {
+        for (name, value) in [
+            (HeaderName::from_static("cf-access-client-id"), id),
+            (HeaderName::from_static("cf-access-client-secret"), secret),
+        ] {
+            let value = HeaderValue::from_str(value)
+                .map_err(|error| format!("invalid Cloudflare Access credential: {error}"))?;
+            request.headers_mut().insert(name, value);
+        }
+    }
+    Ok(request)
+}
+
 ///
 /// Only a transport failure is worth re-dialing for. `VoxError::User` carries a
 /// **domain** answer — a refusal, an unknown node — which reached someone and
@@ -265,5 +338,26 @@ impl HubClient {
             method: call.method,
             detail,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cloudflare_service_tokens_are_websocket_headers() {
+        let request = websocket_request(
+            "wss://hub_edger.yjpark.org",
+            Some(("client-id", "client-secret")),
+        )
+        .unwrap();
+        assert_eq!(request.headers()["cf-access-client-id"], "client-id");
+        assert_eq!(
+            request.headers()["cf-access-client-secret"],
+            "client-secret"
+        );
+        let plain = websocket_request("ws://127.0.0.1:15400", None).unwrap();
+        assert!(!plain.headers().contains_key("cf-access-client-id"));
     }
 }

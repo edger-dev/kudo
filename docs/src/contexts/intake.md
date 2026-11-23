@@ -49,6 +49,42 @@ Fenced and indented code blocks are rejected. These deterministic checks
 supplement the sender's attestation; they cannot recognise every kind of
 sensitive content.
 
+## Native WSS through Cloudflare
+
+A remote session can use `hub_edger.yjpark.org` directly without running
+`cloudflared` in its Incus container. On the home hub, keep the existing TCP
+listener and add a local WebSocket listener:
+
+```sh
+HUB_WS_ADDR=127.0.0.1:15401
+HUB_AUTH_TOKEN=<same-token-as-everywhere-else>
+```
+
+Configure the `hub_edger.yjpark.org` published application to forward to
+`http://127.0.0.1:15401`. Cloudflare terminates public TLS and forwards the
+WebSocket upgrade. The hub's WebSocket listener itself remains plain and local;
+home nodes can continue dialing its TCP listener.
+
+In the sending Incus container:
+
+```sh
+KUDO_HUB_ADDR=wss://hub_edger.yjpark.org
+HUB_AUTH_TOKEN=<same-token-as-home>
+```
+
+If Cloudflare Access protects the hostname, also configure a service token:
+
+```sh
+CF_ACCESS_CLIENT_ID=<service-token-client-id>
+CF_ACCESS_CLIENT_SECRET=<service-token-client-secret>
+```
+
+The pair adds `CF-Access-Client-Id` and `CF-Access-Client-Secret` to the
+WebSocket handshake. Both must be nonempty and set together. They supplement,
+never replace, `HUB_AUTH_TOKEN`. No local `cloudflared access tcp` process is
+needed for this WSS setup. A tunnel still configured as `tcp://` rather than an
+HTTP WebSocket route continues to require the client-side forwarder.
+
 ## Provenance and retries
 
 `send_note` requires `node`, `target`, `title`, `body`, and `attestation`.
