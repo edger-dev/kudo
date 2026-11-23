@@ -1,3 +1,7 @@
+//! Durable local receiving for remote inbox notes.
+//!
+//! implements: intake-local-receiver@9039f4f2be3b4e526c5986cb678438facf2b33a3bc5c7136b363dbc6204dadb4
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
