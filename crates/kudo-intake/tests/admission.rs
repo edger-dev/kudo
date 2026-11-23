@@ -39,6 +39,7 @@ fn attestation_is_required() {
 #[test]
 fn every_required_field_must_be_nonblank() {
     for (field, value) in [
+        ("id", ""),
         ("target", ""),
         ("title", "  "),
         ("body", "\n\t"),
@@ -49,6 +50,7 @@ fn every_required_field_must_be_nonblank() {
     ] {
         let mut note = note();
         match field {
+            "id" => note.id = value.into(),
             "target" => note.target = value.into(),
             "title" => note.title = value.into(),
             "body" => note.body = value.into(),

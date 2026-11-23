@@ -66,6 +66,7 @@ impl Note {
             return Err(AdmissionError::MissingAttestation);
         }
         for (field, value) in [
+            ("id", &self.id),
             ("target", &self.target),
             ("title", &self.title),
             ("body", &self.body),
