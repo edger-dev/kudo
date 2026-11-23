@@ -4091,7 +4091,7 @@ dependencies = [
 [[package]]
 name = "kinora"
 version = "0.0.1"
-source = "git+https://github.com/edger-dev/kinora?rev=4fc19c762b554476306a629324ed893549f18b0a#4fc19c762b554476306a629324ed893549f18b0a"
+source = "git+https://github.com/edger-dev/kinora?rev=9d6e5c55dab4d1a9daff919c5f59b9bb28af8736#9d6e5c55dab4d1a9daff919c5f59b9bb28af8736"
 dependencies = [
  "blake3",
  "facet 0.46.5",
@@ -4101,13 +4101,14 @@ dependencies = [
  "gix",
  "jiff",
  "log",
+ "moco-place",
  "thiserror 2.0.19",
 ]
 
 [[package]]
 name = "kinora-remote"
 version = "0.0.1"
-source = "git+https://github.com/edger-dev/kinora?rev=4fc19c762b554476306a629324ed893549f18b0a#4fc19c762b554476306a629324ed893549f18b0a"
+source = "git+https://github.com/edger-dev/kinora?rev=9d6e5c55dab4d1a9daff919c5f59b9bb28af8736#9d6e5c55dab4d1a9daff919c5f59b9bb28af8736"
 dependencies = [
  "futures",
  "kinora",
@@ -4177,6 +4178,10 @@ dependencies = [
 [[package]]
 name = "kudo-intake"
 version = "0.1.0"
+dependencies = [
+ "jiff",
+ "kinora",
+]
 
 [[package]]
 name = "kudo-node"
@@ -4496,6 +4501,14 @@ version = "0.1.0-dev"
 source = "git+https://github.com/edger-dev/moco?rev=d347e27#d347e271091469010a90d2b8081d8f885301ac04"
 dependencies = [
  "moco-internals",
+]
+
+[[package]]
+name = "moco-place"
+version = "0.1.0-dev"
+source = "git+https://github.com/edger-dev/moco?rev=4117c76#4117c764916b0b25b3276c2ffaa194598578a8ea"
+dependencies = [
+ "blake3",
 ]
 
 [[package]]

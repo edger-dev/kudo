@@ -8,3 +8,5 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+jiff = { workspace = true }
+kinora = { workspace = true }

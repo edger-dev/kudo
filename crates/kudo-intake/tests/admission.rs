@@ -2,6 +2,7 @@ use kudo_intake::{AdmissionError, AdmissionRules, Note};
 
 fn note() -> Note {
     Note {
+        id: "note-1".into(),
         target: "kudo".into(),
         title: "A design thought".into(),
         body: "The receiver should stay thin.\n\nInline `send_note` is fine.".into(),
