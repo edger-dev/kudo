@@ -10,6 +10,7 @@
 //! implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
 //! implements: 1d90deaa708a39eb606d0190ebbbab5169902bb5fb78a8e76acff87904e91414
 //! implements: deda3d32832baaaaeb5814a0f1a859f80451d081d5f8e70d1def0a3d989c9dfe
+//! implements: websocket-client@474e30c5309a55eb09aab1757f4a9c69717004aaabf715b091e989efe2a6e7d9
 
 use std::sync::Arc;
 use std::time::Duration;
