@@ -104,5 +104,11 @@ fn sensitive_markers_match_case_insensitively() {
         Err(AdmissionError::SensitiveMarker("employername".into()))
     );
     note.body = "The receiver should stay thin.".into();
+    note.title = "EmployerName planning".into();
+    assert_eq!(
+        note.validate(&rules),
+        Err(AdmissionError::SensitiveMarker("employername".into()))
+    );
+    note.title = "A design thought".into();
     assert_eq!(note.validate(&rules), Ok(()));
 }

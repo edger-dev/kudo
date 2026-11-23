@@ -33,9 +33,74 @@ pub enum AdmissionError {
     SensitiveMarker(String),
 }
 
+impl std::fmt::Display for AdmissionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingAttestation => write!(
+                f,
+                "the sender must attest that the note contains no code or employer-specific information"
+            ),
+            Self::BlankField(field) => write!(f, "{field} must not be blank"),
+            Self::BodyTooLarge { actual, max } => {
+                write!(f, "body is {actual} bytes, over the {max}-byte limit")
+            }
+            Self::CodeBlock => write!(f, "code blocks are not accepted"),
+            Self::SensitiveMarker(marker) => {
+                write!(f, "sensitive marker {marker:?} was found")
+            }
+        }
+    }
+}
+
+impl std::error::Error for AdmissionError {}
+
 impl Note {
     /// Check this note before any transport sees it.
-    pub fn validate(&self, _rules: &AdmissionRules) -> Result<(), AdmissionError> {
+    pub fn validate(&self, rules: &AdmissionRules) -> Result<(), AdmissionError> {
+        if !self.attestation {
+            return Err(AdmissionError::MissingAttestation);
+        }
+        for (field, value) in [
+            ("target", &self.target),
+            ("title", &self.title),
+            ("body", &self.body),
+            ("author", &self.author),
+            ("machine", &self.machine),
+            ("session", &self.session),
+            ("created_at", &self.created_at),
+        ] {
+            if value.trim().is_empty() {
+                return Err(AdmissionError::BlankField(field));
+            }
+        }
+        if self.body.len() > rules.max_body_bytes {
+            return Err(AdmissionError::BodyTooLarge {
+                actual: self.body.len(),
+                max: rules.max_body_bytes,
+            });
+        }
+        if self
+            .body
+            .lines()
+            .any(|line| line.starts_with("    ") || line.starts_with('\t'))
+            || self.body.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("```") || line.starts_with("~~~")
+            })
+        {
+            return Err(AdmissionError::CodeBlock);
+        }
+        let title = self.title.to_lowercase();
+        let body = self.body.to_lowercase();
+        if let Some(marker) = rules.sensitive_markers.iter().find(|marker| {
+            if marker.trim().is_empty() {
+                return false;
+            }
+            let marker = marker.to_lowercase();
+            title.contains(&marker) || body.contains(&marker)
+        }) {
+            return Err(AdmissionError::SensitiveMarker(marker.clone()));
+        }
         Ok(())
     }
 }
