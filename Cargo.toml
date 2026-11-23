@@ -32,19 +32,19 @@ dbg_macro = "warn"              # rule: jig::rust::no-todo-committed
 # everyone else builds is this revision:
 #   [patch."https://github.com/edger-dev/hub"]
 #   hub-protocol = { path = "../hub/crates/hub-protocol" }
-hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "5f5e42d" }
+hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "2dfb8e7" }
 
 # `node` is a real dependency of the composition root (kudo-node assembles a
 # daemon out of it) and a dev-dependency of the shim's routing tests, which run
 # a real hub and a real node rather than a mock of the far side.
-hub = { git = "https://github.com/edger-dev/hub", rev = "5f5e42d" }
-node = { git = "https://github.com/edger-dev/hub", rev = "5f5e42d" }
+hub = { git = "https://github.com/edger-dev/hub", rev = "2dfb8e7" }
+node = { git = "https://github.com/edger-dev/hub", rev = "2dfb8e7" }
 
 # Kept on hub's line: hub-protocol's types are facet-derived, so the shim must
 # encode against the same major. See RFC-0006 on the facet version skew.
 facet = "0.50.0-rc.5"
 facet-json = "0.50.0-rc.5"
-vox = "0.10.0-rc.5"
+vox = { version = "0.10.0-rc.5", features = ["transport-websocket"] }
 tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time", "io-std"] }
 rmcp = { version = "3.0.0-beta.2", features = ["server", "transport-io"] }
 

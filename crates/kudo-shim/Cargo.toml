@@ -17,6 +17,7 @@ facet = { workspace = true }
 facet-json = { workspace = true }
 vox = { workspace = true }
 tokio = { workspace = true }
+tokio-tungstenite = "0.29"
 rmcp = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

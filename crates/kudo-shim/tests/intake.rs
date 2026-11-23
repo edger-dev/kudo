@@ -6,7 +6,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use hub::{HubListener, ServedHub};
+use hub::{HubListener, ServedHub, WsHubListener};
 use hub_protocol::{Connector as ConnectorDescriptor, ConnectorKind, LinkLabel, NodeId};
 use kudo_intake::{AdmissionRules, IntakeReply, Note, Receiver};
 use kudo_node::intake::{INTAKE_CONNECTOR, IntakeConnector};
@@ -164,4 +164,55 @@ async fn an_unreachable_receiver_is_unavailable_not_accepted() {
     assert_eq!(reply.is_error, Some(true), "{reply:?}");
     let text = format!("{reply:?}");
     assert!(text.contains("unavailable"), "{text}");
+}
+
+async fn websocket_mesh(repo: &Path) -> (HubClient, vox::ConnectionHandle) {
+    let state = ServedHub::new().with_auth_token("secret");
+    let tcp = HubListener::bind("127.0.0.1:0").await.unwrap();
+    let tcp_addr = tcp.local_addr().to_string();
+    let ws = WsHubListener::bind("127.0.0.1:0").await.unwrap();
+    let ws_addr = ws.local_addr().to_string();
+    let _tcp_server = tokio::spawn(tcp.serve(state.clone()));
+    let _ws_server = tokio::spawn(ws.serve(state));
+
+    let receiver = Receiver::new(BTreeMap::from([("kudo".into(), repo.to_path_buf())]));
+    let rules = AdmissionRules {
+        max_body_bytes: 262_144,
+        sensitive_markers: vec![],
+    };
+    let mut connectors = Connectors::new();
+    connectors.register(Box::new(IntakeConnector::new(receiver, rules)));
+    let config = NodeConfig::new(
+        NodeId("home".into()),
+        LinkLabel::stable(),
+        Some(HubEndpoint(format!("tcp://{tcp_addr}"))),
+        vec![ConnectorDescriptor {
+            id: INTAKE_CONNECTOR.into(),
+            kind: ConnectorKind::Other("intake".into()),
+        }],
+        "test".into(),
+    )
+    .unwrap()
+    .with_auth_token("secret");
+    let socket = tokio::net::TcpStream::connect(&tcp_addr).await.unwrap();
+    let connection = node::serve_and_register_with(
+        vox::transport::tcp::StreamLink::tcp(socket),
+        &config,
+        Arc::new(connectors),
+    )
+    .await
+    .unwrap();
+    let client = HubClient::dial_with_token(&format!("ws://{ws_addr}"), "secret")
+        .await
+        .unwrap();
+    (client, connection)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_delivery_works_over_native_websocket() {
+    let repo = repo();
+    let (hub, _node) = websocket_mesh(&repo).await;
+    let server = ShimServer::new(Arc::new(hub));
+    let delivered = server.call_send_note(send_args("note-ws")).await;
+    assert_eq!(delivered.is_error, Some(false), "{delivered:?}");
 }

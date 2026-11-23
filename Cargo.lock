@@ -3567,7 +3567,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 [[package]]
 name = "hub"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=5f5e42d#5f5e42d3e4cc9b374e608c38545b1a03eaf783d8"
+source = "git+https://github.com/edger-dev/hub?rev=2dfb8e7#2dfb8e7d20d5d4b0d262d8bbef7cda78441fe29d"
 dependencies = [
  "hub-protocol",
  "tokio",
@@ -3577,7 +3577,7 @@ dependencies = [
 [[package]]
 name = "hub-protocol"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=5f5e42d#5f5e42d3e4cc9b374e608c38545b1a03eaf783d8"
+source = "git+https://github.com/edger-dev/hub?rev=2dfb8e7#2dfb8e7d20d5d4b0d262d8bbef7cda78441fe29d"
 dependencies = [
  "facet 0.50.0-rc.5",
  "vox",
@@ -4222,6 +4222,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite 0.29.0",
  "vox",
 ]
 
@@ -4592,7 +4593,7 @@ dependencies = [
 [[package]]
 name = "node"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=5f5e42d#5f5e42d3e4cc9b374e608c38545b1a03eaf783d8"
+source = "git+https://github.com/edger-dev/hub?rev=2dfb8e7#2dfb8e7d20d5d4b0d262d8bbef7cda78441fe29d"
 dependencies = [
  "facet 0.50.0-rc.5",
  "facet-json 0.50.0-rc.5",
@@ -6694,6 +6695,7 @@ dependencies = [
  "vox-service-macros",
  "vox-stream",
  "vox-types",
+ "vox-websocket",
 ]
 
 [[package]]
@@ -6840,6 +6842,23 @@ dependencies = [
  "vox-phon",
  "vox-rt",
  "vox-schema",
+]
+
+[[package]]
+name = "vox-websocket"
+version = "0.10.0-rc.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4f580e1fa24aa20e3be6c5fb3963408f0ea56152ff71c79c102e5cb8dfc1cc1"
+dependencies = [
+ "futures-channel",
+ "futures-util",
+ "js-sys",
+ "tokio",
+ "tokio-tungstenite 0.29.0",
+ "vox-core",
+ "vox-types",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
