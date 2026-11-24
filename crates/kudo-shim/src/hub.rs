@@ -110,6 +110,7 @@ async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, Shim
 
 /// Open a WebSocket Vox connection, including optional Cloudflare Access credentials.
 async fn dial_websocket(addr: &str) -> Result<vox::ConnectionHandle, ShimError> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let access = cloudflare_access_from_env().map_err(|detail| ShimError::HubHandshake {
         addr: addr.to_string(),
         detail,
