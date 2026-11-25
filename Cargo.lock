@@ -3567,7 +3567,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 [[package]]
 name = "hub"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=a013b82#a013b8238478fd287eec9e519c21f4e1077c717c"
+source = "git+https://github.com/edger-dev/hub?rev=39bee58#39bee5834895d77c9723d592111c16f440b0630b"
 dependencies = [
  "hub-protocol",
  "tokio",
@@ -3577,7 +3577,7 @@ dependencies = [
 [[package]]
 name = "hub-protocol"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=a013b82#a013b8238478fd287eec9e519c21f4e1077c717c"
+source = "git+https://github.com/edger-dev/hub?rev=39bee58#39bee5834895d77c9723d592111c16f440b0630b"
 dependencies = [
  "facet 0.50.0-rc.5",
  "vox",
@@ -4595,11 +4595,12 @@ dependencies = [
 [[package]]
 name = "node"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=a013b82#a013b8238478fd287eec9e519c21f4e1077c717c"
+source = "git+https://github.com/edger-dev/hub?rev=39bee58#39bee5834895d77c9723d592111c16f440b0630b"
 dependencies = [
  "facet 0.50.0-rc.5",
  "facet-json 0.50.0-rc.5",
  "hub-protocol",
+ "rustls",
  "tokio",
  "tokio-tungstenite 0.29.0",
  "vox",
