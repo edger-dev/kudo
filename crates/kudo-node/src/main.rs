@@ -22,8 +22,22 @@ use kudo_node::JobConnector;
 use kudo_node::intake::{INTAKE_CONNECTOR, IntakeConnector};
 use kudo_node::worker::{PaneSetup, WORKER_CONNECTOR, WorkerConnector};
 
+fn install_ring_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn installs_ring_crypto_provider() {
+        super::install_ring_crypto_provider();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    install_ring_crypto_provider();
     let node = kudo_worker::env::node_name();
     let link = std::env::var("NODE_LINK").unwrap_or_else(|_| LinkLabel::STABLE.to_string());
     let connector_id = std::env::var("KUDO_JOB_CONNECTOR").unwrap_or_else(|_| "jobs-0".to_string());

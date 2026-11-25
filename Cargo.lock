@@ -4198,6 +4198,7 @@ dependencies = [
  "kudo-worker",
  "moco-job",
  "node",
+ "rustls",
  "tokio",
  "vox",
 ]
