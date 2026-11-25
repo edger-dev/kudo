@@ -26,15 +26,6 @@ fn install_ring_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn installs_ring_crypto_provider() {
-        super::install_ring_crypto_provider();
-        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     install_ring_crypto_provider();
@@ -279,4 +270,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     supervising.abort();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn installs_ring_crypto_provider() {
+        super::install_ring_crypto_provider();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
 }
