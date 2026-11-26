@@ -7,6 +7,7 @@ use kudo_context::{
 };
 
 use crate::lease::LeaseRecord;
+use crate::session::{SessionMailbox, render_messages};
 use crate::{LeaseBook, LeaseEnd};
 
 /// Stops refused for one open claim before the claim is given back.
@@ -62,6 +63,7 @@ pub struct Worker<'a> {
     book: &'a LeaseBook,
     cfg: WorkerConfig,
     observer: Option<Observer>,
+    mailbox: Option<SessionMailbox>,
 }
 
 /// A tool that seems missing may still be connecting: the CLI's MCP servers
@@ -79,7 +81,15 @@ impl<'a> Worker<'a> {
             book,
             cfg,
             observer: None,
+            mailbox: None,
         }
+    }
+
+    /// Deliver direct session messages at Stop-hook turn boundaries.
+    // implements: 223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc@223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc
+    pub fn with_session_mailbox(mut self, mailbox: SessionMailbox) -> Self {
+        self.mailbox = Some(mailbox);
+        self
     }
 
     /// Tell `observer` of every loop event this worker traces, after the
@@ -188,6 +198,17 @@ impl<'a> Worker<'a> {
         if record.turns >= self.cfg.max_turns {
             return self.end(record, LeaseEnd::Budget, now);
         }
+        if let Some(mailbox) = &self.mailbox {
+            let messages = mailbox.take()?;
+            if !messages.is_empty() {
+                record.idle_since = None;
+                self.book.put(&self.cfg.lease, &record)?;
+                self.trace(&TraceEvent::Wait, now);
+                return Ok(Stop::Block {
+                    reason: render_messages(&messages),
+                });
+            }
+        }
         let Some(claim) =
             self.store
                 .pull(&self.cfg.context, &self.cfg.lease, now, self.cfg.claim_ttl)?
@@ -252,7 +273,11 @@ impl<'a> Worker<'a> {
                 return Ok(Stop::Allow(why));
             }
             let now = clock();
-            if self.store.ready_count(&self.cfg.context, now)? > 0 {
+            let message_ready = match &self.mailbox {
+                Some(mailbox) => mailbox.has_messages()?,
+                None => false,
+            };
+            if message_ready || self.store.ready_count(&self.cfg.context, now)? > 0 {
                 match self.stop(now)? {
                     Stop::Wait => {}
                     other => return Ok(other),

@@ -18,11 +18,15 @@ use std::time::Duration;
 use hub_protocol::discovery::TopologySnapshot;
 use hub_protocol::errors::RouteError;
 use hub_protocol::routing::{RoutedCall, RoutedReply};
-use hub_protocol::service::ConsumerApiClient;
+use hub_protocol::service::{ConsumerApiClient, SessionIngressClient, SessionServiceDispatcher};
+use hub_protocol::{SessionInfo, SessionMessage};
+use kudo_worker::harness::HARNESS_ENV;
+use kudo_worker::{WorkerSetup, session_info};
 use tokio::sync::RwLock;
 
 use crate::error::ShimError;
 use crate::route::{RouteFailure, Target};
+use crate::session::SessionInbox;
 
 /// How long a call waits before the shim gives up **waiting**.
 ///
@@ -34,6 +38,35 @@ pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 struct ClientLane {
     connection: vox::ConnectionHandle,
     client: ConsumerApiClient,
+}
+
+#[derive(Clone)]
+struct SessionEndpoint {
+    info: SessionInfo,
+    inbox: SessionInbox,
+}
+
+impl SessionEndpoint {
+    fn new(info: SessionInfo) -> Self {
+        let inbox = SessionInbox::new(WorkerSetup::from_env().as_ref());
+        Self { info, inbox }
+    }
+
+    fn current() -> Result<Self, ShimError> {
+        let worker = WorkerSetup::from_env();
+        let info = session_info(
+            worker.as_ref().map(|setup| setup.lease.as_str()),
+            kudo_worker::env::node_name(),
+            std::env::var(HARNESS_ENV).unwrap_or_else(|_| "unknown".into()),
+            std::env::current_dir()
+                .map_err(|error| ShimError::Hub(error.to_string()))?
+                .display()
+                .to_string(),
+            worker.as_ref().map(|setup| setup.context.0.clone()),
+        )
+        .map_err(|error| ShimError::Hub(error.to_string()))?;
+        Ok(Self::new(info))
+    }
 }
 
 /// A live consumer connection to one hub.
@@ -48,6 +81,8 @@ pub struct HubClient {
     /// lock is held only long enough to clone the handle, never across a call,
     /// so concurrent calls do not serialize behind each other.
     client: RwLock<Arc<ClientLane>>,
+    session: Option<SessionEndpoint>,
+    token: Option<String>,
     timeout: Duration,
 }
 
@@ -69,9 +104,13 @@ impl std::fmt::Debug for HubClient {
 }
 
 /// Open one consumer lane to `addr`, retaining its connection driver.
-async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, ShimError> {
+async fn dial_lane(
+    addr: &str,
+    token: Option<String>,
+    session: Option<&SessionEndpoint>,
+) -> Result<ClientLane, ShimError> {
     let connection = if addr.starts_with("ws://") || addr.starts_with("wss://") {
-        dial_websocket(addr).await?
+        dial_websocket(addr, session).await?
     } else {
         let socket = tokio::net::TcpStream::connect(addr)
             .await
@@ -80,13 +119,20 @@ async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, Shim
                 source,
             })?;
 
-        vox::initiator_on(vox::transport::tcp::StreamLink::tcp(socket))
-            .establish_connection()
-            .await
-            .map_err(|e| ShimError::HubHandshake {
-                addr: addr.to_string(),
-                detail: e.to_string(),
-            })?
+        let initiator = vox::initiator_on(vox::transport::tcp::StreamLink::tcp(socket));
+        match session {
+            Some(session) => {
+                initiator
+                    .on_lane(SessionServiceDispatcher::new(session.inbox.clone()))
+                    .establish_connection()
+                    .await
+            }
+            None => initiator.establish_connection().await,
+        }
+        .map_err(|e| ShimError::HubHandshake {
+            addr: addr.to_string(),
+            detail: e.to_string(),
+        })?
     };
     let client: ConsumerApiClient =
         connection
@@ -96,9 +142,35 @@ async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, Shim
                 addr: addr.to_string(),
                 detail: e.to_string(),
             })?;
-    if let Some(token) = token {
+    if let Some(token) = &token {
         client
-            .authenticate(token)
+            .authenticate(token.clone())
+            .await
+            .map_err(|e| ShimError::HubHandshake {
+                addr: addr.to_string(),
+                detail: format!("{e:?}"),
+            })?;
+    }
+    if let Some(session) = session {
+        let ingress: SessionIngressClient =
+            connection
+                .open_lane()
+                .await
+                .map_err(|e| ShimError::HubHandshake {
+                    addr: addr.to_string(),
+                    detail: format!("{e:?}"),
+                })?;
+        if let Some(token) = token {
+            ingress
+                .authenticate(token)
+                .await
+                .map_err(|e| ShimError::HubHandshake {
+                    addr: addr.to_string(),
+                    detail: format!("{e:?}"),
+                })?;
+        }
+        ingress
+            .register(session.info.clone())
             .await
             .map_err(|e| ShimError::HubHandshake {
                 addr: addr.to_string(),
@@ -109,7 +181,10 @@ async fn dial_lane(addr: &str, token: Option<String>) -> Result<ClientLane, Shim
 }
 
 /// Open a WebSocket Vox connection, including optional Cloudflare Access credentials.
-async fn dial_websocket(addr: &str) -> Result<vox::ConnectionHandle, ShimError> {
+async fn dial_websocket(
+    addr: &str,
+    session: Option<&SessionEndpoint>,
+) -> Result<vox::ConnectionHandle, ShimError> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let access = cloudflare_access_from_env().map_err(|detail| ShimError::HubHandshake {
         addr: addr.to_string(),
@@ -132,13 +207,20 @@ async fn dial_websocket(addr: &str) -> Result<vox::ConnectionHandle, ShimError> 
             detail: error.to_string(),
         })?;
     let link = vox::transport::websocket::WsLink::new(stream);
-    vox::initiator_on(link)
-        .establish_connection()
-        .await
-        .map_err(|error| ShimError::HubHandshake {
-            addr: addr.to_string(),
-            detail: error.to_string(),
-        })
+    let initiator = vox::initiator_on(link);
+    match session {
+        Some(session) => {
+            initiator
+                .on_lane(SessionServiceDispatcher::new(session.inbox.clone()))
+                .establish_connection()
+                .await
+        }
+        None => initiator.establish_connection().await,
+    }
+    .map_err(|error| ShimError::HubHandshake {
+        addr: addr.to_string(),
+        detail: error.to_string(),
+    })
 }
 
 fn cloudflare_access_from_env() -> Result<Option<(String, String)>, String> {
@@ -188,34 +270,57 @@ fn is_transport_failure<E>(e: &vox::VoxError<E>) -> bool {
 }
 
 impl HubClient {
-    /// Dial the hub at `addr` and open a consumer lane.
-    ///
-    /// A failure here is terminal for the session rather than something to
-    /// degrade around — there is no node-local path to fall back to.
+    /// Dial and register this agent session.
     pub async fn dial(addr: &str) -> Result<Self, ShimError> {
-        Ok(Self {
-            addr: addr.to_string(),
-            client: RwLock::new(Arc::new(
-                dial_lane(addr, std::env::var("HUB_AUTH_TOKEN").ok()).await?,
-            )),
-            timeout: DEFAULT_CALL_TIMEOUT,
-        })
+        Self::dial_with_endpoint(
+            addr,
+            std::env::var("HUB_AUTH_TOKEN").ok(),
+            Some(SessionEndpoint::current()?),
+        )
+        .await
+    }
+
+    /// Dial as a consumer without appearing as an agent session.
+    pub async fn dial_consumer(addr: &str) -> Result<Self, ShimError> {
+        Self::dial_with_endpoint(addr, std::env::var("HUB_AUTH_TOKEN").ok(), None).await
     }
 
     /// Dial with explicit session metadata and credential.
     pub async fn dial_session_with_token(
         addr: &str,
         token: &str,
-        _info: hub_protocol::SessionInfo,
+        info: hub_protocol::SessionInfo,
     ) -> Result<Self, ShimError> {
-        Self::dial_with_token(addr, token).await
+        Self::dial_with_endpoint(
+            addr,
+            Some(token.to_owned()),
+            Some(SessionEndpoint::new(info)),
+        )
+        .await
     }
 
-    /// Dial with an explicit credential, without consulting the environment.
+    /// Dial and register this agent session with an explicit credential.
     pub async fn dial_with_token(addr: &str, token: &str) -> Result<Self, ShimError> {
+        Self::dial_with_endpoint(
+            addr,
+            Some(token.to_owned()),
+            Some(SessionEndpoint::current()?),
+        )
+        .await
+    }
+
+    async fn dial_with_endpoint(
+        addr: &str,
+        token: Option<String>,
+        session: Option<SessionEndpoint>,
+    ) -> Result<Self, ShimError> {
         Ok(Self {
             addr: addr.to_string(),
-            client: RwLock::new(Arc::new(dial_lane(addr, Some(token.to_owned())).await?)),
+            client: RwLock::new(Arc::new(
+                dial_lane(addr, token.clone(), session.as_ref()).await?,
+            )),
+            session,
+            token,
             timeout: DEFAULT_CALL_TIMEOUT,
         })
     }
@@ -250,7 +355,8 @@ impl HubClient {
         if !Arc::ptr_eq(&guard, stale) {
             return Ok(guard.clone());
         }
-        let fresh = Arc::new(dial_lane(&self.addr, std::env::var("HUB_AUTH_TOKEN").ok()).await?);
+        let fresh =
+            Arc::new(dial_lane(&self.addr, self.token.clone(), self.session.as_ref()).await?);
         let old = std::mem::replace(&mut *guard, fresh.clone());
         let _ = old.connection.shutdown();
         Ok(fresh)
@@ -291,6 +397,47 @@ impl HubClient {
             }
             Err(e) => Err(ShimError::Hub(format!("{e:?}"))),
         }
+    }
+
+    /// List live local and one-hop peer sessions.
+    pub async fn sessions(&self) -> Result<Vec<SessionInfo>, ShimError> {
+        let lane = self.lane().await;
+        match self.bounded("session list", lane.client.sessions()).await? {
+            Ok(sessions) => Ok(sessions),
+            Err(error) if is_transport_failure(&error) => {
+                let fresh = self.redial(&lane).await?;
+                self.bounded("session list", fresh.client.sessions())
+                    .await?
+                    .map_err(|error| ShimError::Hub(format!("{error:?}")))
+            }
+            Err(error) => Err(ShimError::Hub(format!("{error:?}"))),
+        }
+    }
+
+    /// Send a direct message; transport failure is not retried implicitly.
+    pub async fn send_session(
+        &self,
+        target: String,
+        message_id: String,
+        body: String,
+    ) -> Result<(), ShimError> {
+        let lane = self.lane().await;
+        self.bounded(
+            "session message",
+            lane.client.send_session(target, message_id, body),
+        )
+        .await?
+        .map_err(|error| ShimError::Hub(format!("{error:?}")))
+    }
+
+    /// Drain this registered session's local mailbox.
+    pub fn take_session_messages(&self) -> Result<Vec<SessionMessage>, ShimError> {
+        self.session
+            .as_ref()
+            .ok_or_else(|| ShimError::Hub("this connection is not a session".into()))?
+            .inbox
+            .take()
+            .map_err(ShimError::Hub)
     }
 
     /// Route one call to a connector on the selected node/link.

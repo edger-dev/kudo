@@ -19,6 +19,7 @@ pub mod harness;
 pub mod launch;
 pub mod lease;
 pub mod pane;
+pub mod session;
 pub mod worker;
 
 pub use env::{DEFAULT_CLAIM_TTL, DEFAULT_MAX_TURNS, KICKOFF, WorkerSetup};
@@ -26,4 +27,5 @@ pub use harness::{AgentHarness, ClaudeCode, KimiCode, LaunchFile, LaunchOptions,
 pub use launch::{LaunchPlan, new_lease_id, plan};
 pub use lease::LeaseRecord;
 pub use lease::{LeaseBook, LeaseEnd};
+pub use session::{SessionMailbox, render_messages, session_info};
 pub use worker::{Observer, Pull, Stop, Worker, WorkerConfig, render_heads};

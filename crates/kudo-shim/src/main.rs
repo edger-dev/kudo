@@ -256,7 +256,9 @@ async fn run_waker() -> i32 {
     let mut hub = None;
     loop {
         if hub.is_none() {
-            match tokio::time::timeout(Duration::from_secs(5), HubClient::dial(&addr)).await {
+            match tokio::time::timeout(Duration::from_secs(5), HubClient::dial_consumer(&addr))
+                .await
+            {
                 Ok(Ok(dialled)) => hub = Some(dialled),
                 Ok(Err(e)) => eprintln!("kudo waker: the hub at {addr}: {e}"),
                 Err(_) => eprintln!("kudo waker: the hub at {addr} did not answer"),

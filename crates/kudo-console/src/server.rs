@@ -319,7 +319,12 @@ async fn hub() -> Result<Arc<kudo_shim::HubClient>, String> {
     if let Some(hub) = HUB.get() {
         return Ok(hub.clone());
     }
-    match tokio::time::timeout(Duration::from_secs(2), kudo_shim::HubClient::dial(&addr)).await {
+    match tokio::time::timeout(
+        Duration::from_secs(2),
+        kudo_shim::HubClient::dial_consumer(&addr),
+    )
+    .await
+    {
         Ok(Ok(hub)) => {
             let hub = Arc::new(hub);
             if HUB.set(hub.clone()).is_ok() {

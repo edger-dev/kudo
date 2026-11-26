@@ -8,8 +8,9 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use hub_protocol::{SessionInfo, SessionMessage};
 use kudo_context::{ContextId, ContextStore, Submission};
-use kudo_worker::{LeaseBook, LeaseEnd, Stop, Worker, WorkerConfig};
+use kudo_worker::{LeaseBook, LeaseEnd, SessionMailbox, Stop, Worker, WorkerConfig};
 
 const T0: i64 = 1_792_500_000;
 const LEASE: &str = "lease-1";
@@ -776,4 +777,34 @@ fn a_due_item_is_not_handed_over_early() {
     let w = g.worker(10);
     w.session_start(T0).unwrap();
     assert!(!matches!(w.stop(T0 + 1).unwrap(), Stop::Block { .. }));
+}
+
+#[test]
+fn a_session_message_is_delivered_at_one_stop_boundary() {
+    let f = Fixture::new();
+    let mailbox = SessionMailbox::new(&f.dir.join("leases"), LEASE);
+    let worker = f.worker(10).with_session_mailbox(mailbox.clone());
+    mailbox
+        .deliver(&SessionMessage {
+            id: "message-1".into(),
+            from: SessionInfo {
+                id: "edger::a".into(),
+                node: "edger::yolo".into(),
+                harness: "test".into(),
+                workspace: "/work/a".into(),
+                context: None,
+            },
+            body: "coordinate here".into(),
+        })
+        .unwrap();
+
+    let reason = block_reason(worker.stop(T0).unwrap());
+    assert!(reason.contains("coordinate here"), "{reason}");
+    assert!(reason.contains("edger::a"), "{reason}");
+    assert!(reason.contains("session_send"), "{reason}");
+    assert!(mailbox.take().unwrap().is_empty());
+    assert!(matches!(
+        worker.stop(T0).unwrap(),
+        Stop::Allow(LeaseEnd::QueueEmpty)
+    ));
 }

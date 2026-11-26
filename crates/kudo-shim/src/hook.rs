@@ -17,7 +17,9 @@
 //! implements: b9ef8909cadf0092e9b9d01eb3fc3edbe9db4f2af17f80753571d9434628b1af@8fed628ae04360b98226c2ca157efd02ab98a1636e00ac9dab6d4384f2ad593e
 
 use kudo_context::Now;
-use kudo_worker::{AgentHarness, ClaudeCode, LeaseBook, Worker, WorkerSetup, harness_from};
+use kudo_worker::{
+    AgentHarness, ClaudeCode, LeaseBook, SessionMailbox, Worker, WorkerSetup, harness_from,
+};
 use serde_json::Value;
 
 pub use kudo_worker::harness::HookReply;
@@ -84,7 +86,8 @@ pub fn run_with_harness(
         store
     };
     let book = LeaseBook::new(&setup.leases_dir());
-    let mut worker = Worker::new(&store, &book, setup.config());
+    let mut worker = Worker::new(&store, &book, setup.config())
+        .with_session_mailbox(SessionMailbox::new(&setup.leases_dir(), &setup.lease));
     if let Some(observer) = observer {
         worker = worker.with_observer(observer);
     }

@@ -12,6 +12,7 @@ workspace = true
 # and the shim (which answers the hooks).
 [dependencies]
 kudo-context = { path = "../kudo-context" }
+hub-protocol = { workspace = true }
 serde_json = { workspace = true }
 facet = { workspace = true }
 facet-json = { workspace = true }

@@ -4,8 +4,9 @@
 //! capabilities running on any node in the mesh. It is a **face**: a thin
 //! per-consumer adapter that holds no logic a second face would need
 //! (`kudo:a9a94ad3464ebf50c30bffcfe64d4596384d5d122c5dfb3fb992b1aa73cd7eba`), and
-//! no state of its own — every answer comes from an engine, so two readers never
-//! see different worlds.
+//! no job state of its own — every job answer comes from an engine, so two
+//! readers never see different worlds. A session mailbox holds only its own
+//! acknowledged direct messages.
 //!
 //! v1 goes as far as the far side allows. There is no job connector yet, so the
 //! job tools are deliberately absent rather than stubbed: a face that fakes a
@@ -24,6 +25,7 @@ pub mod mesh;
 pub mod panes;
 pub mod route;
 pub mod server;
+pub mod session;
 pub mod startup;
 pub mod waker;
 pub mod worker_tools;

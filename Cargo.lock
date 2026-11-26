@@ -3567,7 +3567,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 [[package]]
 name = "hub"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=81c491c#81c491c859c4cbb83c0088e6107e3f1fe3ce0122"
+source = "git+https://github.com/edger-dev/hub?rev=85e38a9#85e38a91c2804ed2fda0d71439825054549ab685"
 dependencies = [
  "hub-protocol",
  "rustls",
@@ -3579,7 +3579,7 @@ dependencies = [
 [[package]]
 name = "hub-protocol"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=81c491c#81c491c859c4cbb83c0088e6107e3f1fe3ce0122"
+source = "git+https://github.com/edger-dev/hub?rev=85e38a9#85e38a91c2804ed2fda0d71439825054549ab685"
 dependencies = [
  "facet 0.50.0-rc.5",
  "vox",
@@ -4236,6 +4236,7 @@ version = "0.1.0"
 dependencies = [
  "facet 0.50.0-rc.5",
  "facet-json 0.50.0-rc.5",
+ "hub-protocol",
  "kudo-context",
  "serde_json",
 ]
@@ -4597,7 +4598,7 @@ dependencies = [
 [[package]]
 name = "node"
 version = "0.0.0"
-source = "git+https://github.com/edger-dev/hub?rev=81c491c#81c491c859c4cbb83c0088e6107e3f1fe3ce0122"
+source = "git+https://github.com/edger-dev/hub?rev=85e38a9#85e38a91c2804ed2fda0d71439825054549ab685"
 dependencies = [
  "facet 0.50.0-rc.5",
  "facet-json 0.50.0-rc.5",

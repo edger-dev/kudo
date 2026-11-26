@@ -23,6 +23,8 @@ are then not offered, or, if a hub address is set but the hub is down, answer
 | `job_screen` | What a redrawing job looks like right now. |
 | `job_tail` | Exact output; pass `next_offset` to resume. |
 | `job_stats` | CPU and memory, now and at peak. |
+| `session_list` | Live agent sessions on this hub and its one-hop peers. |
+| `session_messages` | Retrieve and drain this session's pending direct messages. |
 
 ## Writing
 
@@ -35,8 +37,17 @@ are then not offered, or, if a hub address is set but the hub is down, answer
 | `job_restart` | Re-read the declaration and start again. |
 | `job_kill` | Stop a job. Its record and output stay readable. |
 | `job_clear` | Remove finished entries. Never signals anything. |
+| `session_send` | Send a direct text message to a live session; delivered means its local mailbox accepted it. |
 
-Every tool takes `node`, plus optional `link` and `connector`.
+Every job tool takes `node`, plus optional `link` and `connector`.
+
+**Sessions are live, not jobs.** `session_list` shows registered agent sessions,
+including one-hop peers as `<peer>::<session-id>`. `session_send` uses that id and
+returns `delivered <message-id>` only after the receiving shim accepts the message.
+Unknown and offline sessions are errors; there is no hub-side offline history.
+Worker sessions receive pending messages as their next Stop-hook prompt, with the
+authenticated sender and reply address. Bare sessions retrieve theirs with
+`session_messages`. Kudo never types a message into a terminal implicitly.
 
 ## Things worth knowing
 

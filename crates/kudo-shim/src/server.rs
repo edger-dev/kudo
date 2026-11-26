@@ -774,9 +774,32 @@ impl ShimServer {
         description = "List live agent sessions on this hub and its one-hop peers, with session ids, nodes, harnesses, workspaces, and contexts. Peer sessions use qualified ids."
     )]
     async fn session_list(&self) -> Result<CallToolResult, ErrorData> {
-        Ok(CallToolResult::error(vec![ContentBlock::text(
-            "session messaging is not implemented",
-        )]))
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        reply(hub.sessions().await.map(|sessions| {
+            if sessions.is_empty() {
+                return "no live sessions".to_string();
+            }
+            sessions
+                .into_iter()
+                .map(|session| {
+                    format!(
+                        "{} on {} · {} · {}{}",
+                        session.id,
+                        session.node,
+                        session.harness,
+                        session.workspace,
+                        session
+                            .context
+                            .map(|context| format!(" · context {context}"))
+                            .unwrap_or_default()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }))
     }
 
     #[tool(
@@ -785,11 +808,28 @@ impl ShimServer {
     )]
     async fn session_send(
         &self,
-        Parameters(_args): Parameters<SessionSendArgs>,
+        Parameters(args): Parameters<SessionSendArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        Ok(CallToolResult::error(vec![ContentBlock::text(
-            "session messaging is not implemented",
-        )]))
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        let id = match args.id {
+            Some(id) => id,
+            None => match kudo_worker::new_lease_id() {
+                Ok(id) => id,
+                Err(error) => {
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
+                        error.to_string(),
+                    )]));
+                }
+            },
+        };
+        reply(
+            hub.send_session(args.target, id.clone(), args.body)
+                .await
+                .map(|()| format!("delivered {id}")),
+        )
     }
 
     #[tool(
@@ -797,9 +837,17 @@ impl ShimServer {
         description = "Retrieve and drain this session's pending direct messages in arrival order. Worker messages also arrive at the next Stop-hook turn boundary; no terminal input is injected."
     )]
     async fn session_messages(&self) -> Result<CallToolResult, ErrorData> {
-        Ok(CallToolResult::error(vec![ContentBlock::text(
-            "session messaging is not implemented",
-        )]))
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        reply(hub.take_session_messages().map(|messages| {
+            if messages.is_empty() {
+                "no pending messages".to_string()
+            } else {
+                kudo_worker::render_messages(&messages)
+            }
+        }))
     }
 
     #[tool(
