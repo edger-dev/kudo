@@ -49,6 +49,13 @@ Worker sessions receive pending messages as their next Stop-hook prompt, with th
 authenticated sender and reply address. Bare sessions retrieve theirs with
 `session_messages`. Kudo never types a message into a terminal implicitly.
 
+A harness may run several MCP clients for one agent. Its launcher should give all
+of them the same `KUDO_SESSION_ID`: they appear once in `session_list` and share
+one locked local mailbox, so a message accepted through any registration can be
+drained through any of them. Without that variable a bare shim generates its own
+UUID. Accepted messages stay in the local mailbox until drained; the hub itself
+still has no offline queue or history.
+
 ## Things worth knowing
 
 **Reads are global, writes are not.** You can list and read every job on the

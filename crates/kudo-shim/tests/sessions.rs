@@ -6,10 +6,10 @@ use std::time::Duration;
 use hub::{HubListener, Peers, ServedHub};
 use hub_protocol::SessionInfo;
 use kudo_shim::HubClient;
+use kudo_shim::server::{SessionSendArgs, ShimServer};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
-use kudo_shim::server::{SessionSendArgs, ShimServer};
 
 fn info(id: &str, node: &str) -> SessionInfo {
     SessionInfo {
@@ -94,13 +94,10 @@ impl McpProcess {
         let mut line = String::new();
         loop {
             line.clear();
-            tokio::time::timeout(
-                Duration::from_secs(5),
-                self.stdout.read_line(&mut line),
-            )
-            .await
-            .unwrap()
-            .unwrap();
+            tokio::time::timeout(Duration::from_secs(5), self.stdout.read_line(&mut line))
+                .await
+                .unwrap()
+                .unwrap();
             let reply: Value = serde_json::from_str(&line).unwrap();
             if reply["id"] == id {
                 return reply["result"].clone();
@@ -110,10 +107,7 @@ impl McpProcess {
 
     async fn tool(&mut self, name: &str, arguments: Value) -> String {
         let result = self
-            .request(
-                "tools/call",
-                json!({"name": name, "arguments": arguments}),
-            )
+            .request("tools/call", json!({"name": name, "arguments": arguments}))
             .await;
         result["content"][0]["text"].as_str().unwrap().to_owned()
     }

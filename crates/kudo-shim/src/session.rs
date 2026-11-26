@@ -26,15 +26,35 @@ pub struct SessionInbox {
     storage: Storage,
 }
 
+impl Default for SessionInbox {
+    fn default() -> Self {
+        Self {
+            storage: Storage::Memory(Arc::default()),
+        }
+    }
+}
+
 impl SessionInbox {
-    pub fn new(worker: Option<&WorkerSetup>) -> Self {
-        match worker {
-            Some(setup) => Self {
-                storage: Storage::Files(SessionMailbox::new(&setup.leases_dir(), &setup.lease)),
-            },
-            None => Self {
-                storage: Storage::Memory(Arc::default()),
-            },
+    pub fn shared(worker: Option<&WorkerSetup>, session: &str) -> Self {
+        let parent = match worker {
+            Some(setup) => setup.leases_dir(),
+            None => std::env::var(kudo_worker::env::STORE_ENV)
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::env::var("XDG_STATE_HOME")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|_| {
+                            std::env::var("HOME")
+                                .map(std::path::PathBuf::from)
+                                .unwrap_or_else(|_| std::env::temp_dir())
+                                .join(".local/state")
+                        })
+                        .join("kudo/sessions")
+                })
+                .join("leases"),
+        };
+        Self {
+            storage: Storage::Files(SessionMailbox::new(&parent, session)),
         }
     }
 
@@ -51,7 +71,7 @@ impl SessionInbox {
     }
 }
 
-// implements: 223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc@4776113959dd917be1d720b101978004e3eafb22178fa137cf07ac9ac5ce7a60
+// implements: 223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc@813b113a63960d80de27595b2a25ae190ad9b06b460512b92cb916b3c4fa1888
 impl SessionService for SessionInbox {
     async fn deliver(&self, message: SessionMessage) -> Result<(), HubError> {
         match &self.storage {

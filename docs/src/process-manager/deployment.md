@@ -173,8 +173,12 @@ the same user, can write: until governed jobs run as another user, the seed
 **`kudo-shim`** — `KUDO_HUB_ADDR`: required for a session that only offers
 the job tools; optional for a worker session (`KUDO_CONTEXT` set), which dials
 the hub when a job tool first needs it and serves its worker tools without
-one. The context store's mirror: see [The context store
-mirror](../contexts/mirror.md).
+one. `KUDO_SESSION_ID`: a logical bare-session id shared by every MCP process
+launched for one agent; unset generates a per-process UUID. `KUDO_AGENT_HARNESS`
+records the launching harness in session discovery. Bare accepted messages use
+`KUDO_CONTEXT_STORE` when set, else `$XDG_STATE_HOME/kudo/sessions` or
+`~/.local/state/kudo/sessions`. The context store's mirror: see [The context
+store mirror](../contexts/mirror.md).
 
 ## Checking it works
 

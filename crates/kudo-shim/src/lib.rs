@@ -39,6 +39,9 @@ pub use server::ShimServer;
 /// The environment variable naming the hub to dial.
 pub const HUB_ADDR_ENV: &str = "KUDO_HUB_ADDR";
 
+/// The logical agent session shared by all MCP processes launched for one agent.
+pub const SESSION_ID_ENV: &str = "KUDO_SESSION_ID";
+
 /// The environment variable overriding how long a call waits.
 pub const CALL_TIMEOUT_ENV: &str = "KUDO_CALL_TIMEOUT_MS";
 

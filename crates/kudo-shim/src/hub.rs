@@ -48,14 +48,23 @@ struct SessionEndpoint {
 
 impl SessionEndpoint {
     fn new(info: SessionInfo) -> Self {
-        let inbox = SessionInbox::new(WorkerSetup::from_env().as_ref());
+        let inbox = SessionInbox::default();
         Self { info, inbox }
     }
 
     fn current() -> Result<Self, ShimError> {
         let worker = WorkerSetup::from_env();
+        let session = worker
+            .as_ref()
+            .map(|setup| setup.lease.clone())
+            .or_else(|| {
+                std::env::var(crate::SESSION_ID_ENV)
+                    .ok()
+                    .map(|id| id.trim().to_owned())
+                    .filter(|id| !id.is_empty())
+            });
         let info = session_info(
-            worker.as_ref().map(|setup| setup.lease.as_str()),
+            session.as_deref(),
             kudo_worker::env::node_name(),
             std::env::var(HARNESS_ENV).unwrap_or_else(|_| "unknown".into()),
             std::env::current_dir()
@@ -65,7 +74,8 @@ impl SessionEndpoint {
             worker.as_ref().map(|setup| setup.context.0.clone()),
         )
         .map_err(|error| ShimError::Hub(error.to_string()))?;
-        Ok(Self::new(info))
+        let inbox = SessionInbox::shared(worker.as_ref(), &info.id);
+        Ok(Self { info, inbox })
     }
 }
 
