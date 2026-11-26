@@ -78,6 +78,16 @@ and reconnect backoff are shared with TCP. Cloudflare Access service-token
 headers are currently supported by the sending shim, not by nodes. For nodes,
 use a direct VPS TLS endpoint or a private route without interactive Access.
 
+A home node can also stay on its private hub. Configure only that hub to dial
+the public hub with `HUB_NAME=edger` and
+`HUB_PEERS=hub=wss://hub.yjpark.org`. The private hub authenticates and
+registers a reverse consumer lane over the same connection. The public hub then
+sees the home node as `edger::<node-id>`, which is the `node` value for
+`send_note`; it needs no return address or peer entry of its own. Edger sees
+public nodes as `hub::<node-id>`. Routing remains one hop, and reconnects replace
+the old registration safely. Older hubs without reverse registration still need
+an explicitly configured return peer.
+
 If Cloudflare Access protects the hostname, also configure a service token:
 
 ```sh
