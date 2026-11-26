@@ -202,6 +202,15 @@ impl HubClient {
         })
     }
 
+    /// Dial with explicit session metadata and credential.
+    pub async fn dial_session_with_token(
+        addr: &str,
+        token: &str,
+        _info: hub_protocol::SessionInfo,
+    ) -> Result<Self, ShimError> {
+        Self::dial_with_token(addr, token).await
+    }
+
     /// Dial with an explicit credential, without consulting the environment.
     pub async fn dial_with_token(addr: &str, token: &str) -> Result<Self, ShimError> {
         Ok(Self {

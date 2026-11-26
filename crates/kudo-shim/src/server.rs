@@ -283,6 +283,17 @@ pub struct IntakeListArgs {
     pub since: String,
 }
 
+/// Send a direct message to a live agent session.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct SessionSendArgs {
+    /// The session id from `session_list`, including any peer qualifier.
+    pub target: String,
+    /// The complete text to deliver.
+    pub body: String,
+    /// Reuse this id when retrying; omit for a fresh id.
+    pub id: Option<String>,
+}
+
 /// Give a claim back.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
 pub struct ReleaseArgs {
@@ -449,6 +460,27 @@ impl ShimServer {
     /// The `intake_list` tool, called directly (for tests and other faces).
     pub async fn call_intake_list(&self, args: IntakeListArgs) -> CallToolResult {
         self.intake_list(Parameters(args))
+            .await
+            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
+    }
+
+    /// The `session_list` tool, called directly (for tests and other faces).
+    pub async fn call_session_list(&self) -> CallToolResult {
+        self.session_list()
+            .await
+            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
+    }
+
+    /// The `session_send` tool, called directly (for tests and other faces).
+    pub async fn call_session_send(&self, args: SessionSendArgs) -> CallToolResult {
+        self.session_send(Parameters(args))
+            .await
+            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
+    }
+
+    /// The `session_messages` tool, called directly (for tests and other faces).
+    pub async fn call_session_messages(&self) -> CallToolResult {
+        self.session_messages()
             .await
             .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
     }
@@ -735,6 +767,39 @@ impl ShimServer {
                 "unavailable: {error}"
             ))])),
         }
+    }
+
+    #[tool(
+        name = "session_list",
+        description = "List live agent sessions on this hub and its one-hop peers, with session ids, nodes, harnesses, workspaces, and contexts. Peer sessions use qualified ids."
+    )]
+    async fn session_list(&self) -> Result<CallToolResult, ErrorData> {
+        Ok(CallToolResult::error(vec![ContentBlock::text(
+            "session messaging is not implemented",
+        )]))
+    }
+
+    #[tool(
+        name = "session_send",
+        description = "Send a direct text message to a live session from session_list. Returns delivered only after the target accepts it; unavailable targets are errors. Reuse the same optional id when retrying."
+    )]
+    async fn session_send(
+        &self,
+        Parameters(_args): Parameters<SessionSendArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        Ok(CallToolResult::error(vec![ContentBlock::text(
+            "session messaging is not implemented",
+        )]))
+    }
+
+    #[tool(
+        name = "session_messages",
+        description = "Retrieve and drain this session's pending direct messages in arrival order. Worker messages also arrive at the next Stop-hook turn boundary; no terminal input is injected."
+    )]
+    async fn session_messages(&self) -> Result<CallToolResult, ErrorData> {
+        Ok(CallToolResult::error(vec![ContentBlock::text(
+            "session messaging is not implemented",
+        )]))
     }
 
     #[tool(
