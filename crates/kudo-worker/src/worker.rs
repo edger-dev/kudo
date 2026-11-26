@@ -86,7 +86,7 @@ impl<'a> Worker<'a> {
     }
 
     /// Deliver direct session messages at Stop-hook turn boundaries.
-    // implements: 223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc@223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc
+    // implements: 223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc@4776113959dd917be1d720b101978004e3eafb22178fa137cf07ac9ac5ce7a60
     pub fn with_session_mailbox(mut self, mailbox: SessionMailbox) -> Self {
         self.mailbox = Some(mailbox);
         self

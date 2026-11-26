@@ -402,15 +402,23 @@ impl HubClient {
     /// List live local and one-hop peer sessions.
     pub async fn sessions(&self) -> Result<Vec<SessionInfo>, ShimError> {
         let lane = self.lane().await;
-        match self.bounded("session list", lane.client.sessions()).await? {
-            Ok(sessions) => Ok(sessions),
-            Err(error) if is_transport_failure(&error) => {
+        let result = self.bounded("session list", lane.client.sessions()).await;
+        match result {
+            Err(ShimError::TimedOut { .. }) => {
                 let fresh = self.redial(&lane).await?;
                 self.bounded("session list", fresh.client.sessions())
                     .await?
                     .map_err(|error| ShimError::Hub(format!("{error:?}")))
             }
-            Err(error) => Err(ShimError::Hub(format!("{error:?}"))),
+            Err(error) => Err(error),
+            Ok(Ok(sessions)) => Ok(sessions),
+            Ok(Err(error)) if is_transport_failure(&error) => {
+                let fresh = self.redial(&lane).await?;
+                self.bounded("session list", fresh.client.sessions())
+                    .await?
+                    .map_err(|error| ShimError::Hub(format!("{error:?}")))
+            }
+            Ok(Err(error)) => Err(ShimError::Hub(format!("{error:?}"))),
         }
     }
 
@@ -422,12 +430,30 @@ impl HubClient {
         body: String,
     ) -> Result<(), ShimError> {
         let lane = self.lane().await;
-        self.bounded(
-            "session message",
-            lane.client.send_session(target, message_id, body),
-        )
-        .await?
-        .map_err(|error| ShimError::Hub(format!("{error:?}")))
+        let result = self
+            .bounded(
+                "session message",
+                lane.client.send_session(target, message_id, body),
+            )
+            .await;
+        let result = match result {
+            Err(error @ ShimError::TimedOut { .. }) => {
+                let _ = tokio::time::timeout(Duration::from_secs(3), self.redial(&lane)).await;
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+            Ok(result) => result,
+        };
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) if is_transport_failure(&error) => {
+                // Refresh the registration for the caller's retry, but never replay
+                // an ambiguous send: the first attempt may already have landed.
+                let _ = tokio::time::timeout(Duration::from_secs(3), self.redial(&lane)).await;
+                Err(ShimError::Hub(format!("{error:?}")))
+            }
+            Err(error) => Err(ShimError::Hub(format!("{error:?}"))),
+        }
     }
 
     /// Drain this registered session's local mailbox.

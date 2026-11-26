@@ -125,6 +125,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // hub, and refuses to start rather than look healthy while failing every
     // call.
     let worker = WorkerSetup::from_env();
+    let register_session =
+        worker.is_some() && hub_addr_from_env().is_some_and(|address| !address.is_empty());
     let server = match plan_startup(hub_addr_from_env(), worker.is_some()) {
         // A worker dials the hub when a job tool first needs it, so a hub that
         // is down or slow never holds up its loop.
@@ -155,8 +157,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    let server = server.with_worker(worker);
+    if register_session {
+        let registering = server.clone();
+        tokio::spawn(async move {
+            loop {
+                if registering.call_session_list().await.is_error != Some(true) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+    }
     let (stdin, stdout) = stdio();
-    let service = server.with_worker(worker).serve((stdin, stdout)).await?;
+    let service = server.serve((stdin, stdout)).await?;
     service.waiting().await?;
     Ok(())
 }

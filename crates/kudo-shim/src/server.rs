@@ -834,7 +834,7 @@ impl ShimServer {
 
     #[tool(
         name = "session_messages",
-        description = "Retrieve and drain this session's pending direct messages in arrival order. Worker messages also arrive at the next Stop-hook turn boundary; no terminal input is injected."
+        description = "Retrieve and drain this session's pending direct messages. Worker messages also arrive at the next Stop-hook turn boundary; no terminal input is injected."
     )]
     async fn session_messages(&self) -> Result<CallToolResult, ErrorData> {
         let hub = match self.need_hub().await {

@@ -112,3 +112,86 @@ async fn mcp_sessions_list_send_and_reply_across_hubs() {
         .await;
     assert_eq!(missing.is_error, Some(true), "{missing:?}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_worker_mcp_registers_without_a_job_tool_call() {
+    let listener = HubListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().to_string();
+    let hub = ServedHub::new()
+        .with_auth_token("secret")
+        .with_peers(Peers::new("hub").with_auth_token("secret"));
+    let _server = tokio::spawn(listener.serve(hub));
+    let state = std::env::temp_dir().join(format!(
+        "kudo-worker-session-{}",
+        kudo_worker::new_lease_id().unwrap()
+    ));
+    std::fs::create_dir_all(&state).unwrap();
+    let mut worker = std::process::Command::new(env!("CARGO_BIN_EXE_kudo-shim"))
+        .env("KUDO_HUB_ADDR", &addr)
+        .env("HUB_AUTH_TOKEN", "secret")
+        .env("KUDO_CONTEXT_STORE", &state)
+        .env("KUDO_CONTEXT", "context")
+        .env("KUDO_LEASE", "worker-session")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let observer =
+        HubClient::dial_session_with_token(&addr, "secret", info("observer", "observer-node"))
+            .await
+            .unwrap();
+    eventually(|| {
+        let observer = &observer;
+        async move {
+            observer
+                .sessions()
+                .await
+                .unwrap()
+                .iter()
+                .any(|session| session.id == "worker-session")
+        }
+    })
+    .await;
+    worker.kill().unwrap();
+    worker.wait().unwrap();
+    let _ = std::fs::remove_dir_all(state);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_send_failure_refreshes_registration_for_an_explicit_retry() {
+    let listener = HubListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().to_string();
+    let hub = ServedHub::new().with_peers(Peers::new("hub"));
+    let server = tokio::spawn(listener.serve(hub.clone()));
+    let a = HubClient::dial_session_with_token(&addr, "secret", info("a", "node-a"))
+        .await
+        .unwrap()
+        .with_timeout(Duration::from_secs(1));
+    let b = HubClient::dial_session_with_token(&addr, "secret", info("b", "node-b"))
+        .await
+        .unwrap()
+        .with_timeout(Duration::from_secs(1));
+
+    server.abort();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let listener = HubListener::bind(&addr).await.unwrap();
+    let _server = tokio::spawn(listener.serve(hub));
+    assert!(
+        a.send_session("b".into(), "retry-id".into(), "after restart".into())
+            .await
+            .is_err()
+    );
+    eventually(|| {
+        let b = &b;
+        async move { b.sessions().await.is_ok() }
+    })
+    .await;
+    a.send_session("b".into(), "retry-id".into(), "after restart".into())
+        .await
+        .unwrap();
+    let messages = b.take_session_messages().unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].body, "after restart");
+}

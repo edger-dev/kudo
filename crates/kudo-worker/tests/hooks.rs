@@ -808,3 +808,31 @@ fn a_session_message_is_delivered_at_one_stop_boundary() {
         Stop::Allow(LeaseEnd::QueueEmpty)
     ));
 }
+
+#[test]
+fn a_message_id_cannot_change_its_pending_content() {
+    let f = Fixture::new();
+    let mailbox = SessionMailbox::new(&f.dir.join("leases"), LEASE);
+    let message = SessionMessage {
+        id: "stable-id".into(),
+        from: SessionInfo {
+            id: "a".into(),
+            node: "yolo".into(),
+            harness: "test".into(),
+            workspace: "/work/a".into(),
+            context: None,
+        },
+        body: "original".into(),
+    };
+    mailbox.deliver(&message).unwrap();
+    mailbox.deliver(&message).unwrap();
+    let mut changed = message.clone();
+    changed.body = "changed".into();
+    assert!(mailbox.deliver(&changed).is_err());
+    let pending = mailbox.take().unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].body, "original");
+    mailbox.deliver(&message).unwrap();
+    assert!(mailbox.take().unwrap().is_empty());
+    assert!(mailbox.deliver(&changed).is_err());
+}
