@@ -29,7 +29,7 @@ serde_json = { workspace = true }
 moco-job = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["process", "io-util"] }
 hub = { workspace = true }
 node = { workspace = true }
 kudo-node = { path = "../kudo-node" }
