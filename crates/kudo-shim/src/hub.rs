@@ -514,11 +514,8 @@ impl HubClient {
     ) -> Result<hub_protocol::DiagnosticReport, ShimError> {
         let lane = self.lane().await;
         let Some(diagnostics) = lane.diagnostics.clone() else {
-            let mut report = hub_protocol::DiagnosticReport::new(
-                probe_id,
-                self.addr.clone(),
-                target,
-            );
+            let mut report =
+                hub_protocol::DiagnosticReport::new(probe_id, self.addr.clone(), target);
             report.observed_at_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
