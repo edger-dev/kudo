@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use hub::{HubListener, Peers, ServedHub};
-use hub_protocol::SessionInfo;
+use hub_protocol::{SessionInfo, SigningKey, TrustStore};
 use kudo_shim::HubClient;
 use kudo_shim::server::{SessionSendArgs, ShimServer};
 use serde_json::{Value, json};
@@ -44,14 +44,38 @@ struct McpProcess {
 
 impl McpProcess {
     async fn spawn(state: &std::path::Path, addr: &str, session: &str) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_kudo-shim"))
+        Self::spawn_inner(state, addr, session, None).await
+    }
+
+    async fn spawn_signed(
+        state: &std::path::Path,
+        addr: &str,
+        session: &str,
+        private_key: &std::path::Path,
+    ) -> Self {
+        Self::spawn_inner(state, addr, session, Some(private_key)).await
+    }
+
+    async fn spawn_inner(
+        state: &std::path::Path,
+        addr: &str,
+        session: &str,
+        private_key: Option<&std::path::Path>,
+    ) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_kudo-shim"));
+        command
             .env("KUDO_HUB_ADDR", addr)
-            .env("HUB_AUTH_TOKEN", "secret")
             .env("KUDO_CONTEXT_STORE", state)
             .env("KUDO_SESSION_ID", session)
             .env("KUDO_AGENT_HARNESS", "kimi")
             .env("NODE_ID", "yolo")
-            .current_dir(state)
+            .current_dir(state);
+        if let Some(private_key) = private_key {
+            command.env("HUB_PRIVATE_KEY_FILE", private_key);
+        } else {
+            command.env("HUB_AUTH_TOKEN", "secret");
+        }
+        let mut child = command
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
@@ -265,6 +289,33 @@ async fn bare_mcp_processes_share_one_session_and_mailbox() {
     let received = a.tool("session_messages", json!({})).await;
     assert!(received.contains("through the survivor"), "{received}");
     a.close().await;
+    let _ = std::fs::remove_dir_all(state);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_bare_mcp_authenticates_with_its_private_key() {
+    let key = SigningKey::generate("yolo").unwrap();
+    let mut trust = TrustStore::default();
+    trust
+        .add("yolo", &key.public_hex(), &["consumer", "session"])
+        .unwrap();
+    let listener = HubListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().to_string();
+    let hub = ServedHub::new()
+        .with_auth_trust(trust)
+        .with_peers(Peers::new("hub"));
+    let _server = tokio::spawn(listener.serve(hub));
+    let state = std::env::temp_dir().join(format!(
+        "kudo-signed-session-{}",
+        kudo_worker::new_lease_id().unwrap()
+    ));
+    std::fs::create_dir_all(&state).unwrap();
+    let private_key = state.join("yolo.key");
+    std::fs::write(&private_key, key.private_hex()).unwrap();
+    let mut process = McpProcess::spawn_signed(&state, &addr, "signed-session", &private_key).await;
+    let listed = process.tool("session_list", json!({})).await;
+    assert!(listed.contains("signed-session on yolo"), "{listed}");
+    process.close().await;
     let _ = std::fs::remove_dir_all(state);
 }
 
