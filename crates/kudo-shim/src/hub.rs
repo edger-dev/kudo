@@ -514,9 +514,21 @@ impl HubClient {
     ) -> Result<hub_protocol::DiagnosticReport, ShimError> {
         let lane = self.lane().await;
         let Some(diagnostics) = lane.diagnostics.clone() else {
-            return Err(ShimError::Hub(
-                "session diagnostics are unsupported by this hub".into(),
-            ));
+            let mut report = hub_protocol::DiagnosticReport::new(
+                probe_id,
+                self.addr.clone(),
+                target,
+            );
+            report.observed_at_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            report.checks.push(hub_protocol::DiagnosticCheck {
+                stage: "hub".into(),
+                status: hub_protocol::DiagnosticStatus::Unsupported,
+                detail: "DiagnosticsApi is unavailable".into(),
+            });
+            return Ok(report.finish());
         };
         self.bounded("session probe", diagnostics.session_probe(target, probe_id))
             .await?
