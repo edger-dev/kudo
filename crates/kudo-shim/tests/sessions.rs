@@ -315,6 +315,11 @@ async fn a_bare_mcp_authenticates_with_its_private_key() {
     let mut process = McpProcess::spawn_signed(&state, &addr, "signed-session", &private_key).await;
     let listed = process.tool("session_list", json!({})).await;
     assert!(listed.contains("signed-session on yolo"), "{listed}");
+    let report = process
+        .tool("session_probe", json!({"target": "signed-session"}))
+        .await;
+    assert!(report.contains("callback"), "{report}");
+    assert!(report.contains("ok"), "{report}");
     process.close().await;
     let _ = std::fs::remove_dir_all(state);
 }
