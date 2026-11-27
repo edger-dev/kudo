@@ -19,7 +19,7 @@ use hub_protocol::discovery::TopologySnapshot;
 use hub_protocol::errors::RouteError;
 use hub_protocol::routing::{RoutedCall, RoutedReply};
 use hub_protocol::service::{ConsumerApiClient, SessionIngressClient, SessionServiceDispatcher};
-use hub_protocol::{SessionInfo, SessionMessage};
+use hub_protocol::{SessionInfo, SessionMessage, SigningKey};
 use kudo_worker::harness::HARNESS_ENV;
 use kudo_worker::{WorkerSetup, session_info};
 use tokio::sync::RwLock;
@@ -93,6 +93,7 @@ pub struct HubClient {
     client: RwLock<Arc<ClientLane>>,
     session: Option<SessionEndpoint>,
     token: Option<String>,
+    signing_key: Option<Arc<SigningKey>>,
     timeout: Duration,
 }
 
@@ -118,6 +119,7 @@ async fn dial_lane(
     addr: &str,
     token: Option<String>,
     session: Option<&SessionEndpoint>,
+    signing_key: Option<Arc<SigningKey>>,
 ) -> Result<ClientLane, ShimError> {
     let connection = if addr.starts_with("ws://") || addr.starts_with("wss://") {
         dial_websocket(addr, session).await?
@@ -152,7 +154,24 @@ async fn dial_lane(
                 addr: addr.to_string(),
                 detail: e.to_string(),
             })?;
-    if let Some(token) = &token {
+    if let Some(key) = &signing_key {
+        let challenge =
+            client
+                .authentication_challenge()
+                .await
+                .map_err(|e| ShimError::HubHandshake {
+                    addr: addr.to_string(),
+                    detail: format!("{e:?}"),
+                })?;
+        let proof = key.sign(&challenge).map_err(ShimError::Hub)?;
+        client
+            .authenticate_key(proof)
+            .await
+            .map_err(|e| ShimError::HubHandshake {
+                addr: addr.to_string(),
+                detail: format!("{e:?}"),
+            })?;
+    } else if let Some(token) = &token {
         client
             .authenticate(token.clone())
             .await
@@ -170,7 +189,24 @@ async fn dial_lane(
                     addr: addr.to_string(),
                     detail: format!("{e:?}"),
                 })?;
-        if let Some(token) = token {
+        if let Some(key) = &signing_key {
+            let challenge =
+                ingress
+                    .authentication_challenge()
+                    .await
+                    .map_err(|e| ShimError::HubHandshake {
+                        addr: addr.to_string(),
+                        detail: format!("{e:?}"),
+                    })?;
+            let proof = key.sign(&challenge).map_err(ShimError::Hub)?;
+            ingress
+                .authenticate_key(proof)
+                .await
+                .map_err(|e| ShimError::HubHandshake {
+                    addr: addr.to_string(),
+                    detail: format!("{e:?}"),
+                })?;
+        } else if let Some(token) = token {
             ingress
                 .authenticate(token)
                 .await
@@ -279,6 +315,15 @@ fn is_transport_failure<E>(e: &vox::VoxError<E>) -> bool {
     !matches!(e, vox::VoxError::User(_))
 }
 
+fn signing_key_from_env() -> Result<Option<Arc<SigningKey>>, ShimError> {
+    let Ok(path) = std::env::var("HUB_PRIVATE_KEY_FILE") else {
+        return Ok(None);
+    };
+    let key = SigningKey::from_private_file(kudo_worker::env::node_name(), path)
+        .map_err(ShimError::Hub)?;
+    Ok(Some(Arc::new(key)))
+}
+
 impl HubClient {
     /// Dial and register this agent session.
     pub async fn dial(addr: &str) -> Result<Self, ShimError> {
@@ -286,13 +331,20 @@ impl HubClient {
             addr,
             std::env::var("HUB_AUTH_TOKEN").ok(),
             Some(SessionEndpoint::current()?),
+            signing_key_from_env()?,
         )
         .await
     }
 
     /// Dial as a consumer without appearing as an agent session.
     pub async fn dial_consumer(addr: &str) -> Result<Self, ShimError> {
-        Self::dial_with_endpoint(addr, std::env::var("HUB_AUTH_TOKEN").ok(), None).await
+        Self::dial_with_endpoint(
+            addr,
+            std::env::var("HUB_AUTH_TOKEN").ok(),
+            None,
+            signing_key_from_env()?,
+        )
+        .await
     }
 
     /// Dial with explicit session metadata and credential.
@@ -305,6 +357,7 @@ impl HubClient {
             addr,
             Some(token.to_owned()),
             Some(SessionEndpoint::new(info)),
+            None,
         )
         .await
     }
@@ -315,6 +368,7 @@ impl HubClient {
             addr,
             Some(token.to_owned()),
             Some(SessionEndpoint::current()?),
+            None,
         )
         .await
     }
@@ -323,14 +377,16 @@ impl HubClient {
         addr: &str,
         token: Option<String>,
         session: Option<SessionEndpoint>,
+        signing_key: Option<Arc<SigningKey>>,
     ) -> Result<Self, ShimError> {
         Ok(Self {
             addr: addr.to_string(),
             client: RwLock::new(Arc::new(
-                dial_lane(addr, token.clone(), session.as_ref()).await?,
+                dial_lane(addr, token.clone(), session.as_ref(), signing_key.clone()).await?,
             )),
             session,
             token,
+            signing_key,
             timeout: DEFAULT_CALL_TIMEOUT,
         })
     }
@@ -365,8 +421,15 @@ impl HubClient {
         if !Arc::ptr_eq(&guard, stale) {
             return Ok(guard.clone());
         }
-        let fresh =
-            Arc::new(dial_lane(&self.addr, self.token.clone(), self.session.as_ref()).await?);
+        let fresh = Arc::new(
+            dial_lane(
+                &self.addr,
+                self.token.clone(),
+                self.session.as_ref(),
+                self.signing_key.clone(),
+            )
+            .await?,
+        );
         let old = std::mem::replace(&mut *guard, fresh.clone());
         let _ = old.connection.shutdown();
         Ok(fresh)
