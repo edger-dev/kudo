@@ -177,8 +177,11 @@ one. `KUDO_SESSION_ID`: a logical bare-session id shared by every MCP process
 launched for one agent; unset generates a per-process UUID. `KUDO_AGENT_HARNESS`
 records the launching harness in session discovery. Bare accepted messages use
 `KUDO_CONTEXT_STORE` when set, else `$XDG_STATE_HOME/kudo/sessions` or
-`~/.local/state/kudo/sessions`. The context store's mirror: see [The context
-store mirror](../contexts/mirror.md).
+`~/.local/state/kudo/sessions`. `HUB_PRIVATE_KEY_FILE`: this machine's Ed25519
+private key; consumer and session lanes sign the hub's fresh challenge instead
+of sending a shared token. Reconnects retain the same key. `HUB_AUTH_TOKEN`
+remains available only for migration. The context store's mirror: see [The
+context store mirror](../contexts/mirror.md).
 
 ## Checking it works
 

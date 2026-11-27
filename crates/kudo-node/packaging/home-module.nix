@@ -36,6 +36,13 @@ in
       default = { };
       description = "Extra environment for the daemon (NODE_LINK, MOCO_PORT_RANGE, …).";
     };
+
+    privateKeyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/run/secrets/kudo-hub-user.key";
+      description = "This node's private Ed25519 key for signed hub authentication.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -67,6 +74,8 @@ in
           "PATH=/run/wrappers/bin:${config.home.profileDirectory}/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin"
         ]
         ++ lib.optional (cfg.nodeId != null) "NODE_ID=${cfg.nodeId}"
+        ++ lib.optional (cfg.privateKeyFile != null)
+          "HUB_PRIVATE_KEY_FILE=${cfg.privateKeyFile}"
         ++ lib.mapAttrsToList (k: v: "${k}=${v}") cfg.environment;
       };
       Install.WantedBy = [ "default.target" ];
