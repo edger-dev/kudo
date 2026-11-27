@@ -35,6 +35,8 @@ usage:
   kudo-shim kimi-input           bridge console input to Kimi's terminal
   kudo-shim waker                wake a worker when a context's check comes due
                                  (a user service on one node)
+  kudo-shim doctor <session-id>  probe registration and callback without sending a
+                                 message or registering a session
   kudo-shim --version | --help
 ";
 
@@ -70,6 +72,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The waker: a long-running loop on one node.
     if args.get(1).map(String::as_str) == Some("waker") {
         std::process::exit(run_waker().await);
+    }
+
+    if args.get(1).map(String::as_str) == Some("doctor") {
+        let Some(target) = args.get(2) else {
+            eprintln!("usage: kudo-shim doctor <session-id>");
+            std::process::exit(2);
+        };
+        let Some(addr) = hub_addr_from_env() else {
+            eprintln!("KUDO_HUB_ADDR is not set");
+            std::process::exit(2);
+        };
+        let hub = match HubClient::dial_consumer(&addr).await {
+            Ok(hub) => hub,
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        };
+        let probe_id = kudo_worker::new_lease_id()?;
+        match hub.session_probe(target.clone(), probe_id).await {
+            Ok(report) => println!("{}", kudo_shim::render_report(&report)),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
     }
 
     // The local commands: drive a context by hand, start a worker here.

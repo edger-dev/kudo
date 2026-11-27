@@ -320,6 +320,19 @@ async fn a_bare_mcp_authenticates_with_its_private_key() {
         .await;
     assert!(report.contains("callback"), "{report}");
     assert!(report.contains("ok"), "{report}");
+    let doctor = std::process::Command::new(env!("CARGO_BIN_EXE_kudo-shim"))
+        .arg("doctor")
+        .arg("signed-session")
+        .env("KUDO_HUB_ADDR", &addr)
+        .env("HUB_PRIVATE_KEY_FILE", &private_key)
+        .env("KUDO_CONTEXT_STORE", &state)
+        .env("NODE_ID", "yolo")
+        .output()
+        .unwrap();
+    assert!(doctor.status.success(), "{doctor:?}");
+    let report = String::from_utf8(doctor.stdout).unwrap();
+    assert!(report.contains("callback"), "{report}");
+    assert!(report.contains("signed-session"), "{report}");
     process.close().await;
     let _ = std::fs::remove_dir_all(state);
 }

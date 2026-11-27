@@ -5,7 +5,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
-use hub_protocol::{HubError, SessionMessage, SessionService};
+use hub_protocol::{HubError, SessionInfo, SessionMessage, SessionService};
 use kudo_worker::{SessionMailbox, WorkerSetup};
 
 #[derive(Default)]
@@ -24,18 +24,27 @@ enum Storage {
 #[derive(Clone)]
 pub struct SessionInbox {
     storage: Storage,
+    info: Option<SessionInfo>,
 }
 
 impl Default for SessionInbox {
     fn default() -> Self {
         Self {
             storage: Storage::Memory(Arc::default()),
+            info: None,
         }
     }
 }
 
 impl SessionInbox {
-    pub fn shared(worker: Option<&WorkerSetup>, session: &str) -> Self {
+    pub fn new(info: &SessionInfo) -> Self {
+        Self {
+            info: Some(info.clone()),
+            ..Self::default()
+        }
+    }
+
+    pub fn shared(worker: Option<&WorkerSetup>, info: &SessionInfo) -> Self {
         let parent = match worker {
             Some(setup) => setup.leases_dir(),
             None => std::env::var(kudo_worker::env::STORE_ENV)
@@ -54,7 +63,8 @@ impl SessionInbox {
                 .join("leases"),
         };
         Self {
-            storage: Storage::Files(SessionMailbox::new(&parent, session)),
+            storage: Storage::Files(SessionMailbox::new(&parent, &info.id)),
+            info: Some(info.clone()),
         }
     }
 
@@ -73,6 +83,12 @@ impl SessionInbox {
 
 // implements: 223cbac51b156623cf7320eb634f7ff85ada8df1a4a19872d025903e7a1b74dc@813b113a63960d80de27595b2a25ae190ad9b06b460512b92cb916b3c4fa1888
 impl SessionService for SessionInbox {
+    async fn ping(&self) -> Result<SessionInfo, HubError> {
+        self.info
+            .clone()
+            .ok_or_else(|| HubError::Rejected("session identity unavailable".into()))
+    }
+
     async fn deliver(&self, message: SessionMessage) -> Result<(), HubError> {
         match &self.storage {
             Storage::Memory(messages) => {

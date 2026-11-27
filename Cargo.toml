@@ -32,13 +32,13 @@ dbg_macro = "warn"              # rule: jig::rust::no-todo-committed
 # everyone else builds is this revision:
 #   [patch."https://github.com/edger-dev/hub"]
 #   hub-protocol = { path = "../hub/crates/hub-protocol" }
-hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "361c0b0" }
+hub-protocol = { git = "https://github.com/edger-dev/hub", rev = "c3f4842" }
 
 # `node` is a real dependency of the composition root (kudo-node assembles a
 # daemon out of it) and a dev-dependency of the shim's routing tests, which run
 # a real hub and a real node rather than a mock of the far side.
-hub = { git = "https://github.com/edger-dev/hub", rev = "361c0b0" }
-node = { git = "https://github.com/edger-dev/hub", rev = "361c0b0" }
+hub = { git = "https://github.com/edger-dev/hub", rev = "c3f4842" }
+node = { git = "https://github.com/edger-dev/hub", rev = "c3f4842" }
 
 # Kept on hub's line: hub-protocol's types are facet-derived, so the shim must
 # encode against the same major. See RFC-0006 on the facet version skew.

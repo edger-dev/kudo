@@ -18,7 +18,9 @@ use std::time::Duration;
 use hub_protocol::discovery::TopologySnapshot;
 use hub_protocol::errors::RouteError;
 use hub_protocol::routing::{RoutedCall, RoutedReply};
-use hub_protocol::service::{ConsumerApiClient, SessionIngressClient, SessionServiceDispatcher};
+use hub_protocol::service::{
+    ConsumerApiClient, DiagnosticsApiClient, SessionIngressClient, SessionServiceDispatcher,
+};
 use hub_protocol::{SessionInfo, SessionMessage, SigningKey};
 use kudo_worker::harness::HARNESS_ENV;
 use kudo_worker::{WorkerSetup, session_info};
@@ -38,6 +40,7 @@ pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 struct ClientLane {
     connection: vox::ConnectionHandle,
     client: ConsumerApiClient,
+    diagnostics: Option<DiagnosticsApiClient>,
 }
 
 #[derive(Clone)]
@@ -48,7 +51,7 @@ struct SessionEndpoint {
 
 impl SessionEndpoint {
     fn new(info: SessionInfo) -> Self {
-        let inbox = SessionInbox::default();
+        let inbox = SessionInbox::new(&info);
         Self { info, inbox }
     }
 
@@ -74,7 +77,7 @@ impl SessionEndpoint {
             worker.as_ref().map(|setup| setup.context.0.clone()),
         )
         .map_err(|error| ShimError::Hub(error.to_string()))?;
-        let inbox = SessionInbox::shared(worker.as_ref(), &info.id);
+        let inbox = SessionInbox::shared(worker.as_ref(), &info);
         Ok(Self { info, inbox })
     }
 }
@@ -206,7 +209,7 @@ async fn dial_lane(
                     addr: addr.to_string(),
                     detail: format!("{e:?}"),
                 })?;
-        } else if let Some(token) = token {
+        } else if let Some(token) = token.clone() {
             ingress
                 .authenticate(token)
                 .await
@@ -223,7 +226,38 @@ async fn dial_lane(
                 detail: format!("{e:?}"),
             })?;
     }
-    Ok(ClientLane { connection, client })
+    let diagnostics: Option<DiagnosticsApiClient> = connection.open_lane().await.ok();
+    if let Some(diagnostics) = &diagnostics {
+        if let Some(key) = &signing_key {
+            let challenge = diagnostics.authentication_challenge().await.map_err(|e| {
+                ShimError::HubHandshake {
+                    addr: addr.to_string(),
+                    detail: format!("{e:?}"),
+                }
+            })?;
+            let proof = key.sign(&challenge).map_err(ShimError::Hub)?;
+            diagnostics
+                .authenticate_key(proof)
+                .await
+                .map_err(|e| ShimError::HubHandshake {
+                    addr: addr.to_string(),
+                    detail: format!("{e:?}"),
+                })?;
+        } else if let Some(token) = &token {
+            diagnostics
+                .authenticate(token.clone())
+                .await
+                .map_err(|e| ShimError::HubHandshake {
+                    addr: addr.to_string(),
+                    detail: format!("{e:?}"),
+                })?;
+        }
+    }
+    Ok(ClientLane {
+        connection,
+        client,
+        diagnostics,
+    })
 }
 
 /// Open a WebSocket Vox connection, including optional Cloudflare Access credentials.
@@ -470,6 +504,23 @@ impl HubClient {
             }
             Err(e) => Err(ShimError::Hub(format!("{e:?}"))),
         }
+    }
+
+    /// Probe a session's registration and callback without touching its mailbox.
+    pub async fn session_probe(
+        &self,
+        target: String,
+        probe_id: String,
+    ) -> Result<hub_protocol::DiagnosticReport, ShimError> {
+        let lane = self.lane().await;
+        let Some(diagnostics) = lane.diagnostics.clone() else {
+            return Err(ShimError::Hub(
+                "session diagnostics are unsupported by this hub".into(),
+            ));
+        };
+        self.bounded("session probe", diagnostics.session_probe(target, probe_id))
+            .await?
+            .map_err(|error| ShimError::Hub(format!("{error:?}")))
     }
 
     /// List live local and one-hop peer sessions.

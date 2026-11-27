@@ -25,6 +25,7 @@ are then not offered, or, if a hub address is set but the hub is down, answer
 | `job_stats` | CPU and memory, now and at peak. |
 | `session_list` | Live agent sessions on this hub and its one-hop peers. |
 | `session_messages` | Retrieve and drain this session's pending direct messages. |
+| `session_probe` | Check registration freshness and callback responsiveness without sending a message. |
 
 ## Writing
 
@@ -45,6 +46,12 @@ Every job tool takes `node`, plus optional `link` and `connector`.
 including one-hop peers as `<peer>::<session-id>`. `session_send` uses that id and
 returns `delivered <message-id>` only after the receiving shim accepts the message.
 Unknown and offline sessions are errors; there is no hub-side offline history.
+
+A listing is a registration snapshot, not proof of reachability. `session_probe`
+returns timestamped checks with `ok`, `failed`, `unsupported`, and `unknown`
+statuses. `SessionService.ping` checks only the callback; it does not prove
+mailbox admission. `kudo-shim doctor <session-id>` prints the same report from a
+consumer-only connection without registering another session.
 Worker sessions receive pending messages as their next Stop-hook prompt, with the
 authenticated sender and reply address. Bare sessions retrieve theirs with
 `session_messages`. Kudo never types a message into a terminal implicitly.

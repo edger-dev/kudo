@@ -15,6 +15,7 @@
 //! implements: 121ac6ebe48b717b93e775f5a0526076a9230ec0e10e748dbcbaf181bf758120
 
 pub mod cli;
+pub mod diagnostics;
 pub mod error;
 pub mod events;
 pub mod hook;
@@ -30,6 +31,7 @@ pub mod startup;
 pub mod waker;
 pub mod worker_tools;
 
+pub use diagnostics::render_report;
 pub use error::ShimError;
 pub use hub::{DEFAULT_CALL_TIMEOUT, HubClient};
 pub use mesh::render_mesh;

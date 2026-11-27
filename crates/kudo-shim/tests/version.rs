@@ -37,7 +37,7 @@ fn help_names_every_face() {
     for arg in ["--help", "-h", "help"] {
         let (ok, out) = run(arg);
         assert!(ok, "{arg}: {out}");
-        for face in ["hook", "context", "worker", "MCP"] {
+        for face in ["hook", "context", "worker", "doctor", "MCP"] {
             assert!(out.contains(face), "{arg} names {face}: {out}");
         }
     }

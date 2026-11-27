@@ -294,6 +294,13 @@ pub struct SessionSendArgs {
     pub id: Option<String>,
 }
 
+/// Probe a session without touching its mailbox.
+#[derive(Deserialize, schemars::JsonSchema, Debug)]
+pub struct SessionProbeArgs {
+    /// The session id from `session_list`, including any peer qualifier.
+    pub target: String,
+}
+
 /// Give a claim back.
 #[derive(Deserialize, schemars::JsonSchema, Debug)]
 pub struct ReleaseArgs {
@@ -467,6 +474,13 @@ impl ShimServer {
     /// The `session_list` tool, called directly (for tests and other faces).
     pub async fn call_session_list(&self) -> CallToolResult {
         self.session_list()
+            .await
+            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
+    }
+
+    /// The `session_probe` tool, called directly (for tests and other faces).
+    pub async fn call_session_probe(&self, args: SessionProbeArgs) -> CallToolResult {
+        self.session_probe(Parameters(args))
             .await
             .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))
     }
@@ -800,6 +814,33 @@ impl ShimServer {
                 .collect::<Vec<_>>()
                 .join("\n")
         }))
+    }
+
+    #[tool(
+        name = "session_probe",
+        description = "Probe a session's registration and callback without sending a message. Returns timestamped evidence and distinguishes failed, unsupported, unknown, and ok checks; listed alone does not prove reachability."
+    )]
+    async fn session_probe(
+        &self,
+        Parameters(args): Parameters<SessionProbeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let hub = match self.need_hub().await {
+            Ok(hub) => hub,
+            Err(no_hub) => return Ok(no_hub),
+        };
+        let probe_id = match kudo_worker::new_lease_id() {
+            Ok(id) => id,
+            Err(error) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    error.to_string(),
+                )]));
+            }
+        };
+        reply(
+            hub.session_probe(args.target, probe_id)
+                .await
+                .map(|report| crate::render_report(&report)),
+        )
     }
 
     #[tool(
