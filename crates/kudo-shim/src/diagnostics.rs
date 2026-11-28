@@ -1,6 +1,6 @@
 //! Shared rendering for structured session diagnostics.
 
-// implements: hub::spec::session-diagnostics@0ed7d0e7b10814c751b8b3303cb9572a2f0b34b7c0047b49ac805c19d0e55033
+// implements: hub::spec::session-diagnostics@4f1da10173d44802ad14da7601334b7b7ea94d10d69dc30e5ee2a8435e320c4e
 
 use hub_protocol::DiagnosticReport;
 
