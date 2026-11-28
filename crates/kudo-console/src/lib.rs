@@ -20,4 +20,5 @@ mod server;
 pub mod shell;
 pub mod style;
 pub mod theme;
+#[cfg(feature = "server")]
 pub mod views;
