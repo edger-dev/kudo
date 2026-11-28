@@ -157,6 +157,7 @@ fn only_non_secret_mirror_settings_are_forwarded() {
         ("KUDO_CONTEXT_MIRROR", "s3://b/p"),
         ("AWS_ENDPOINT", "http://127.0.0.1:9100"),
         ("AWS_REGION", "auto"),
+        ("KINORA_MIRROR_PROXY", "http://10.100.0.1:21102"),
         ("AWS_ACCESS_KEY_ID", "id"),
         ("AWS_SECRET_ACCESS_KEY", "secret"),
         ("AWS_PROFILE", "work"),
@@ -168,5 +169,13 @@ fn only_non_secret_mirror_settings_are_forwarded() {
         .map(|(k, _)| k)
         .collect();
     kept.sort();
-    assert_eq!(kept, ["AWS_ENDPOINT", "AWS_REGION", "KUDO_CONTEXT_MIRROR"]);
+    assert_eq!(
+        kept,
+        [
+            "AWS_ENDPOINT",
+            "AWS_REGION",
+            "KINORA_MIRROR_PROXY",
+            "KUDO_CONTEXT_MIRROR"
+        ]
+    );
 }
