@@ -31,6 +31,14 @@ pub struct ReceivedNote {
     pub created_at: String,
     pub received_at: String,
     pub unreviewed: bool,
+    #[facet(default)]
+    pub body: String,
+    #[facet(default)]
+    pub author: String,
+    #[facet(default)]
+    pub machine: String,
+    #[facet(default)]
+    pub session: String,
 }
 
 #[derive(Debug)]
@@ -110,6 +118,8 @@ impl Receiver {
             ("intake::fingerprint".into(), fingerprint),
             ("intake::target".into(), note.target.clone()),
             ("intake::title".into(), note.title.clone()),
+            ("intake::body".into(), note.body.clone()),
+            ("intake::author".into(), note.author.clone()),
             ("intake::machine".into(), note.machine.clone()),
             ("intake::session".into(), note.session.clone()),
             ("intake::created_at".into(), note.created_at.clone()),
@@ -191,6 +201,22 @@ impl Receiver {
                         .metadata
                         .get("status::unreviewed")
                         .is_some_and(|value| value == "true"),
+                    body: entry.metadata.get("intake::body").cloned().unwrap_or_default(),
+                    author: entry
+                        .metadata
+                        .get("intake::author")
+                        .cloned()
+                        .unwrap_or_default(),
+                    machine: entry
+                        .metadata
+                        .get("intake::machine")
+                        .cloned()
+                        .unwrap_or_default(),
+                    session: entry
+                        .metadata
+                        .get("intake::session")
+                        .cloned()
+                        .unwrap_or_default(),
                 },
             ));
         }
