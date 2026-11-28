@@ -418,6 +418,7 @@ pub fn lease_from(lookup: impl Fn(&str) -> Option<String>) -> Result<String, Str
 }
 
 /// The mirror settings to hand on by name, from these variables.
+// implements: 43ae98dc4242c77f160692e13068cc9de5ac7399bd89999ddb9380d25aaea0ed@43ae98dc4242c77f160692e13068cc9de5ac7399bd89999ddb9380d25aaea0ed
 pub fn mirror_settings_from(
     vars: impl IntoIterator<Item = (String, String)>,
 ) -> Vec<(String, String)> {
@@ -426,13 +427,16 @@ pub fn mirror_settings_from(
     // anyone on the machine can read.
     vars.into_iter()
         .filter(|(k, _)| {
-            k == kudo_worker::env::MIRROR_ENV || k == "AWS_ENDPOINT" || k == "AWS_REGION"
+            k == kudo_worker::env::MIRROR_ENV
+                || k == kudo_worker::env::MIRROR_PROXY_ENV
+                || k == "AWS_ENDPOINT"
+                || k == "AWS_REGION"
         })
         .collect()
 }
 
-/// The context store's mirror settings in this environment, to hand on to
-/// the worker: `KUDO_CONTEXT_MIRROR` and the `AWS_*` variables.
+/// The context store's non-secret mirror settings in this environment, to
+/// hand on to the worker by name.
 fn mirror_settings() -> Vec<(String, String)> {
     mirror_settings_from(std::env::vars())
 }

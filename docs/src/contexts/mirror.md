@@ -14,9 +14,13 @@ The mirror is configured from the environment:
 | `AWS_ENDPOINT` | the S3 endpoint; `http://…` allows plain HTTP (local use) |
 | `AWS_REGION` | `auto` for Cloudflare R2, `us-east-1` for MinIO |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | the key |
+| `KINORA_MIRROR_PROXY` | optional HTTP proxy URL for the S3 client only |
 
 Every `kudo-shim` command, hook and worker tool reads them. Without
-`KUDO_CONTEXT_MIRROR` the store is local only, as before.
+`KUDO_CONTEXT_MIRROR` the store is local only, as before. The mirror proxy is
+forwarded to worker MCP processes and hooks without setting `HTTP_PROXY` or
+`HTTPS_PROXY`; unrelated agent traffic keeps its existing network policy. It is
+useful where direct S3 access is blocked but a host HTTP proxy is reachable.
 
 ## How it syncs
 

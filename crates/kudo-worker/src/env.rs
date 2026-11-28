@@ -12,6 +12,8 @@ use kudo_context::ContextId;
 pub const STORE_ENV: &str = "KUDO_CONTEXT_STORE";
 /// The context store's mirror, as a URL (`s3://bucket/prefix`, `file:///dir`).
 pub const MIRROR_ENV: &str = "KUDO_CONTEXT_MIRROR";
+/// The mirror S3 client's dedicated HTTP proxy, if direct access is unsuitable.
+pub const MIRROR_PROXY_ENV: &str = "KINORA_MIRROR_PROXY";
 /// The bound context's id.
 pub const CONTEXT_ENV: &str = "KUDO_CONTEXT";
 /// The lease id (also the CLI's session id).
