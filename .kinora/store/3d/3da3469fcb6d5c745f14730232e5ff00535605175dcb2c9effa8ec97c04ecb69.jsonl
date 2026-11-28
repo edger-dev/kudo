@@ -1,0 +1,3 @@
+{"@schema":"kinora-commit-archive-v1"}
+{"event_kind":"store","kind":"markdown","id":"43ae98dc4242c77f160692e13068cc9de5ac7399bd89999ddb9380d25aaea0ed","hash":"43ae98dc4242c77f160692e13068cc9de5ac7399bd89999ddb9380d25aaea0ed","parents":[],"ts":"2026-11-28T14:19:41.963443367Z","author":"YJ Park","provenance":"r2-connectivity-fix","metadata":{"name":"kudo::spec::mirror-proxy"}}
+{"event_kind":"assign","kind":"kin::assign","id":"43ae98dc4242c77f160692e13068cc9de5ac7399bd89999ddb9380d25aaea0ed","hash":"43ae98dc4242c77f160692e13068cc9de5ac7399bd89999ddb9380d25aaea0ed","parents":[],"ts":"2026-11-28T14:19:41.963443367Z","author":"YJ Park","provenance":"r2-connectivity-fix","metadata":{"kin::target_root":"specs"}}
