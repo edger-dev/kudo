@@ -504,3 +504,4 @@ async fn follow_once(addr: &str) -> bool {
     subscription.abort();
     live
 }
+

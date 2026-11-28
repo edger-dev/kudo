@@ -21,15 +21,16 @@ jiff = { workspace = true, optional = true }
 hub-protocol = { workspace = true, optional = true }
 vox = { workspace = true, optional = true }
 moco-job = { workspace = true, optional = true }
+kudo-intake = { path = "../kudo-intake", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-timers = { version = "0.3", features = ["futures"] }
 
-[dev-dependencies]
 dioxus-ssr = "=0.7.4"
 kudo-worker = { path = "../kudo-worker" }
 
 [features]
 default = []
 web = ["dioxus/web"]
-server = ["dioxus/server", "dep:kudo-context", "dep:kudo-shim", "dep:tokio", "dep:hub-protocol", "dep:vox", "dep:kudo-worker", "dep:jiff", "dep:moco-job"]
+server = ["dioxus/server", "dep:kudo-context", "dep:kudo-shim", "dep:tokio", "dep:hub-protocol", "dep:vox", "dep:kudo-worker", "dep:jiff", "dep:moco-job", "dep:kudo-intake"]
+

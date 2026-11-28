@@ -86,9 +86,25 @@ pub struct ContextDetail {
     pub measures: Option<MeasuresView>,
 }
 
+/// A remote intake note and its provenance.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IntakeNoteView {
+    pub note_id: String,
+    pub kino_id: String,
+    pub title: String,
+    pub body: String,
+    pub author: String,
+    pub machine: String,
+    pub session: String,
+    pub created_at: String,
+    pub received_at: String,
+    pub unreviewed: bool,
+}
+
 /// Everything the panes draw from.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConsoleData {
+    pub intake: Vec<IntakeNoteView>,
     pub nodes: Vec<NodeView>,
     pub contexts: Vec<ContextCard>,
     pub selected: Option<ContextDetail>,
