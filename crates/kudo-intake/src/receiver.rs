@@ -201,7 +201,11 @@ impl Receiver {
                         .metadata
                         .get("status::unreviewed")
                         .is_some_and(|value| value == "true"),
-                    body: entry.metadata.get("intake::body").cloned().unwrap_or_default(),
+                    body: entry
+                        .metadata
+                        .get("intake::body")
+                        .cloned()
+                        .unwrap_or_default(),
                     author: entry
                         .metadata
                         .get("intake::author")
