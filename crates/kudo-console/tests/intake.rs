@@ -1,3 +1,4 @@
+#![cfg(feature = "server")]
 #![allow(clippy::unwrap_used)]
 
 use kudo_console::intake::{apply_implementation, implementation_request};
