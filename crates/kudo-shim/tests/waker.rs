@@ -73,13 +73,29 @@ fn without_a_wake_node_the_wakers_own() {
     assert_eq!(wakes(&store, T0)[0].context, ctx);
 }
 
-/// An ordinary item never wakes anyone: it waits for a person.
+/// Ordinary work without a wake node still waits for a person.
 #[test]
-fn an_ordinary_item_does_not_wake() {
+fn an_ordinary_item_without_a_wake_node_does_not_wake() {
     let store = store();
     let ctx = store.create_context("plain", "# plain\n", T0).unwrap();
     store.enqueue(&ctx, "something", T0).unwrap();
     assert!(wakes(&store, T0 + 600).is_empty());
+}
+
+/// Ordinary ready work on a declared wake node gets one worker.
+#[test]
+fn an_ordinary_item_on_a_wake_node_wakes() {
+    let store = store();
+    let ctx = store.create_context("plain", "# plain\n", T0).unwrap();
+    store.enqueue(&ctx, "something", T0).unwrap();
+    store.declare_wake_node(&ctx, "yolo", T0).unwrap();
+    assert_eq!(
+        wakes(&store, T0 + 600),
+        vec![Wake {
+            context: ctx,
+            node: "yolo".into()
+        }]
+    );
 }
 
 /// A live worker — traced, not ended, not quiet — means no wake; an ended or
