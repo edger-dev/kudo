@@ -114,3 +114,12 @@ pub async fn kill_job(node: String, job: String) -> Result<String, ServerFnError
         .await
         .map_err(ServerFnError::new)
 }
+
+/// Start implementation of an intake note on `node`, returning its context id.
+#[server]
+pub async fn start_implementation(note_id: String, node: String) -> Result<String, ServerFnError> {
+    crate::server::guarded().await?;
+    crate::server::start_implementation(note_id, node)
+        .await
+        .map_err(ServerFnError::new)
+}

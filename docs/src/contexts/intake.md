@@ -112,3 +112,12 @@ The tool derives provenance from `KUDO_INTAKE_AUTHOR`, `KUDO_INTAKE_MACHINE`,
 and `KUDO_LEASE` where set, with the current user, node name, and `bare` as
 fallbacks. Optional `author`, `machine`, and `session` arguments override them.
 Creation and receipt timestamps are not part of the deduplication fingerprint.
+
+## Starting implementation from the console
+
+The console's inbox lists these notes with their body and provenance. Start
+implementation creates a linked context with an allowed wake node and an ask to
+decompose and execute the design in small serial steps. The note remains
+unreviewed and is not made into a spec. Re-selecting it returns the existing
+context. Contexts without an explicit wake node keep their previous behavior:
+ordinary work waits for a person.

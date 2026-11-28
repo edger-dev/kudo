@@ -26,6 +26,7 @@ kudo-intake = { path = "../kudo-intake", optional = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-timers = { version = "0.3", features = ["futures"] }
 
+[dev-dependencies]
 dioxus-ssr = "=0.7.4"
 kudo-worker = { path = "../kudo-worker" }
 

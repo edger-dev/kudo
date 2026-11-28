@@ -91,8 +91,10 @@ kudo-shim context wake-node <context> yolo
 
 Without one, the node of the context's first repo (by name), else the
 waker's own node. The waker starts workers only on the nodes in
-`KUDO_CONSOLE_WORKER_NODES`, and never for an ordinary item: those wait for a
-person to start a worker. A context it woke is not woken again for 15 minutes, then 30, doubling up
+`KUDO_CONSOLE_WORKER_NODES`. Ordinary ready work auto-starts only when the
+context has an explicit wake node; without one, ordinary work still waits for a
+person. A context never gets a second worker while a lease is live or a pane is
+starting, so execution is serial by default. A context it woke is not woken again for 15 minutes, then 30, doubling up
 to 4 hours while its due item stays unanswered; a pane that never traced is
 stopped before another starts. Once the lease of a
 pane it started has ended, it stops that pane, so a finished worker's

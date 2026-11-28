@@ -11,6 +11,16 @@ to enqueue an ask) and **trace**, or the selected node's **jobs** and one
 top bar says where you are, steps back, and carries the approvals badge and
 the theme toggle.
 
+## Intake and implementation
+
+The inbox lists remote intake notes with their design, author, machine,
+session, and receipt time. **Start implementation** on an allowed node creates
+one linked context containing the note's kino id and design, declares that wake
+node, and enqueues a small-step serial implementation ask. Selecting the same
+note again returns the existing context instead of creating a duplicate.
+Ordinary ready work then auto-starts through the waker; no Start worker button
+is needed. The note is not converted into a spec or marked reviewed.
+
 ## On a phone
 
 Below 720 px wide the console shows **one pane at a time**, the deepest thing

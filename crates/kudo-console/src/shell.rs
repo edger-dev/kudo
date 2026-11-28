@@ -248,6 +248,43 @@ fn TopBar(data: ConsoleData, selection: Selection) -> Element {
 #[component]
 fn WherePane(data: ConsoleData, selection: Selection) -> Element {
     rsx! {
+        h3 { "inbox" }
+        if data.intake.is_empty() {
+            p { class: "muted", "no intake notes" }
+        }
+        for note in data.intake.iter() {
+            div { class: "item", key: "{note.kino_id}",
+                details {
+                    summary { "{note.title}" }
+                    pre { "{note.body}" }
+                }
+                div { class: "muted",
+                    "{note.author} · {note.machine} · {note.session} · received {note.received_at}"
+                }
+                div { class: "row",
+                    for node in data.nodes.iter().filter(|n| n.may_start) {
+                        button {
+                            key: "implement-{note.kino_id}-{node.id}",
+                            onclick: {
+                                let note_id = note.note_id.clone();
+                                let node = node.id.clone();
+                                move |e: MouseEvent| {
+                                    e.stop_propagation();
+                                    let (note_id, node) = (note_id.clone(), node.clone());
+                                    async move {
+                                        match crate::api::start_implementation(note_id, node).await {
+                                            Ok(context) => select(|s| s.select_context(context)),
+                                            Err(e) => say(e.to_string()),
+                                        }
+                                    }
+                                }
+                            },
+                            "start implementation on {node.id}"
+                        }
+                    }
+                }
+            }
+        }
         h3 { "contexts" }
         if data.contexts.is_empty() {
             p { class: "muted", "no contexts yet" }

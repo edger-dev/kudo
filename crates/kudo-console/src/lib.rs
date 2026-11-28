@@ -10,6 +10,8 @@ pub mod confirm;
 #[cfg(feature = "server")]
 pub mod guard;
 pub mod history;
+#[cfg(feature = "server")]
+pub mod intake;
 pub mod layout;
 pub mod model;
 pub mod selection;
@@ -18,6 +20,4 @@ mod server;
 pub mod shell;
 pub mod style;
 pub mod theme;
-#[cfg(feature = "server")]
-pub mod intake;
 pub mod views;

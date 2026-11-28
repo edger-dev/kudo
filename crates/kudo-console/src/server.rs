@@ -11,7 +11,9 @@ use std::time::Duration;
 use dioxus::prelude::ServerFnError;
 use kudo_context::ContextStore;
 
-use crate::model::{ConsoleData, JobOutput, NodeJobs, NodeView, PaneRef, TerminalView};
+use crate::model::{
+    ConsoleData, IntakeNoteView, JobOutput, NodeJobs, NodeView, PaneRef, TerminalView,
+};
 
 /// Bumped by every event the hub carries under `kudo/`, and by the console's
 /// own writes.
@@ -90,6 +92,10 @@ pub(crate) async fn console_data(selected: Option<String>) -> ConsoleData {
         },
     };
     data.nodes = nodes().await;
+    match intake_notes().await {
+        Ok(notes) => data.intake = notes,
+        Err(error) => data.error = Some(error),
+    }
     (data.approvals, data.approvals_unknown) = approvals(&data.nodes).await;
     data
 }
@@ -505,3 +511,61 @@ async fn follow_once(addr: &str) -> bool {
     live
 }
 
+fn intake_node() -> String {
+    std::env::var("KUDO_INTAKE_NODE").unwrap_or_else(|_| "edger".into())
+}
+
+fn intake_target() -> String {
+    std::env::var("KUDO_INTAKE_TARGET").unwrap_or_else(|_| "kudo".into())
+}
+
+async fn intake_notes() -> Result<Vec<IntakeNoteView>, String> {
+    let hub = hub().await?;
+    let reply = kudo_shim::intake::list(
+        &hub,
+        &intake_node(),
+        &intake_target(),
+        "1970-01-01T00:00:00Z",
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    let kudo_intake::IntakeReply::Listed { notes } = reply else {
+        return Err("the intake connector returned the wrong reply".into());
+    };
+    Ok(notes
+        .into_iter()
+        .map(|note| IntakeNoteView {
+            note_id: note.note_id,
+            kino_id: note.kino_id,
+            title: note.title,
+            body: note.body,
+            author: note.author,
+            machine: note.machine,
+            session: note.session,
+            created_at: note.created_at,
+            received_at: note.received_at,
+            unreviewed: note.unreviewed,
+        })
+        .collect())
+}
+
+pub(crate) async fn start_implementation(note_id: String, node: String) -> Result<String, String> {
+    let notes = intake_notes().await?;
+    let note = notes
+        .into_iter()
+        .find(|note| note.note_id == note_id || note.kino_id == note_id)
+        .ok_or_else(|| format!("intake note {note_id:?} was not found"))?;
+    if !note.unreviewed {
+        return Err("this note is already reviewed".into());
+    }
+    let named = kudo_shim::panes::worker_nodes_from(|key| std::env::var(key).ok());
+    if !kudo_shim::panes::may_start(&node, named.as_deref()) {
+        return Err(format!("this console may not start workers on {node}"));
+    }
+    let store = tokio::task::spawn_blocking(store)
+        .await
+        .map_err(|error| error.to_string())??;
+    let at = now();
+    bump();
+    crate::intake::apply_implementation(&store, &note, &node, at)
+}
