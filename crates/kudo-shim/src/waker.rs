@@ -1,9 +1,9 @@
 //! The waker: once a minute, a context with an item that came due and no
 //! worker running gets one, on its wake node, through the same launch policy
-//! the console uses (`panes::start`). It wakes for due items only: an
-//! ordinary item waits for a person.
+//! the console uses (`panes::start`). Ordinary ready work wakes only on a
+//! declared wake node; without one it still waits for a person.
 //!
-//! implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a@f76f4215e264261e284792a84ffb31b5fbc7f3498b04b00dccf45aa79cac60a2
+//! implements: 43643bef4da543e855bafcb2308401df3c7b2f1c5a4ef03ac69c06b7a4bd2d2a@292a36627ead700c2c865ea07d8e71122d432cf76ff0b284338034105afe6cfc
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -103,14 +103,13 @@ pub fn due_contexts_with(
     let mut wakes = Vec::new();
     for card in store.contexts()? {
         let ctx = card.id;
-        if store.due_ready_count(&ctx, now)? == 0
-            || runs_a_worker(store, &ctx, now, quiet_after, gone)?
-        {
+        let wake_node = store.wake_node(&ctx)?;
+        let ready = store.due_ready_count(&ctx, now)? > 0
+            || (wake_node.is_some() && store.ready_count(&ctx, now)? > 0);
+        if !ready || runs_a_worker(store, &ctx, now, quiet_after, gone)? {
             continue;
         }
-        let node = store
-            .wake_node(&ctx)?
-            .unwrap_or_else(|| own_node.to_owned());
+        let node = wake_node.unwrap_or_else(|| own_node.to_owned());
         wakes.push(Wake { context: ctx, node });
     }
     Ok(wakes)
