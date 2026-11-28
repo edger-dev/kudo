@@ -28,6 +28,7 @@ gloo-timers = { version = "0.3", features = ["futures"] }
 
 [dev-dependencies]
 dioxus-ssr = "=0.7.4"
+kudo-context = { path = "../kudo-context" }
 kudo-worker = { path = "../kudo-worker" }
 
 [features]
