@@ -4156,6 +4156,7 @@ dependencies = [
  "hub-protocol",
  "jiff",
  "kudo-context",
+ "kudo-intake",
  "kudo-shim",
  "kudo-worker",
  "moco-job",
